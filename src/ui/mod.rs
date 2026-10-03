@@ -50,8 +50,17 @@ impl Plugin for UiPlugin {
             let _ = BOLD.set(bold);
         }
         app.init_resource::<MenuFocus>()
+            .init_resource::<MenuScroll>()
             .init_resource::<Toasts>()
-            .add_systems(Update, (collect_toasts, draw_toasts, highlight_items))
+            .add_systems(
+                Update,
+                (
+                    collect_toasts,
+                    draw_toasts,
+                    highlight_items,
+                    scroll_focus_into_view,
+                ),
+            )
             .add_plugins((
                 title::TitlePlugin,
                 lobby::LobbyPlugin,
@@ -154,6 +163,64 @@ impl<A: Clone> Item<A> {
 pub struct ItemButton {
     pub menu: usize,
     pub index: usize,
+}
+
+/// Liste mit Scrollbalken: hält den per Tastatur/Gamepad gewählten Eintrag im Bild.
+#[derive(Component)]
+pub struct ScrollList(pub usize);
+
+/// Letzte Scrollposition pro Menü – damit ein Neuaufbau der Liste nicht nach oben springt.
+#[derive(Resource, Default)]
+pub struct MenuScroll(pub [f32; 8]);
+
+fn scroll_focus_into_view(
+    focus: Res<MenuFocus>,
+    mut saved: ResMut<MenuScroll>,
+    mut lists: Query<(
+        &ScrollList,
+        &Node,
+        &ComputedNode,
+        &mut ScrollPosition,
+        &Children,
+    )>,
+    items: Query<(&ItemButton, &ComputedNode)>,
+) {
+    for (list, node, computed, mut scroll, children) in &mut lists {
+        let k = computed.inverse_scale_factor();
+        let view_h = computed.size().y * k;
+        let gap = match node.row_gap {
+            Val::Px(g) => g,
+            _ => 0.0,
+        };
+        let want = focus.0.get(list.0).copied().unwrap_or(0);
+        // Lage im Inhalt aus den Höhen der Einträge davor (die Positionen auf dem Bildschirm
+        // hinken dem Scrollwert einen Frame hinterher).
+        let mut top = 0.0;
+        for c in children.iter() {
+            let Ok((ib, cn)) = items.get(c) else {
+                continue;
+            };
+            if ib.menu != list.0 {
+                continue;
+            }
+            let h = cn.size().y * k;
+            if ib.index == want {
+                if h <= 0.0 || view_h <= 0.0 {
+                    break;
+                }
+                if top < scroll.y {
+                    scroll.y = top;
+                } else if top + h > scroll.y + view_h {
+                    scroll.y = top + h - view_h;
+                }
+                if let Some(v) = saved.0.get_mut(list.0) {
+                    *v = scroll.y;
+                }
+                break;
+            }
+            top += h + gap;
+        }
+    }
 }
 
 #[derive(Resource, Default)]

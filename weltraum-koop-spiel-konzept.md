@@ -73,6 +73,9 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - Münzen verdient man durch Missionen und Erzverkauf
 - **Preise je Ort:** Erzankauf, Treibstoff und Service haben pro Station/Außenposten eigene Faktoren (Daten)
 - **Gemeinsame Kasse** der Crew, Fortschritt (Kasse, Schiffe, Upgrades) gehört dem Spielstand der Crew
+- **Dockgebühr** je Station (Ruf senkt sie), **Versicherung** als Abo (Anteil jeder Auftragsbelohnung, übernimmt einen Teil der Bergungskosten), **Schiffskredit** in der Werft (Anzahlung, Raten nach jedem Auftrag)
+- **Schwankende Erzpreise:** Verkäufe drücken den Preis am Ort, er erholt sich langsam; zeitweise Nachfrage nach einem Erz. Deterministisch und im Spielstand
+- **Crew-Abrechnung** nach jedem Auftrag: Einnahmen minus Abzüge, was in die Kasse geht, und was unterwegs schon bezahlt wurde
 - **Abstimmungssystem** für Käufe:
   - Jemand wählt im Menü einen Kauf aus
   - Alle sehen ein Pop-up mit Artikel, Preis und Kassenstand danach

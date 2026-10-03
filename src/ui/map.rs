@@ -504,6 +504,28 @@ fn draw_map(
                 14.0,
                 ACCENT,
             ));
+            let mut fin = Vec::new();
+            if let Some(l) = &s.crew.loan {
+                fin.push(format!(
+                    "Kredit {}: noch {} Cr (Rate {})",
+                    s.data.ship(&l.ship).name,
+                    fmt_num(l.left),
+                    l.installment
+                ));
+            }
+            if s.crew.insured {
+                fin.push("versichert".to_string());
+            }
+            if let Some(d) = s.demand {
+                fin.push(format!(
+                    "Nachfrage: {} sucht {}",
+                    s.world.owner_name(d.owner),
+                    d.ore.label()
+                ));
+            }
+            if !fin.is_empty() {
+                p.spawn(text(fin.join(" · "), 13.0, MUTED));
+            }
             p.spawn(Node {
                 height: Val::Px(6.0),
                 ..default()

@@ -12,6 +12,12 @@ pub enum Purchase {
     Service(String),
     Upgrade(String),
     Ship(String),
+    /// Schiff mit Anzahlung kaufen, der Rest wird nach jedem Auftrag in Raten abgezahlt.
+    ShipOnCredit(String),
+    /// Restschuld auf einmal tilgen.
+    RepayLoan,
+    /// Versicherung abschließen (true) oder kündigen (false).
+    Insurance(bool),
     /// Lackierung des aktuellen Schiffs ändern (`None` = zurück zum Werkslack).
     Paint {
         part: PaintPart,
@@ -109,10 +115,10 @@ impl SimState {
         }
     }
 
-    /// Ankaufspreis für eine Tonne Erz an einem Ort.
+    /// Ankaufspreis für eine Tonne Erz an einem Ort (mit Angebot und Nachfrage).
     pub fn ore_price_at(&self, owner: Owner, ore: Ore) -> u32 {
         let base = self.data.shop.ore_price(ore) as f32;
-        (base * self.prices_of(owner).ore_factor(ore))
+        (base * self.prices_of(owner).ore_factor(ore) * self.market_factor(owner, ore))
             .round()
             .max(1.0) as u32
     }
@@ -238,6 +244,50 @@ impl SimState {
                     .find(|s| &s.id == id)
                     .ok_or("Unbekannt")?;
                 (format!("Schiff: {}", def.name), def.price)
+            }
+            Purchase::ShipOnCredit(id) => {
+                if !st.has(Service::Ships) {
+                    return Err("Schiffe gibt es nur in Werften".into());
+                }
+                if self.crew.owned_ships.contains(id) {
+                    return Err("Gehört der Crew bereits".into());
+                }
+                if !st.ships_for_sale.contains(id) {
+                    return Err(format!("{} führt dieses Schiff nicht", st.name));
+                }
+                if self.crew.loan.is_some() {
+                    return Err("Es läuft schon ein Kredit".into());
+                }
+                let def = self
+                    .data
+                    .ships
+                    .iter()
+                    .find(|s| &s.id == id)
+                    .ok_or("Unbekannt")?;
+                let (down, _, _) = self.loan_terms(def.price);
+                (format!("Schiff auf Kredit: {}", def.name), down)
+            }
+            Purchase::RepayLoan => {
+                if !st.has(Service::Ships) {
+                    return Err("Tilgen geht nur in einer Werft".into());
+                }
+                let l = self.crew.loan.as_ref().ok_or("Kein Kredit offen")?;
+                ("Kredit tilgen".to_string(), l.left)
+            }
+            Purchase::Insurance(on) => {
+                if *on == self.crew.insured {
+                    return Err(if *on {
+                        "Schon versichert".into()
+                    } else {
+                        "Keine Versicherung abgeschlossen".into()
+                    });
+                }
+                let label = if *on {
+                    "Versicherung abschließen"
+                } else {
+                    "Versicherung kündigen"
+                };
+                (label.to_string(), 0)
             }
             Purchase::Paint { part, choice } => {
                 if !st.has(Service::Upgrades) {
@@ -387,7 +437,25 @@ impl SimState {
         };
         self.crew.credits -= price;
         match p {
+            Purchase::ShipOnCredit(id) => {
+                let full = self.data.ship(id).price;
+                let (_, rest, rate) = self.loan_terms(full);
+                self.crew.loan = Some(super::finance::Loan {
+                    ship: id.clone(),
+                    left: rest,
+                    installment: rate,
+                });
+                self.crew.owned_ships.push(id.clone());
+                self.switch_ship(id);
+            }
+            Purchase::RepayLoan => {
+                self.crew.loan = None;
+            }
+            Purchase::Insurance(on) => {
+                self.crew.insured = *on;
+            }
             Purchase::Service(id) => {
+                self.stats.expenses.service += price;
                 let effect = self
                     .data
                     .shop
@@ -512,6 +580,9 @@ impl SimState {
             let taken = self.ship.take_ore(ore, sellable);
             sold_t += taken;
             earned += (taken * price as f32).round() as u32;
+            if let Some(o) = self.docked_owner() {
+                self.note_sale(o, ore, taken);
+            }
         }
         // Bauteile aus Wracks gehen zum festen Wert weg.
         let parts = self
@@ -641,9 +712,12 @@ mod tests {
         s.ship.docked = None;
         s.dock_at_station(kepler.station().unwrap());
         let before = s.crew.credits;
+        let price = s.ore_price_at(kepler, Ore::Solarit);
         s.sell_ore();
-        let expected = (4.0 * s.ore_price_at(kepler, Ore::Solarit) as f32).round() as u32;
+        let expected = (4.0 * price as f32).round() as u32;
         assert_eq!(s.crew.credits - before, expected);
+        // Der Verkauf drückt den Preis dort (Angebot und Nachfrage).
+        assert!(s.ore_price_at(kepler, Ore::Solarit) < price);
     }
 
     #[test]

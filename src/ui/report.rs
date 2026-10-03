@@ -154,9 +154,8 @@ fn draw_report(
                     )
                 })
                 .unwrap_or_default();
-            let paid = r.reward + r.bonus_time + r.bonus_clean;
             p.spawn(text(
-                format!("+{} Credits{rep}", fmt_num(paid)),
+                format!("+{} Credits in die Kasse{rep}", fmt_num(r.paid_in())),
                 15.0,
                 ACCENT,
             ));
@@ -175,6 +174,40 @@ fn draw_report(
                 parts.push(format!("sauber geflogen +{}", r.bonus_clean));
             }
             p.spawn(text(parts.join("  ·  "), 13.0, TEXT));
+            // Crew-Abrechnung: Einnahmen minus Abzüge, und was unterwegs schon bezahlt wurde.
+            let mut bill = vec![format!("Einnahmen {}", fmt_num(r.earned()))];
+            if r.premium > 0 {
+                bill.push(format!("Versicherung −{}", r.premium));
+            }
+            if r.installment > 0 {
+                bill.push(format!("Kreditrate −{}", r.installment));
+            }
+            bill.push(format!("Kasse +{}", fmt_num(r.paid_in())));
+            p.spawn(text(bill.join("  ·  "), 13.0, TEXT));
+            let e = r.stats.expenses;
+            let mut way = Vec::new();
+            if e.dock > 0 {
+                way.push(format!("Dock −{}", e.dock));
+            }
+            if e.service > 0 {
+                way.push(format!("Service −{}", e.service));
+            }
+            if e.salvage > 0 {
+                way.push(format!("Bergung −{}", e.salvage));
+            }
+            let profit = r.profit();
+            let sign = if profit >= 0 { "+" } else { "−" };
+            let gain = format!("Gewinn {sign}{}", fmt_num(profit.unsigned_abs() as u32));
+            let line = if way.is_empty() {
+                format!("Unterwegs nichts ausgegeben  ·  {gain}")
+            } else {
+                format!("Unterwegs: {}  ·  {gain}", way.join("  ·  "))
+            };
+            p.spawn(text(
+                line,
+                13.0,
+                if profit >= 0 { GOOD } else { super::BAD },
+            ));
             p.spawn(text(
                 format!(
                     "Dauer {mins}:{secs:02}  ·  {} m geflogen  ·  Spitze {:.0} m/s  ·  Schaden {:.0}",

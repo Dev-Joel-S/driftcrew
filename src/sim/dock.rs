@@ -133,7 +133,7 @@ impl SimState {
         }
     }
 
-    fn dock(&mut self, pad: usize) {
+    pub(crate) fn dock(&mut self, pad: usize) {
         self.ship.docked = Some(pad);
         self.ship.dock_timer = 0.0;
         self.ship.vel = Vec2::ZERO;
@@ -154,6 +154,7 @@ impl SimState {
         self.toast(format!("Angedockt: {name}"), ToastKind::Good);
         if let Owner::Station(si) = owner {
             self.crew.home_station = si;
+            self.charge_dock_fee(si);
         }
         self.on_docked(owner);
     }
@@ -279,23 +280,42 @@ impl SimState {
                 CargoKind::Ore(_) | CargoKind::Salvage { .. } => {}
             }
         }
+        let gross = self.salvage_fee_gross();
         let fee = self.salvage_fee_now();
         self.crew.credits -= fee;
         self.salvage_fee = fee;
+        self.stats.expenses.salvage += fee;
         let home = self.world.stations[self.crew.home_station].name.clone();
+        let covered = if gross > fee {
+            format!(", Versicherung übernimmt {}", gross - fee)
+        } else {
+            String::new()
+        };
         self.toast(
             format!(
-                "Schiff zerstört! Rettungskapsel ausgestoßen – Bergung nach {home} (-{fee} Credits)"
+                "Schiff zerstört! Rettungskapsel ausgestoßen – Bergung nach {home} (-{fee} Credits{covered})"
             ),
             ToastKind::Bad,
         );
     }
 
-    /// Bergungsgebühr, die bei einer Zerstörung jetzt fällig wäre (aus der gemeinsamen Kasse).
-    pub fn salvage_fee_now(&self) -> u32 {
+    /// Bergungsgebühr vor Versicherung: fester Betrag + Anteil der Kasse.
+    pub fn salvage_fee_gross(&self) -> u32 {
         let shop = &self.data.shop;
         let fee = shop.salvage_base as f32 + self.crew.credits as f32 * shop.respawn_fee;
-        (fee.round() as u32).min(self.crew.credits)
+        fee.round() as u32
+    }
+
+    /// Bergungsgebühr, die bei einer Zerstörung jetzt aus der gemeinsamen Kasse fällig wäre
+    /// (nach Abzug der Versicherung, höchstens die Kasse).
+    pub fn salvage_fee_now(&self) -> u32 {
+        let gross = self.salvage_fee_gross() as f32;
+        let share = if self.crew.insured {
+            1.0 - self.data.shop.finance.coverage
+        } else {
+            1.0
+        };
+        ((gross * share).round() as u32).min(self.crew.credits)
     }
 
     pub(crate) fn update_respawn(&mut self) {

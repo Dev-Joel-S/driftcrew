@@ -349,6 +349,28 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                 };
                 v.push(it);
             }
+            // Versicherung: Abo, Prämie bei jedem Auftrag, übernimmt einen Teil der Bergung.
+            let fd = &sim.data.shop.finance;
+            let terms = format!(
+                "{:.0} % jeder Auftragsbelohnung (mind. {} Cr), übernimmt {:.0} % der Bergungskosten",
+                fd.premium_share * 100.0,
+                fd.premium_min,
+                fd.coverage * 100.0
+            );
+            let (label, on) = if sim.crew.insured {
+                ("Versicherung kündigen", false)
+            } else {
+                ("Versicherung abschließen", true)
+            };
+            v.push(
+                Item::new(label, Act::Buy(Purchase::Insurance(on)))
+                    .right(if sim.crew.insured { "läuft" } else { "0 Cr" })
+                    .detail(if sim.crew.insured {
+                        format!("Versichert: {terms}")
+                    } else {
+                        terms
+                    }),
+            );
         }
         Tab::Upgrades => {
             for u in &sim.data.shop.upgrades {
@@ -417,6 +439,41 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                     }
                 };
                 v.push(it);
+                // Zu teuer? Dann auf Kredit: Anzahlung jetzt, Raten nach jedem Auftrag.
+                if !owned && d.price > sim.crew.credits {
+                    let p = Purchase::ShipOnCredit(d.id.clone());
+                    let (down, rest, rate) = sim.loan_terms(d.price);
+                    let fd = &sim.data.shop.finance;
+                    let terms = format!(
+                        "Anzahlung {} Cr, Rest {} Cr ({:.0} % Zinsen) in {} Raten à {} Cr – je eine nach jedem Auftrag",
+                        fmt_num(down),
+                        fmt_num(rest),
+                        fd.interest * 100.0,
+                        fd.installments,
+                        fmt_num(rate)
+                    );
+                    let it = Item::new(format!("{} auf Kredit", d.name), Act::Buy(p.clone()))
+                        .right(format!("{} Cr", fmt_num(down)));
+                    v.push(match price_or(&p) {
+                        Ok(_) => it.detail(terms),
+                        Err(reason) => it.detail(format!("{terms} – {reason}")).enabled(false),
+                    });
+                }
+            }
+            if let Some(l) = &sim.crew.loan {
+                let p = Purchase::RepayLoan;
+                let it = Item::new("Kredit tilgen", Act::Buy(p.clone()))
+                    .right(format!("{} Cr", fmt_num(l.left)));
+                let detail = format!(
+                    "{}: noch {} Cr, Rate {} Cr nach jedem Auftrag",
+                    sim.data.ship(&l.ship).name,
+                    fmt_num(l.left),
+                    l.installment
+                );
+                v.push(match price_or(&p) {
+                    Ok(_) => it.detail(detail),
+                    Err(reason) => it.detail(format!("{detail} – {reason}")).enabled(false),
+                });
             }
             // Was andere Werften führen – damit sich der Weg lohnt.
             for (si, st) in sim.world.stations.iter().enumerate() {
@@ -654,7 +711,23 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                         )),
                 );
             }
-            // Preistafel: hier, und wo es am meisten gibt.
+            // Laufende Nachfrage irgendwo in der Welt.
+            if let Some(d) = sim.demand {
+                v.push(
+                    Item::new(
+                        format!(
+                            "Nachfrage: {} sucht {}",
+                            sim.world.owner_name(d.owner),
+                            d.ore.label()
+                        ),
+                        Act::Sell,
+                    )
+                    .right(format!("noch {:.0} min", (d.left / 60.0).ceil()))
+                    .detail("Der Preis dort steigt, solange die Nachfrage anhält")
+                    .enabled(false),
+                );
+            }
+            // Preistafel: hier (mit Trend), und wo es am meisten gibt.
             for ore in crate::sim::data::Ore::ALL {
                 let p = price(ore);
                 let best = sim.best_ore_price(ore);
@@ -664,10 +737,20 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                     }
                     _ => "bester Preis weit und breit".to_string(),
                 };
+                // In 5-%-Schritten, damit die Liste nicht bei jeder Kleinigkeit neu entsteht.
+                let f = here.map_or(1.0, |o| sim.market_factor(o, ore));
+                let pct = ((f - 1.0) * 20.0).round() * 5.0;
+                let trend = if pct <= -5.0 {
+                    format!(" · ▼ {:.0} % (viel verkauft, erholt sich)", -pct)
+                } else if pct >= 5.0 {
+                    format!(" · ▲ +{pct:.0} % (Nachfrage)")
+                } else {
+                    String::new()
+                };
                 v.push(
                     Item::new(format!("Ankauf {}", ore.label()), Act::Sell)
                         .right(format!("{p} Cr/t"))
-                        .detail(hint)
+                        .detail(format!("{hint}{trend}"))
                         .enabled(false),
                 );
             }
@@ -752,12 +835,21 @@ fn station_menu(
     mut pending: ResMut<PendingCommands>,
     mut root: Query<(Entity, &mut Signature), With<StationRoot>>,
     tab_buttons: Query<(&Interaction, &TabButton), Changed<Interaction>>,
+    mut last_owner: Local<Option<Owner>>,
+    mut scroll: ResMut<super::MenuScroll>,
 ) {
     let Ok((root, mut sig)) = root.single_mut() else {
         return;
     };
     let s = &sim.0;
     let tabs = tabs_for(s);
+    // Andere Station, andere Reiter: dort beim ersten anfangen.
+    let owner = s.docked_owner();
+    if owner.is_some() && owner != *last_owner {
+        *last_owner = owner;
+        tab.0 = 0;
+        focus.0[MENU_STATION] = 0;
+    }
     let visible = s.ship.docked.is_some() && !paused.0 && !map.0 && !s.ship.destroyed;
     if !visible || tabs.is_empty() {
         if sig.0 != 0 {
@@ -779,6 +871,10 @@ fn station_menu(
             tab.0 = tb.0;
             focus.0[MENU_STATION] = 0;
         }
+    }
+    // Neuer Reiter oder neue Station: Liste beginnt oben.
+    if focus.0[MENU_STATION] == 0 {
+        scroll.0[MENU_STATION] = 0.0;
     }
     tab.0 = tab.0.min(tabs.len() - 1);
     let current = tabs[tab.0];
@@ -919,7 +1015,8 @@ fn station_menu(
                     flex_grow: 1.0,
                     ..default()
                 },
-                ScrollPosition::default(),
+                ScrollPosition(Vec2::new(0.0, scroll.0[MENU_STATION])),
+                super::ScrollList(MENU_STATION),
             ))
             .with_children(|list| spawn_items(list, MENU_STATION, &items));
             p.spawn(text(
@@ -951,7 +1048,13 @@ fn reputation_line(s: &SimState, si: usize) -> String {
     } else {
         String::new()
     };
-    format!("Ruf: {} {stars}{next}{perk}", REP_NAMES[lvl])
+    let fee = s.dock_fee_at(si);
+    let fee = if fee > 0 {
+        format!(" · Dockgebühr {fee} Cr")
+    } else {
+        " · keine Dockgebühr".to_string()
+    };
+    format!("Ruf: {} {stars}{next}{perk}{fee}", REP_NAMES[lvl])
 }
 
 /// Porträt aus einfachen Formen (Schultern, Kopf, Haare oder Helm).

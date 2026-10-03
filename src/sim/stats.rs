@@ -3,6 +3,7 @@
 //! die Anzeige.
 
 use super::MAX_SLOTS;
+use super::finance::Expenses;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SlotStats {
@@ -37,6 +38,8 @@ pub struct CrewStats {
     pub distance: f32,
     pub top_speed: f32,
     pub damage: f32,
+    /// Ausgaben unterwegs (Dockgebühren, Service, Bergung).
+    pub expenses: Expenses,
 }
 
 impl Default for CrewStats {
@@ -47,6 +50,7 @@ impl Default for CrewStats {
             distance: 0.0,
             top_speed: 0.0,
             damage: 0.0,
+            expenses: Expenses::default(),
         }
     }
 }
@@ -70,6 +74,7 @@ impl CrewStats {
             distance: self.distance - start.distance,
             top_speed,
             damage: self.damage - start.damage,
+            expenses: self.expenses.minus(&start.expenses),
         }
     }
 }
@@ -100,6 +105,26 @@ pub struct MissionReport {
     pub stats: CrewStats,
     /// Welche Slots waren Triebwerke (für „Schubmeister“ und „Sparfuchs“).
     pub thruster_slots: Vec<u8>,
+    /// Abrechnung: Versicherungsprämie und Kreditrate, die von den Einnahmen abgingen.
+    pub premium: u32,
+    pub installment: u32,
+}
+
+impl MissionReport {
+    /// Einnahmen des Auftrags (Grundbelohnung und Boni).
+    pub fn earned(&self) -> u32 {
+        self.reward + self.bonus_time + self.bonus_clean
+    }
+    /// Was in die Kasse ging.
+    pub fn paid_in(&self) -> u32 {
+        self.earned()
+            .saturating_sub(self.premium + self.installment)
+    }
+    /// Gewinn: Einnahmen minus Kosten des Auftrags (Prämie und alles unterwegs Bezahlte).
+    /// Die Kreditrate zählt nicht dazu – sie zahlt das Schiff ab.
+    pub fn profit(&self) -> i64 {
+        self.earned() as i64 - self.premium as i64 - self.stats.expenses.total() as i64
+    }
 }
 
 impl MissionReport {
@@ -190,6 +215,8 @@ mod tests {
             reputation: None,
             stats,
             thruster_slots: vec![0, 1],
+            premium: 0,
+            installment: 0,
         };
         let a = r.awards();
         let get = |t: &str| a.iter().find(|x| x.title == t).map(|x| x.slot);

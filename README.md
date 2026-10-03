@@ -28,6 +28,8 @@ eigener Name, eigener Look, alle Grafiken und Klänge werden beim Start prozedur
 | ![Zeitrennen durch den Nova-Ring](docs/screenshots/nova_ring.jpg) | ![Wrackring mit rotierender Öffnung](docs/screenshots/wrackring.jpg) |
 | ![Messflug am Anomalierand](docs/screenshots/messflug.jpg) | ![Lastaufnahme an Kepler](docs/screenshots/lastaufnahme.jpg) |
 | ![Ziel mit Bestenliste](docs/screenshots/parcours_ziel.jpg) | ![Grundkurs: Bremsen](docs/screenshots/training_bremsen.jpg) |
+| ![Schiff auf Kredit](docs/screenshots/werft_kredit.jpg) | ![Markt mit Preistrend und Nachfrage](docs/screenshots/markt_trend.jpg) |
+| ![Abrechnung nach dem Auftrag](docs/screenshots/abrechnung.jpg) | |
 
 *(Screenshots aus dem automatischen Vorführmodus, gerendert mit Software-Vulkan.)*
 
@@ -248,6 +250,23 @@ Medaille einmal pro Spielstand) und eine **Bestenliste** mit den fünf besten L�
 Schiff, Crewgröße). Weit vom Kurs abkommen, woanders andocken oder „Parcours abbrechen“ im
 Pausemenü beendet den Lauf ohne Wertung; durch das eigene Starttor fliegen startet neu.
 
+### Geld: Gebühren, Versicherung, Kredit, Markt
+
+- **Dockgebühr** an Stationen (je Ort verschieden, Ruf senkt sie um 20 % pro Stufe). Wer kurz
+  danach wieder an derselben Station andockt, zahlt nicht noch einmal. Relais Ost und die
+  Planeten-Außenposten nehmen nichts.
+- **Versicherung** (Reiter Service): kostet nichts beim Abschluss, aber 8 % jeder
+  Auftragsbelohnung; dafür übernimmt sie 70 % der Bergungskosten nach einer Zerstörung.
+  Kündbar jederzeit.
+- **Schiffskredit** (Werft): Ist ein Schiff zu teuer, gibt es es auf Kredit – 25 % Anzahlung,
+  der Rest plus 12 % Zinsen in acht Raten, je eine nach jedem erledigten Auftrag. In der Werft
+  lässt sich der Rest auf einmal tilgen.
+- **Schwankende Preise:** Jede verkaufte Tonne drückt den Erzpreis an diesem Ort, er erholt
+  sich in ein paar Minuten. Ab und zu sucht ein Ort ein bestimmtes Erz und zahlt eine Weile
+  deutlich mehr (Meldung, Markt, Karte).
+- **Abrechnung** in der Auswertung: Einnahmen, Versicherung und Kreditrate, was in die Kasse
+  geht – und was unterwegs schon ausgegeben wurde (Dock, Service, Bergung), dazu der Gewinn.
+
 ### Gemeinsame Kasse und Abstimmung
 
 Credits gehören der Crew. Wer im Menü einen Kauf auswählt, startet eine **Abstimmung**: Alle sehen
@@ -307,7 +326,7 @@ in die Binärdatei eingebettet; liegt `assets/data/` im Arbeitsverzeichnis (z. B
   `L` Leuchtfeuer, `.` leer, Schrägen `/ \ 7 r` (Zeichen = volle Ecke: unten rechts, unten links,
   oben rechts, oben links). Freiliegende Außenecken werden automatisch abgeschrägt
   (`auto_chamfer: false` schaltet das ab). `prices` setzt Preisfaktoren je Ort (Erz je Sorte,
-  Treibstoff, Service), `ships_for_sale` das Angebot einer Werft. Planeten haben
+  Treibstoff, Service, Dockgebühr), `ships_for_sale` das Angebot einer Werft. Planeten haben
   `landing_zones` (Winkel in Grad; daneben liegt jeweils ein Erzvorkommen). Anomalien mit
   `kind: BlackHole` sind Schwarze Löcher (`core_radius` = Ereignishorizont). Regionen können
   einen `effect` haben (`Debris(dichte)`, `Nebula(stärke)`, `SolarWind((x, y), m/s²)`), `events`
@@ -318,7 +337,8 @@ in die Binärdatei eingebettet; liegt `assets/data/` im Arbeitsverzeichnis (z. B
   versteckt eine Station, bis sie entdeckt ist. `wrecks` legt Wracks fest (Modell, Schrott,
   Bauteile). Dazu Asteroidenfelder, Meteoritenzonen, Rotoren, Nebelregionen und Notruf-Orte.
 - `shop.ron` – Services (inkl. Tanken und Triebwerksreparatur), Upgrades, Grundpreise für Erz und
-  Schrott, Startkapital, Bergungsgebühr, Lackfarben, Flammenfarben, Bauteile aus Wracks.
+  Schrott, Startkapital, Bergungsgebühr, Lackfarben, Flammenfarben, Bauteile aus Wracks,
+  `finance` (Dockgebühr, Versicherung, Kredit, Marktschwankung, Nachfrage).
 - `missions.ron` – Vorlagen für Aufträge und Notrufe; Fracht mit `towed: true` ist Schwerlast,
   `bulky` beschreibt sperrige Bergungsobjekte (Länge, Dicke, Masse).
 - `npcs.ron` – Auftraggeber: Name, Rolle, Ort, welche Aufträge sie vergeben, Porträtfarben, Sprüche.
@@ -366,7 +386,7 @@ Damit ist der Weg zu Rollback-Netcode vorbereitet.
 
 **Vorführmodus:** `DRIFTCREW_DEMO=<ordner> DRIFTCREW_SCENE=<szene> cargo run` fliegt ein
 Skript ab, speichert Screenshots und beendet sich. Szenen: `tour`, `ui`, `systems`, `progress`,
-`coop`, `sectors`, `rules`, `rebuild`, `courses`.
+`coop`, `sectors`, `rules`, `rebuild`, `courses`, `finance`.
 
 ---
 

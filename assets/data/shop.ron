@@ -4,6 +4,33 @@
     // Bergungsgebühr nach Zerstörung: fester Betrag + Anteil der Kasse (höchstens die Kasse).
     salvage_base: 40,
     respawn_fee: 0.12,
+    // Finanzen:
+    //   dock_fee        Dockgebühr (× Ortsfaktor prices.dock, −20 % pro Rufstufe); wer innerhalb
+    //                   dock_grace Sekunden wieder an derselben Station andockt, zahlt nicht noch einmal
+    //   premium_share   Versicherung: Anteil jeder Auftragsbelohnung (mindestens premium_min),
+    //   coverage        übernimmt diesen Anteil der Bergungskosten
+    //   down_payment    Schiffskredit: Anzahlung, interest Zinsen auf den Rest, installments Raten
+    //                   (je eine nach jedem erledigten Auftrag)
+    //   drop_per_t      Markt: jede verkaufte Tonne drückt den Preis um diesen Anteil, nicht unter
+    //   floor;          recovery = Erholungszeit in Sekunden
+    //   demand_*        Nachfrage: Abstand (von, bis), Preisfaktor, Dauer, Anstiegszeit
+    finance: (
+        dock_fee: 12,
+        dock_grace: 120.0,
+        premium_share: 0.08,
+        premium_min: 10,
+        coverage: 0.7,
+        down_payment: 0.25,
+        interest: 0.12,
+        installments: 8,
+        drop_per_t: 0.035,
+        floor: 0.55,
+        recovery: 150.0,
+        demand_interval: (240.0, 420.0),
+        demand_factor: 1.35,
+        demand_seconds: 300.0,
+        demand_rise: 20.0,
+    ),
     services: [
         (id: "ammo",   name: "Munition +10",    price: 40, effect: Ammo(10)),
         (id: "shield", name: "Schild aufladen", price: 60, effect: ShieldFull),

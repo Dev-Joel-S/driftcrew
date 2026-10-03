@@ -16,6 +16,9 @@ pub mod data;
 pub mod dock;
 pub mod economy;
 pub mod explore;
+pub mod finance;
+#[cfg(test)]
+mod finance_tests;
 pub mod geom;
 pub mod hazards;
 pub mod missions;
@@ -397,6 +400,10 @@ pub struct Crew {
     pub reputation: Vec<u32>,
     /// Lackierung pro Schiff.
     pub liveries: Vec<(String, Livery)>,
+    /// Versicherung abgeschlossen (Prämie bei jedem Auftrag, übernimmt Bergungskosten).
+    pub insured: bool,
+    /// Laufender Schiffskredit.
+    pub loan: Option<finance::Loan>,
 }
 
 impl Crew {
@@ -462,6 +469,12 @@ pub struct SimState {
     pub course: Option<course::CourseRun>,
     pub course_result: Option<course::CourseResult>,
     pub records: Vec<data::CourseRecord>,
+    /// Markt: Preisfaktor pro Ort (Stationen, dann Planeten) und Erzsorte; laufende Nachfrage.
+    pub market: Vec<[f32; 5]>,
+    pub demand: Option<finance::Demand>,
+    pub demand_timer: f32,
+    /// Wo und wann zuletzt Dockgebühr gezahlt wurde.
+    pub last_dock_fee: Option<(usize, f32)>,
 }
 
 impl SimState {
@@ -501,6 +514,8 @@ impl SimState {
             ore_sold: save.ore_sold,
             reputation,
             liveries: save.liveries.clone(),
+            insured: false,
+            loan: None,
         };
         let stats = economy::stats_for(&data, &crew.upgrades);
         let ship = Ship::build(data.ship(&crew.current_ship), &loadout, &stats);
@@ -546,9 +561,14 @@ impl SimState {
             course: None,
             course_result: None,
             records: Vec::new(),
+            market: Vec::new(),
+            demand: None,
+            demand_timer: 0.0,
+            last_dock_fee: None,
         };
         s.load_projects(save);
         s.load_records(save);
+        s.load_finance(save);
         s.populate_fields();
         s.populate_wrecks();
         s.refresh_offers();
@@ -613,7 +633,7 @@ impl SimState {
     }
 
     pub fn to_save(&self) -> CrewSave {
-        CrewSave {
+        let mut save = CrewSave {
             version: 1,
             credits: self.crew.credits,
             upgrades: self.crew.upgrades.clone(),
@@ -636,7 +656,13 @@ impl SimState {
             charts_unsold: self.charts_unsold,
             projects: self.save_projects(),
             records: self.save_records(),
-        }
+            insured: false,
+            loan: None,
+            market: Vec::new(),
+            demand: None,
+        };
+        self.save_finance(&mut save);
+        save
     }
 
     /// Ein Simulationsschritt.
@@ -676,6 +702,7 @@ impl SimState {
         }
         self.update_hazards();
         self.update_sectors();
+        self.update_market();
         self.update_missions();
         // Vor dem Tracking: dort wird die Geschwindigkeit des letzten Ticks überschrieben,
         // die das Präzisionsandocken als Aufsetzgeschwindigkeit braucht.

@@ -1041,7 +1041,10 @@ impl SimState {
         } else {
             0
         };
-        let paid = base + bonus_time + bonus_clean;
+        let earned = base + bonus_time + bonus_clean;
+        // Abrechnung: Versicherungsprämie und Kreditrate gehen ab, der Rest in die Kasse.
+        let (premium, installment) = self.settle_mission(earned);
+        let paid = earned - premium - installment;
         self.crew.credits += paid;
         self.crew.missions_done += 1;
         let title = m.title(self);
@@ -1099,6 +1102,8 @@ impl SimState {
             reputation,
             stats,
             thruster_slots: self.ship.thrusters.iter().map(|t| t.slot).collect(),
+            premium,
+            installment,
         });
         self.cleanup_mission(&m);
     }

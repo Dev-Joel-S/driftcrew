@@ -342,6 +342,8 @@ pub struct Prices {
     pub ore: Vec<(Ore, f32)>,
     pub fuel: f32,
     pub service: f32,
+    /// Faktor auf die Dockgebühr (0 = kostenlos).
+    pub dock: f32,
 }
 
 impl Default for Prices {
@@ -350,6 +352,7 @@ impl Default for Prices {
             ore: Vec::new(),
             fuel: 1.0,
             service: 1.0,
+            dock: 1.0,
         }
     }
 }
@@ -719,6 +722,58 @@ pub struct ShopDef {
     /// Preis pro neu kartierter Rasterzelle (Kartendaten).
     #[serde(default = "default_chart_price")]
     pub chart_price: u32,
+    /// Dockgebühr, Versicherung, Kredit, Marktschwankungen.
+    #[serde(default)]
+    pub finance: FinanceDef,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct FinanceDef {
+    /// Dockgebühr in Credits (mal Ortsfaktor `prices.dock`, minus 20 % pro Rufstufe).
+    pub dock_fee: u32,
+    /// Wer innerhalb dieser Zeit wieder an derselben Station andockt, zahlt nicht noch einmal.
+    pub dock_grace: f32,
+    /// Versicherung: Anteil jeder Auftragsbelohnung (mindestens `premium_min`), übernimmt
+    /// `coverage` der Bergungskosten.
+    pub premium_share: f32,
+    pub premium_min: u32,
+    pub coverage: f32,
+    /// Schiffskredit: Anzahlung (Anteil), Zinsen auf den Rest, Zahl der Raten.
+    pub down_payment: f32,
+    pub interest: f32,
+    pub installments: u32,
+    /// Markt: Preisrückgang pro verkaufter Tonne, Untergrenze, Erholungszeit (s, exponentiell).
+    pub drop_per_t: f32,
+    pub floor: f32,
+    pub recovery: f32,
+    /// Nachfrage: Abstand zwischen zwei Nachfragen (s, von–bis), Preisfaktor, Dauer, Anstieg (s).
+    pub demand_interval: (f32, f32),
+    pub demand_factor: f32,
+    pub demand_seconds: f32,
+    pub demand_rise: f32,
+}
+
+impl Default for FinanceDef {
+    fn default() -> Self {
+        FinanceDef {
+            dock_fee: 12,
+            dock_grace: 120.0,
+            premium_share: 0.08,
+            premium_min: 10,
+            coverage: 0.7,
+            down_payment: 0.25,
+            interest: 0.12,
+            installments: 8,
+            drop_per_t: 0.035,
+            floor: 0.55,
+            recovery: 150.0,
+            demand_interval: (240.0, 420.0),
+            demand_factor: 1.35,
+            demand_seconds: 300.0,
+            demand_rise: 20.0,
+        }
+    }
 }
 
 fn default_chart_price() -> u32 {
@@ -1069,6 +1124,30 @@ pub struct CrewSave {
     /// Bestenlisten der Parcours (pro Spielstand).
     #[serde(default)]
     pub records: Vec<CourseRecord>,
+    /// Finanzen: Versicherung, laufender Schiffskredit, Marktpreise, laufende Nachfrage.
+    #[serde(default)]
+    pub insured: bool,
+    #[serde(default)]
+    pub loan: Option<LoanSave>,
+    #[serde(default)]
+    pub market: Vec<(String, Vec<f32>)>,
+    #[serde(default)]
+    pub demand: Option<DemandSave>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct LoanSave {
+    pub ship: String,
+    pub left: u32,
+    pub installment: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct DemandSave {
+    /// Station oder Planet (Kennung), Erz, verbleibende Sekunden.
+    pub at: String,
+    pub ore: Ore,
+    pub left: f32,
 }
 
 /// Bestenliste eines Parcours: die besten Läufe und die beste erreichte Medaille.
@@ -1114,6 +1193,10 @@ impl CrewSave {
             surveyed: String::new(),
             charts_unsold: 0,
             records: Vec::new(),
+            insured: false,
+            loan: None,
+            market: Vec::new(),
+            demand: None,
         }
     }
 }

@@ -4,7 +4,8 @@
 //   ^ v < >  Landeplattform (zeigt in Pfeilrichtung, braucht einen Block dahinter)
 //   L  Leuchtfeuer    .  leer
 //   / \ 7 r  Schräge (halbe Zelle); freiliegende Ecken werden automatisch abgeschrägt
-// prices: Faktoren auf die Grundpreise aus shop.ron (Erzankauf je Sorte, Treibstoff, Service).
+// prices: Faktoren auf die Grundpreise aus shop.ron (Erzankauf je Sorte, Treibstoff, Service,
+//         Dockgebühr; dock: 0.0 = kostenlos).
 // Schwerkraft gibt es nur an Anomalien und Schwarzen Löchern – Planeten ziehen nicht an.
 (
     seed: 20261003,
@@ -22,7 +23,7 @@
             main_color: "#e8322a",
             accent_color: "#ffb21f",
             services: [Ammo, Shield, Repair, Fuel, Upgrades, Missions, Market],
-            prices: (ore: [], fuel: 1.0, service: 1.0),
+            prices: (ore: [], fuel: 1.0, service: 1.0, dock: 1.0),
             layout: [
                 ".....########XXXXX########.....",
                 "....##...................##....",
@@ -59,7 +60,7 @@
             accent_color: "#ff4fa3",
             services: [Ammo, Repair, Fuel, Missions, Market],
             // Am Kobaltschwarm gibt es Kobalt im Überfluss, Solarit und Ionit sind gefragt.
-            prices: (ore: [(Kobalt, 0.8), (Solarit, 1.35), (Ionit, 1.2)], fuel: 1.3, service: 1.15),
+            prices: (ore: [(Kobalt, 0.8), (Solarit, 1.35), (Ionit, 1.2)], fuel: 1.3, service: 1.15, dock: 1.5),
             // Lastaufnahme westlich der Station, Öffnung nach Westen: Schwerlast wird hier abgesetzt.
             socket: Some(((-50.0, -24.0), 180.0)),
             layout: [
@@ -91,7 +92,7 @@
             main_color: "#ff7a1a",
             accent_color: "#2f6bff",
             services: [Ships, Repair, Shield, Ammo, Fuel, Upgrades],
-            prices: (fuel: 0.9, service: 0.9),
+            prices: (fuel: 0.9, service: 0.9, dock: 0.75),
             ships_for_sale: ["driftkutter", "kolibri", "lastesel"],
             layout: [
                 "X###############################X",
@@ -124,7 +125,7 @@
             accent_color: "#e0a526",
             services: [Ships, Repair, Shield, Ammo, Fuel, Market, Missions],
             // Nahe Azura: Ionit billig, Ferrit und Kobalt werden gesucht.
-            prices: (ore: [(Ionit, 0.85), (Ferrit, 1.4), (Kobalt, 1.2)], fuel: 1.1, service: 1.0),
+            prices: (ore: [(Ionit, 0.85), (Ferrit, 1.4), (Kobalt, 1.2)], fuel: 1.1, service: 1.0, dock: 1.25),
             socket: Some(((-60.0, -2.0), 180.0)),
             ships_for_sale: ["driftkutter", "hornisse", "pelikan"],
             // Erst auf der Karte, wenn jemand hingeflogen ist.
@@ -159,6 +160,8 @@
             main_color: "#6f7a86",
             accent_color: "#4fd8ff",
             services: [],
+            // Wer beim Wiederaufbau hilft, zahlt keine Dockgebühr.
+            prices: (dock: 0.0),
             layout: [
                 "...........3...........",
                 "...........3...........",

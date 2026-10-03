@@ -973,6 +973,101 @@ fn courses_scene() -> Vec<(f32, Act)> {
     ]
 }
 
+/// Phase 9: Kredit in der Werft, Markt mit Preistrend und Nachfrage, Abrechnung nach dem
+/// Auftrag (Versicherung, Kreditrate, Kosten unterwegs).
+fn finance_scene() -> Vec<(f32, Act)> {
+    vec![
+        (0.5, |c| {
+            keyboard_crew(c, false);
+            c.next.set(AppState::Playing);
+        }),
+        (2.0, |c| {
+            let orion = station(c, "werft");
+            let s = &mut c.sim.0;
+            s.crew.credits = 900;
+            s.ship.docked = None;
+            s.dock_at_station(orion);
+        }),
+        (3.0, |c| c.menu.right = true),
+        (3.6, |c| c.menu.down = true),
+        (3.9, |c| c.menu.down = true),
+        (4.2, |c| c.menu.down = true),
+        (4.5, |c| c.menu.down = true),
+        (5.6, |c| shot(c, "werft_kredit")),
+        (6.2, |c| {
+            // Lastesel auf Kredit, dann nach Kepler: dort wurde gerade viel Kobalt verkauft,
+            // und Ionit ist gefragt.
+            use crate::sim::data::Ore;
+            use crate::sim::world::Owner;
+            let s = &mut c.sim.0;
+            let price = s.data.ship("lastesel").price;
+            let (down, rest, rate) = s.loan_terms(price);
+            s.crew.credits -= down;
+            s.crew.owned_ships.push("lastesel".into());
+            s.crew.loan = Some(crate::sim::finance::Loan {
+                ship: "lastesel".into(),
+                left: rest,
+                installment: rate,
+            });
+            s.crew.insured = true;
+            let kepler = s.data.station_index("kepler").unwrap_or(0);
+            s.note_sale(Owner::Station(kepler), Ore::Kobalt, 9.0);
+            s.demand = Some(crate::sim::finance::Demand {
+                owner: Owner::Station(kepler),
+                ore: Ore::Ionit,
+                left: 240.0,
+            });
+            let slot = s.market_slot(Owner::Station(kepler));
+            s.market[slot][3] = 1.28;
+            s.ship.docked = None;
+            s.dock_at_station(kepler);
+        }),
+        (7.4, |c| c.menu.right = true),
+        (7.8, |c| c.menu.right = true),
+        (8.1, |c| c.menu.down = true),
+        (8.3, |c| c.menu.down = true),
+        (8.5, |c| c.menu.down = true),
+        (8.7, |c| c.menu.down = true),
+        (8.9, |c| c.menu.down = true),
+        (9.8, |c| shot(c, "markt_trend")),
+        (10.4, |c| {
+            // Ein Auftrag nach Nova, unterwegs Reparatur an Kepler – dann Abrechnung.
+            use crate::sim::missions::{Mission, MissionKind};
+            use crate::sim::world::Owner;
+            let nova = station(c, "nova");
+            let kepler = station(c, "kepler");
+            let s = &mut c.sim.0;
+            let mut start = s.stats.clone();
+            start.time -= 160.0;
+            // Unterwegs: Dockgebühr in Kepler und eine Reparatur.
+            s.stats.expenses.dock += 18;
+            s.stats.expenses.service += 45;
+            let id = s.next_id();
+            s.active.push(Mission {
+                id,
+                kind: MissionKind::Delivery {
+                    from: Owner::Station(kepler),
+                    to: nova,
+                    cargo: "Ersatzteile".into(),
+                    mass: 4.0,
+                },
+                reward: 420,
+                origin: Some(Owner::Station(kepler)),
+                giver: None,
+                start: Some(Box::new(start)),
+                top_speed: 0.0,
+                par: 220.0,
+            });
+            let pad = s.world.stations[nova].pads[2];
+            s.time += 500.0;
+            s.ship.docked = None;
+            s.dock(pad);
+        }),
+        (12.4, |c| shot(c, "abrechnung")),
+        (13.4, |_| {}),
+    ]
+}
+
 fn ui_scene() -> Vec<(f32, Act)> {
     vec![
         (2.5, |c| shot(c, "titel")),
@@ -1040,6 +1135,7 @@ fn demo_script(
         "rules" => rules_scene(),
         "rebuild" => rebuild_scene(),
         "courses" => courses_scene(),
+        "finance" => finance_scene(),
         _ => tour(),
     };
     let mut pad = pads.iter().next();

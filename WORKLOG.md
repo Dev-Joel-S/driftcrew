@@ -134,7 +134,7 @@ Abgleich mit dem, was schon da ist:
 | 39 | Passagiere | Auftrag mit Passagieren: Beschleunigungsspitzen und harte Stöße senken die Bezahlung (Zufriedenheit in der Auswertung) |
 | 46 | Funk beim Andocken | kurze Funksprüche der Station/Auftraggeber beim Anflug und Andocken (Daten) |
 
-### Phase 9 – Finanzen
+### Phase 9 – Finanzen (erledigt, siehe Protokoll)
 
 | Nr. | Punkt | Umsetzung |
 |---|---|---|
@@ -250,6 +250,46 @@ Der Rest wird in die bestehenden Phasen einsortiert bzw. bekommt eigene Phasen.
 ---
 
 ## Protokoll
+
+### Runde 3 – Phase 9: Finanzen (erledigt)
+
+- **47 Dockgebühr:** `finance.dock_fee` (12 Cr) × Ortsfaktor `prices.dock` (Nova 1,0, Kepler 1,5,
+  Orion 0,75, Vega 1,25, Relais 0 – wer beim Wiederaufbau hilft, zahlt nicht), minus 20 % pro
+  Rufstufe. Abgebucht beim Andocken an einer Station (nicht beim Start, nicht auf Planeten).
+  Wer innerhalb von 120 s wieder an derselben Station andockt, zahlt nicht noch einmal – sonst
+  würden Anflugversuche und die Dockprüfung teuer. Die Gebühr steht im Stationsmenü neben dem Ruf.
+- **47 Versicherung:** `Purchase::Insurance(bool)`, läuft über die Abstimmung wie jeder Kauf.
+  Kein Einstiegspreis, sondern ein Abo: 8 % jeder Auftragsbelohnung (mindestens 10 Cr) gehen bei
+  der Abrechnung ab. Dafür übernimmt sie 70 % der Bergungskosten (`salvage_fee_now` rechnet die
+  Versicherung schon ein, `salvage_fee_gross` ist der Betrag davor).
+- **47 Schiffskredit:** `Purchase::ShipOnCredit` in der Werft, wenn das Schiff bar zu teuer ist:
+  25 % Anzahlung, der Rest plus 12 % Zinsen in 8 Raten. Die Rate geht nach jedem erledigten
+  Auftrag von den Einnahmen ab – nie mehr, als der Auftrag gebracht hat, damit die Kasse nicht
+  ins Minus rutscht. Nur ein Kredit zugleich; `Purchase::RepayLoan` tilgt den Rest in einer
+  Werft. Offener Kredit steht in der Karte.
+- **48 Schwankende Preise** (`sim/finance.rs`): ein Preisfaktor pro Ort (Stationen, dann
+  Planeten) und Erzsorte. Jede verkaufte Tonne senkt ihn um 3,5 % (nicht unter 55 %), er erholt
+  sich exponentiell mit 150 s Zeitkonstante. Alle 4–7 Minuten (Simulationszeit, Seed-RNG) sucht
+  ein Ort ein Erz: Faktor steigt in ~20 s Richtung 135 % und hält 5 Minuten. Markt-Reiter zeigt
+  Trend (▼/▲ in 5-%-Schritten) und die laufende Nachfrage. Faktoren und Nachfrage stehen im
+  Spielstand (`CrewSave::market`, `demand`).
+- **49 Crew-Abrechnung:** `CrewStats::expenses` zählt Dockgebühren, Service-Käufe und
+  Bergungskosten mit; die Auswertung nimmt wie bei der Spaßstatistik die Differenz seit
+  Auftragsannahme. Am Auftragsende: Einnahmen (Grundbelohnung + Boni) − Versicherung − Kreditrate
+  = was in die Kasse geht. Darunter „Unterwegs: Dock · Service · Bergung“ und der **Gewinn**
+  (Einnahmen − Prämie − unterwegs bezahlt; die Kreditrate zählt nicht als Kosten, sie zahlt das
+  Schiff ab).
+- **Nebenbei behoben:** Das Stationsmenü scrollte bei Tastatur/Gamepad nicht mit – Einträge
+  unterhalb des Rands waren nur mit der Maus erreichbar. Jetzt hält `ScrollList` den gewählten
+  Eintrag im Bild (Lage aus den Höhen der Einträge davor, weil die Bildschirmpositionen dem
+  Scrollwert einen Frame hinterherhinken), und die Position überlebt einen Neuaufbau der Liste.
+  Beim Andocken an einer anderen Station beginnt das Menü beim ersten Reiter.
+- Vorführszene `DRIFTCREW_SCENE=finance`.
+- Tests: 86 grün, neu in `finance_tests.rs`: Dockgebühr (Ort, Ruf, kurze Wiederkehr, Relais),
+  Versicherung (Prämie, Bergung, Kündigung), Kredit (Anzahlung, Raten, zweiter Kredit, Tilgen
+  nur in der Werft), Rate höchstens so hoch wie die Einnahmen, Markt (Verkauf drückt, Erholung,
+  Nachfrage, Spielstand), Nachfrage deterministisch, Kosten unterwegs in der Auswertung.
+  `ore_prices_differ_between_stations` prüft jetzt auch, dass der Verkauf den Preis drückt.
 
 ### Runde 3 – Phase 7: Training, Zeitrennen, Flugmanöver als Auftragsziel (erledigt)
 
