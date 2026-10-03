@@ -302,6 +302,8 @@ impl SimState {
                 Command::Ping { player, pos } => self.add_ping(*player, *pos),
                 Command::SellCharts => self.sell_charts(),
                 Command::DeliverProject => self.deliver_project(),
+                Command::StartCourse { course } => self.arm_course(*course),
+                Command::AbortCourse => self.abort_course("auf Wunsch der Crew"),
                 Command::SetLoadout {
                     thrusters,
                     tools,

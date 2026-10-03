@@ -14,6 +14,7 @@
         (Capsules, (1, 3)),
         (Passengers, (1, 3)),
         (Bulky, (2, 4)),
+        (Survey, (1, 3)),
     ],
     // Sperrige Bergung: passt in keinen Frachtraum, wird außen am Kran geschleppt und muss in
     // die Ablagezone der Station (Nova-Hub: durch die Ringöffnungen). Lange Teile pendeln,
@@ -24,6 +25,10 @@
         (name: "Rumpfplatte",          half_len: 2.2, thick: 1.3,  mass: 11.0, reward: 360),
         (name: "Sonnensegel-Träger",   half_len: 5.5, thick: 0.4,  mass: 6.0,  reward: 420),
     ],
+    // Messflug: ein oder mehrere Messfelder (Orte in courses.ron) anfliegen, dort zur Ruhe
+    // kommen und `seconds` lang stillhalten (langsamer als max_speed m/s, kaum Drehung).
+    // Die Messdaten gehen per Funk raus – zurückfliegen muss niemand.
+    survey: (fields: (1, 2), seconds: 6.0, max_speed: 0.6, reward_per_field: 140.0),
     // Passagiere: Anzahl (von, bis), Bezahlung pro Person. Harte Beschleunigung, Stöße und
     // Kreiseln senken die Zufriedenheit; bezahlt wird 30 % + 70 % × Zufriedenheit.
     passengers: (2, 6),
@@ -44,6 +49,8 @@
         (name: "Bohrturm-Segment",     mass: 12.0, reward: 300, towed: true),
         (name: "Druckkessel",          mass: 9.0,  reward: 260, towed: true),
         (name: "Antennenmast",         mass: 10.0, reward: 280, towed: true),
+        // Stationen mit Lastaufnahme (world.ron, socket) wollen die Kiste dort hineingesetzt
+        // haben: ruhig im Inneren ablegen und vom Kran lösen.
     ],
     // Zusätzliche Belohnung pro Meter Luftlinie.
     reward_per_distance: 0.14,

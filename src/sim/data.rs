@@ -406,6 +406,10 @@ pub struct StationDef {
     /// Ablagezone für sperrige Bergungsobjekte (Versatz zur Stationsmitte, Radius).
     #[serde(default)]
     pub drop_zone: Option<(P, f32)>,
+    /// Lastaufnahme: U-förmige Halterung, in die Schwerlastkisten gesetzt werden
+    /// (Versatz zur Stationsmitte, Richtung der Öffnung in Grad, 0 = +x).
+    #[serde(default)]
+    pub socket: Option<(P, f32)>,
 }
 
 /// Wiederaufbau einer Station.
@@ -495,6 +499,23 @@ pub struct SpinnerDef {
     /// Winkelgeschwindigkeit in Grad pro Sekunde.
     pub speed: f32,
     pub color: String,
+    /// Form: Arme durch die Mitte (Standard) oder ein Ring mit Öffnungen (Wrackring).
+    #[serde(default)]
+    pub shape: SpinnerShape,
+}
+
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Default)]
+pub enum SpinnerShape {
+    #[default]
+    Arms,
+    /// Ring aus `segments` Platten mit Radius `radius`; `openings` gleichmäßig verteilte
+    /// Öffnungen, jede `gap` Segmente breit.
+    Ring {
+        radius: f32,
+        segments: u32,
+        openings: u32,
+        gap: u32,
+    },
 }
 
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -760,6 +781,9 @@ pub struct MissionsDef {
     /// Sperrige Bergungsobjekte.
     #[serde(default)]
     pub bulky: Vec<BulkyTemplate>,
+    /// Messflüge (Orte stehen in `courses.ron`).
+    #[serde(default)]
+    pub survey: SurveyDef,
     pub distress_offers: u32,
     pub delivery_cargo: Vec<CargoTemplate>,
     pub reward_per_distance: f32,
@@ -768,6 +792,27 @@ pub struct MissionsDef {
     pub capsule_reward: P,
     pub capsule_count: (u32, u32),
     pub derelict_names: Vec<String>,
+}
+
+/// Messflug: wie viele Felder, wie lange stillhalten, Bezahlung.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct SurveyDef {
+    pub fields: (u32, u32),
+    pub seconds: f32,
+    pub max_speed: f32,
+    pub reward_per_field: f32,
+}
+
+impl Default for SurveyDef {
+    fn default() -> Self {
+        SurveyDef {
+            fields: (1, 2),
+            seconds: 6.0,
+            max_speed: 0.6,
+            reward_per_field: 140.0,
+        }
+    }
 }
 
 fn default_passengers() -> (u32, u32) {
@@ -808,6 +853,118 @@ pub struct RadioPlace {
 }
 
 // ---------------------------------------------------------------------------
+// Parcours (Training, Zeitrennen) und Messfelder
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize, Clone, Debug, Default)]
+pub struct CoursesDef {
+    pub courses: Vec<CourseDef>,
+    /// Orte für Messflüge (Aufträge).
+    #[serde(default)]
+    pub survey_sites: Vec<SurveySiteDef>,
+    /// Strafsekunden pro Kollision.
+    #[serde(default = "default_collision_penalty")]
+    pub collision_penalty: f32,
+    /// Präzisionsandocken: Strafsekunden pro Meter Versatz und pro m/s Aufsetzgeschwindigkeit.
+    #[serde(default = "default_dock_penalty")]
+    pub dock_penalty: (f32, f32),
+    /// So weit darf sich das Schiff vom nächsten Ziel entfernen, sonst endet der Lauf.
+    #[serde(default = "default_abort_distance")]
+    pub abort_distance: f32,
+    /// Preisgeld beim ersten Erreichen von Bronze, Silber, Gold.
+    #[serde(default)]
+    pub medal_prizes: (u32, u32, u32),
+}
+
+fn default_collision_penalty() -> f32 {
+    2.0
+}
+fn default_dock_penalty() -> (f32, f32) {
+    (1.5, 1.0)
+}
+fn default_abort_distance() -> f32 {
+    450.0
+}
+
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CourseKind {
+    /// Schritt für Schritt mit Hinweisen, einmaliger Ausbildungszuschuss.
+    Training,
+    /// Auf Zeit, mit Medaillen und Bestenliste.
+    Race,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct CourseDef {
+    pub id: String,
+    pub name: String,
+    pub kind: CourseKind,
+    /// Station, an der der Parcours angeboten wird.
+    pub station: String,
+    #[serde(default)]
+    pub intro: String,
+    pub steps: Vec<CourseStepDef>,
+    /// Medaillenzeiten in Sekunden: Gold, Silber, Bronze.
+    #[serde(default)]
+    pub medals: Option<(f32, f32, f32)>,
+    /// Einmalige Belohnung beim ersten Abschluss.
+    #[serde(default)]
+    pub prize: u32,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct CourseStepDef {
+    pub kind: StepKind,
+    #[serde(default)]
+    pub hint: String,
+}
+
+/// Ein Schritt eines Parcours. Positionen in Weltkoordinaten (Meter).
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+pub enum StepKind {
+    /// Durch ein Tor fliegen: Mitte, Flugrichtung in Grad (0 = +x, 90 = +y), Breite.
+    Gate { pos: P, dir: f32, width: f32 },
+    /// Einen Punkt erreichen (z. B. das Innere eines Wrackrings).
+    Pass { pos: P, radius: f32 },
+    /// Nase auf eine Boje richten und die Ausrichtung halten.
+    Face {
+        pos: P,
+        #[serde(default = "default_face_tolerance")]
+        tolerance: f32,
+        #[serde(default = "default_face_seconds")]
+        seconds: f32,
+    },
+    /// Im Messfeld zur Ruhe kommen und stillhalten.
+    Hold {
+        pos: P,
+        radius: f32,
+        seconds: f32,
+        max_speed: f32,
+    },
+    /// Andocken; `near` wählt die Plattform der Station, die diesem Punkt am nächsten
+    /// liegt – ohne Angabe zählt jede Plattform der Station.
+    Dock {
+        station: String,
+        #[serde(default)]
+        near: Option<P>,
+    },
+}
+
+fn default_face_tolerance() -> f32 {
+    10.0
+}
+fn default_face_seconds() -> f32 {
+    1.0
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct SurveySiteDef {
+    pub name: String,
+    pub pos: P,
+    pub radius: f32,
+}
+
+// ---------------------------------------------------------------------------
 // Auftraggeber
 // ---------------------------------------------------------------------------
 
@@ -826,6 +983,8 @@ pub enum MissionType {
     Passengers,
     /// Sperriges Bergungsobjekt außen am Kran in die Ablage einer Station bringen.
     Bulky,
+    /// Messflug: in Messfeldern zur Ruhe kommen und eine Weile stillhalten.
+    Survey,
 }
 
 /// Sperriges Bergungsobjekt: Länge (halbe), Dicke, Masse.
@@ -907,6 +1066,34 @@ pub struct CrewSave {
     pub surveyed: String,
     #[serde(default)]
     pub charts_unsold: u32,
+    /// Bestenlisten der Parcours (pro Spielstand).
+    #[serde(default)]
+    pub records: Vec<CourseRecord>,
+}
+
+/// Bestenliste eines Parcours: die besten Läufe und die beste erreichte Medaille.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct CourseRecord {
+    pub course: String,
+    pub entries: Vec<RecordEntry>,
+    /// 0 = keine, 1 = Bronze, 2 = Silber, 3 = Gold.
+    #[serde(default)]
+    pub medal: u8,
+    /// Wie oft der Parcours schon geschafft wurde.
+    #[serde(default)]
+    pub finished: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct RecordEntry {
+    /// Wertung in Sekunden (Flugzeit plus Strafzeit).
+    pub total: f32,
+    pub penalty: f32,
+    pub ship: String,
+    pub crew: u8,
+    /// Laufende Nummer des Laufs (zum Wiedererkennen in der Liste).
+    #[serde(default)]
+    pub run: u32,
 }
 
 impl CrewSave {
@@ -926,6 +1113,7 @@ impl CrewSave {
             projects: Vec::new(),
             surveyed: String::new(),
             charts_unsold: 0,
+            records: Vec::new(),
         }
     }
 }
@@ -942,6 +1130,7 @@ pub struct GameData {
     pub missions: MissionsDef,
     pub npcs: Vec<NpcDef>,
     pub radio: RadioDef,
+    pub courses: CoursesDef,
 }
 
 const SHIPS_RON: &str = include_str!("../../assets/data/ships.ron");
@@ -950,6 +1139,7 @@ const SHOP_RON: &str = include_str!("../../assets/data/shop.ron");
 const MISSIONS_RON: &str = include_str!("../../assets/data/missions.ron");
 const NPCS_RON: &str = include_str!("../../assets/data/npcs.ron");
 const RADIO_RON: &str = include_str!("../../assets/data/radio.ron");
+const COURSES_RON: &str = include_str!("../../assets/data/courses.ron");
 
 fn read_or(name: &str, embedded: &str) -> String {
     let path = std::path::Path::new("assets/data").join(name);
@@ -970,6 +1160,7 @@ impl GameData {
             missions: parse("missions.ron", &read_or("missions.ron", MISSIONS_RON))?,
             npcs: parse("npcs.ron", &read_or("npcs.ron", NPCS_RON))?,
             radio: parse("radio.ron", &read_or("radio.ron", RADIO_RON))?,
+            courses: parse("courses.ron", &read_or("courses.ron", COURSES_RON))?,
         };
         data.validate()?;
         Ok(data)
@@ -985,6 +1176,7 @@ impl GameData {
             missions: parse("missions.ron", MISSIONS_RON)?,
             npcs: parse("npcs.ron", NPCS_RON)?,
             radio: parse("radio.ron", RADIO_RON)?,
+            courses: parse("courses.ron", COURSES_RON)?,
         };
         data.validate()?;
         Ok(data)
@@ -1035,6 +1227,27 @@ impl GameData {
         }
         if self.station_index(&self.world.start_station).is_none() {
             return Err("world.ron: start_station unbekannt".into());
+        }
+        for c in &self.courses.courses {
+            if self.station_index(&c.station).is_none() {
+                return Err(format!("courses.ron: {} an unbekannter Station", c.id));
+            }
+            if !matches!(
+                c.steps.first().map(|s| &s.kind),
+                Some(StepKind::Gate { .. })
+            ) {
+                return Err(format!("courses.ron: {} muss mit einem Tor beginnen", c.id));
+            }
+            for st in &c.steps {
+                if let StepKind::Dock { station, .. } = &st.kind
+                    && self.station_index(station).is_none()
+                {
+                    return Err(format!(
+                        "courses.ron: {}: unbekannte Station {station}",
+                        c.id
+                    ));
+                }
+            }
         }
         Ok(())
     }

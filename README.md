@@ -24,6 +24,10 @@ eigener Name, eigener Look, alle Grafiken und Klänge werden beim Start prozedur
 | ![Trümmerzone](docs/screenshots/truemmer.jpg) | ![Schleiernebel](docs/screenshots/nebel.jpg) |
 | ![Relais Ost, verstummt](docs/screenshots/relais_verstummt.jpg) | ![Relais Ost nach Etappe 2](docs/screenshots/relais_ausgebaut.jpg) |
 | ![Sperrige Bergung am Kran](docs/screenshots/sperrig.jpg) | ![Präzisionsarbeit an einer Erzader](docs/screenshots/praezision.jpg) |
+| ![Parcours im Stationsmenü](docs/screenshots/parcours_menue.jpg) | ![Grundkurs: Drehen](docs/screenshots/training_drehen.jpg) |
+| ![Zeitrennen durch den Nova-Ring](docs/screenshots/nova_ring.jpg) | ![Wrackring mit rotierender Öffnung](docs/screenshots/wrackring.jpg) |
+| ![Messflug am Anomalierand](docs/screenshots/messflug.jpg) | ![Lastaufnahme an Kepler](docs/screenshots/lastaufnahme.jpg) |
+| ![Ziel mit Bestenliste](docs/screenshots/parcours_ziel.jpg) | ![Grundkurs: Bremsen](docs/screenshots/training_bremsen.jpg) |
 
 *(Screenshots aus dem automatischen Vorführmodus, gerendert mit Software-Vulkan.)*
 
@@ -203,6 +207,11 @@ Service.
 - **Material verschicken** – an einem Planeten-Außenposten eine Erzladung aufnehmen und zu einer
   Station bringen. Die Ladung verschiebt Masse und Schwerpunkt.
 - **Schwerlast** – eine Kiste, die in keinen Frachtraum passt, am Kran zu Station B schleppen.
+  Kepler und Vega haben eine **Lastaufnahme**: eine U-förmige Halterung, in die die Kiste
+  präzise gesetzt werden muss – ruhig hineinlegen und vom Kran lösen.
+- **Messflug** – ein oder zwei Messfelder anfliegen und darin ein paar Sekunden stillhalten.
+  Am Anomalierand zieht der Sog, im Sonnenwind treibt das Schiff, im Wrackring dreht sich die
+  Öffnung, durch die man hinein muss. Die Daten gehen per Funk raus.
 - **Bergung** – sperrige Objekte (Antennenmast, Ringsegment, Rumpfplatte, Sonnensegel-Träger)
   passen in keinen Frachtraum. Sie werden außen am Kran geschleppt und müssen in die
   **Ablagezone** der Station – bei Nova-Hub nur durch die schmalen Ringöffnungen. Lange Teile
@@ -217,6 +226,27 @@ Station per **Funk**.
 - **Abbauen** – bestimmtes Erz abbauen und an der Station abliefern.
 - **Notrufe** – überall annehmbar (Karte mit **Tab**): treibendes Wrack mit dem Kran zur Station
   schleppen oder Rettungskapseln einsammeln und abliefern.
+
+### Parcours: Training und Zeitrennen
+
+Draußen in der Welt stehen **Tore** mit Pfosten und Leuchtkappen. Wer in Pfeilrichtung durch ein
+**Starttor** fliegt, startet den Lauf – oder wählt den Parcours im Stationsmenü (Reiter
+**Parcours**) und fliegt dann hin. Oben in der Mitte stehen Schritt, Zeit, Strafzeit und ein
+Hinweis; das nächste Ziel leuchtet, ein Pfeil am Rand zeigt die Richtung.
+
+- **Grundkurs** (Training vor Nova) – Starttor, Nase auf eine Boje drehen und halten, Schub durch
+  ein Tor, im Feld zum Stillstand bremsen, an Nova andocken. Einmal geschafft gibt es einen
+  Ausbildungszuschuss.
+- **Nova-Ring** – einmal um den Hub und mitten durch den Ring.
+- **Dockprüfung** – durch die rechte Öffnung auf die obere Plattform: Versatz zur Mitte und
+  Aufsetzgeschwindigkeit kosten Strafsekunden.
+- **Wrackring** – im Schiffsfriedhof dreht sich ein alter Ringfrachter mit zwei Öffnungen:
+  hinein, warten, wieder hinaus.
+
+Jede Kollision kostet 2 s. Für Zeitrennen gibt es **Bronze, Silber, Gold** (die Prämie je
+Medaille einmal pro Spielstand) und eine **Bestenliste** mit den fünf besten Läufen (Zeit,
+Schiff, Crewgröße). Weit vom Kurs abkommen, woanders andocken oder „Parcours abbrechen“ im
+Pausemenü beendet den Lauf ohne Wertung; durch das eigene Starttor fliegen startet neu.
 
 ### Gemeinsame Kasse und Abstimmung
 
@@ -251,6 +281,7 @@ Eine offene 2D-Ebene von gut 5 km Durchmesser, dargestellt in 3D (2.5D) mit Para
   ohne Anziehung, mit Erzvorkommen, Landezonen und kleinen Außenposten
 - **Splittergürtel** und **Kobaltschwarm** – Asteroidenfelder
 - **Glutstrom** und **Sturzfeld** – Meteoritenschauer
+- **Wrackring** im Schiffsfriedhof – ein langsam drehender Ringfrachter mit zwei Öffnungen
 - **Gravitationsanomalie** im Südosten – wer zu nah kommt, wird hineingezogen
 - **Schlund** im Südwesten – ein Schwarzes Loch mit starkem Sog und Ereignishorizont
 
@@ -282,7 +313,8 @@ in die Binärdatei eingebettet; liegt `assets/data/` im Arbeitsverzeichnis (z. B
   einen `effect` haben (`Debris(dichte)`, `Nebula(stärke)`, `SolarWind((x, y), m/s²)`), `events`
   steuert die Zufallsereignisse. `project` beschreibt den Wiederaufbau einer Station in Etappen
   (Raster-Zeichen `1`–`3` = Blöcke, `a`–`c` = Plattformen ab dieser Etappe), `drop_zone` die
-  Ablagezone für Bergungsobjekte. `known: false`
+  Ablagezone für Bergungsobjekte, `socket` eine Lastaufnahme (Versatz, Richtung der Öffnung).
+  Rotoren können statt Armen ein Ring mit Öffnungen sein (`shape: Ring(...)`). `known: false`
   versteckt eine Station, bis sie entdeckt ist. `wrecks` legt Wracks fest (Modell, Schrott,
   Bauteile). Dazu Asteroidenfelder, Meteoritenzonen, Rotoren, Nebelregionen und Notruf-Orte.
 - `shop.ron` – Services (inkl. Tanken und Triebwerksreparatur), Upgrades, Grundpreise für Erz und
@@ -291,6 +323,8 @@ in die Binärdatei eingebettet; liegt `assets/data/` im Arbeitsverzeichnis (z. B
   `bulky` beschreibt sperrige Bergungsobjekte (Länge, Dicke, Masse).
 - `npcs.ron` – Auftraggeber: Name, Rolle, Ort, welche Aufträge sie vergeben, Porträtfarben, Sprüche.
 - `radio.ron` – Funksprüche beim Anflug, Andocken und Abdocken, allgemein und pro Ort.
+- `courses.ron` – Parcours aus Schritten (`Gate`, `Pass`, `Face`, `Hold`, `Dock`) mit Hinweisen,
+  Medaillenzeiten und Prämien, Strafzeiten und die Orte für Messflüge.
 
 ---
 
@@ -330,8 +364,9 @@ dass zwei Läufe mit gleicher Eingabe bitgleich enden; ein anderer lässt einen 
 nur mit den zwei äußeren Triebwerken von Nova-Hub zum Kepler-Außenposten fliegen und andocken.
 Damit ist der Weg zu Rollback-Netcode vorbereitet.
 
-**Vorführmodus:** `DRIFTCREW_DEMO=<ordner> DRIFTCREW_SCENE=tour|ui|systems cargo run` fliegt ein
-Skript ab, speichert Screenshots und beendet sich.
+**Vorführmodus:** `DRIFTCREW_DEMO=<ordner> DRIFTCREW_SCENE=<szene> cargo run` fliegt ein
+Skript ab, speichert Screenshots und beendet sich. Szenen: `tour`, `ui`, `systems`, `progress`,
+`coop`, `sectors`, `rules`, `rebuild`, `courses`.
 
 ---
 

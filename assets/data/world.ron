@@ -60,6 +60,8 @@
             services: [Ammo, Repair, Fuel, Missions, Market],
             // Am Kobaltschwarm gibt es Kobalt im Überfluss, Solarit und Ionit sind gefragt.
             prices: (ore: [(Kobalt, 0.8), (Solarit, 1.35), (Ionit, 1.2)], fuel: 1.3, service: 1.15),
+            // Lastaufnahme westlich der Station, Öffnung nach Westen: Schwerlast wird hier abgesetzt.
+            socket: Some(((-50.0, -24.0), 180.0)),
             layout: [
                 ".......XLX.......",
                 ".......#W#.......",
@@ -123,6 +125,7 @@
             services: [Ships, Repair, Shield, Ammo, Fuel, Market, Missions],
             // Nahe Azura: Ionit billig, Ferrit und Kobalt werden gesucht.
             prices: (ore: [(Ionit, 0.85), (Ferrit, 1.4), (Kobalt, 1.2)], fuel: 1.1, service: 1.0),
+            socket: Some(((-60.0, -2.0), 180.0)),
             ships_for_sale: ["driftkutter", "hornisse", "pelikan"],
             // Erst auf der Karte, wenn jemand hingeflogen ist.
             known: false,
@@ -247,6 +250,9 @@
         (pos: (120.0, 1000.0),  arm_length: 14.0, arm_width: 1.2, arms: 3, speed: -30.0, color: "#ffb21f"),
         (pos: (300.0, 1040.0),  arm_length: 12.0, arm_width: 1.0, arms: 2, speed: 55.0, color: "#ff4fa3"),
         (pos: (-1150.0, 250.0), arm_length: 10.0, arm_width: 1.0, arms: 2, speed: 35.0, color: "#2f6bff"),
+        // Wrackring im Schiffsfriedhof: alter Ringfrachter mit zwei Öffnungen (Parcours, Messflug).
+        (pos: (-1050.0, 1400.0), arm_length: 20.0, arm_width: 1.8, arms: 1, speed: 18.0, color: "#8a8f99",
+         shape: Ring(radius: 20.0, segments: 20, openings: 2, gap: 2)),
     ],
     anomalies: [
         // Die einzigen Orte mit Anziehung. core_radius: Kern (Anomalie) bzw. Ereignishorizont.

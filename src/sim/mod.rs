@@ -9,6 +9,9 @@
 
 #[cfg(test)]
 pub mod autopilot;
+pub mod course;
+#[cfg(test)]
+mod course_tests;
 pub mod data;
 pub mod dock;
 pub mod economy;
@@ -93,6 +96,11 @@ pub enum Command {
     SellCharts,
     /// Material und Bauteile für den Wiederaufbau der angedockten Station abgeben.
     DeliverProject,
+    /// Parcours wählen (der Lauf beginnt am Starttor) bzw. den laufenden abbrechen.
+    StartCourse {
+        course: usize,
+    },
+    AbortCourse,
     /// Slots neu verteilt (z. B. Hot-Join mitten im Flug): Schiff umbauen.
     SetLoadout {
         thrusters: u8,
@@ -189,6 +197,24 @@ pub enum SimEvent {
     StageCompleted {
         station: usize,
         stage: u8,
+    },
+    /// Parcours: Start, Tor/Schritt geschafft, Ziel, Abbruch.
+    CourseStarted {
+        course: usize,
+    },
+    CourseCheckpoint {
+        course: usize,
+        step: usize,
+    },
+    CourseFinished {
+        course: usize,
+    },
+    CourseAborted {
+        course: usize,
+    },
+    /// Messflug: ein Messfeld ist fertig gemessen.
+    SurveyField {
+        pos: Vec2,
     },
 }
 
@@ -432,6 +458,10 @@ pub struct SimState {
     pub projects: Vec<project::ProjectState>,
     /// Laufende Präzisionsarbeit mit dem Bohrer (Erzader, Wrackverbindung).
     pub precision: Option<precision::Precision>,
+    /// Parcours: laufender Lauf, letztes Ergebnis, Bestenlisten (eine pro Parcours).
+    pub course: Option<course::CourseRun>,
+    pub course_result: Option<course::CourseResult>,
+    pub records: Vec<data::CourseRecord>,
 }
 
 impl SimState {
@@ -513,8 +543,12 @@ impl SimState {
             prev_vel: Vec2::ZERO,
             projects: Vec::new(),
             precision: None,
+            course: None,
+            course_result: None,
+            records: Vec::new(),
         };
         s.load_projects(save);
+        s.load_records(save);
         s.populate_fields();
         s.populate_wrecks();
         s.refresh_offers();
@@ -601,6 +635,7 @@ impl SimState {
             surveyed: self.surveyed.to_hex(),
             charts_unsold: self.charts_unsold,
             projects: self.save_projects(),
+            records: self.save_records(),
         }
     }
 
@@ -642,6 +677,9 @@ impl SimState {
         self.update_hazards();
         self.update_sectors();
         self.update_missions();
+        // Vor dem Tracking: dort wird die Geschwindigkeit des letzten Ticks überschrieben,
+        // die das Präzisionsandocken als Aufsetzgeschwindigkeit braucht.
+        self.update_course();
         self.update_tracking();
         self.update_precision();
         self.update_regen();

@@ -352,7 +352,7 @@ impl SimState {
                 }
             }
             for sp in &self.world.spinners {
-                if (sp.pos - from).length() > sp.arm_length + len + 1.0 {
+                if (sp.pos - from).length() > sp.reach() + len + 1.0 {
                     continue;
                 }
                 for q in sp.quads() {

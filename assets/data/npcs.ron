@@ -1,6 +1,7 @@
 // Auftraggeber an Stationen und Planeten-Außenposten.
 //   at:    Kennung einer Station (world.ron, stations) oder eines Planeten (world.ron, planets)
-//   gives: welche Aufträge die Person vergibt (Delivery, Haul, Mining, Shipment)
+//   gives: welche Aufträge die Person vergibt (Delivery, Haul, Mining, Shipment, Passengers,
+//          Bulky, Survey)
 //   look:  Farben für das Porträt im Stationsmenü
 //   lines: Sprüche, einer wird pro Besuch angezeigt
 [
@@ -25,16 +26,17 @@
     ),
     (
         id: "ivo", name: "Ivo Brandt", role: "Bergbauingenieur", at: "nova",
-        gives: [Mining],
+        gives: [Mining, Survey],
         look: (skin: "#e0b49a", hair: "#a2622f", suit: "#3d6f8e", helmet: true),
         lines: [
             "Kobalt aus dem Schwarm, Solarit von Ember – ich nehme alles.",
             "Bohrt an den Kristallen, nicht am Gestein. Spart Nerven.",
+            "Für eine Messung müsst ihr still stehen. Wirklich still.",
         ],
     ),
     (
         id: "selin", name: "Selin Aydın", role: "Logistik", at: "kepler",
-        gives: [Delivery, Mining],
+        gives: [Delivery, Mining, Survey],
         look: (skin: "#c69276", hair: "#2b1d16", suit: "#14b8a6"),
         lines: [
             "Kepler liegt am Rand. Alles, was ihr bringt, wird gebraucht.",
@@ -88,11 +90,12 @@
     ),
     (
         id: "ines", name: "Ines Varga", role: "Funktechnikerin", at: "relais",
-        gives: [Delivery, Mining],
+        gives: [Delivery, Mining, Survey],
         look: (skin: "#c99a7c", hair: "#3b2f5c", suit: "#4fd8ff", helmet: true),
         lines: [
             "Ohne euch wäre hier immer noch nur Rauschen.",
             "Das Relais hat damals als Letztes gesendet. Was, weiß keiner mehr.",
+            "Im Wrackring misst man am besten genau in der Mitte. Wenn man reinkommt.",
         ],
     ),
 ]

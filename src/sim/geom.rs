@@ -19,7 +19,6 @@ pub fn cross_sv(w: f32, r: Vec2) -> Vec2 {
 }
 
 /// Richtung der Schiffsnase für einen Winkel (0 = +y).
-#[cfg(test)]
 pub fn forward(angle: f32) -> Vec2 {
     Vec2::new(-angle.sin(), angle.cos())
 }
@@ -286,6 +285,19 @@ pub fn circle_circle(a: Vec2, ra: f32, b: Vec2, rb: f32) -> Option<Contact> {
         normal,
         depth: r - dist,
     })
+}
+
+/// Schneiden sich die Strecken a0–a1 und b0–b1? (Berührung zählt.)
+pub fn segments_cross(a0: Vec2, a1: Vec2, b0: Vec2, b1: Vec2) -> bool {
+    let r = a1 - a0;
+    let s = b1 - b0;
+    let den = cross(r, s);
+    if den.abs() < 1e-9 {
+        return false;
+    }
+    let t = cross(b0 - a0, s) / den;
+    let u = cross(b0 - a0, r) / den;
+    (0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u)
 }
 
 /// Strahl gegen Kreis: Abstand entlang des Strahls (dir normiert) oder None.

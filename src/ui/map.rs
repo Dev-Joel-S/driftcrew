@@ -233,13 +233,14 @@ fn draw_map(
     let its = items(s);
     let blink = (time.elapsed_secs() * 2.0) as u32 % 2;
     let key = format!(
-        "{:.0}|{:.0}|{}|{:?}|{}|{}",
+        "{:.0}|{:.0}|{}|{:?}|{}|{}|{:?}",
         s.ship.pos.x / 8.0,
         s.ship.pos.y / 8.0,
         blink,
         its.iter().map(|i| i.label.clone()).collect::<Vec<_>>(),
         s.crew.credits,
-        s.explored.version
+        s.explored.version,
+        s.course.as_ref().map(|r| (r.course, r.step))
     );
     let h = super::sig_of(&key);
     if sig.0 == h {
@@ -430,12 +431,49 @@ fn draw_map(
                 dot(m, at, 12.0, c, false);
                 label(m, at, st.name.clone(), c);
             }
+            // Parcours: Starttore, nach Station gruppiert (sonst überlagern sich die Namen).
+            let flag = Color::srgb(0.45, 1.0, 0.55);
+            let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
+            for (ci, c) in s.data.courses.courses.iter().enumerate() {
+                match groups.iter_mut().find(|(st, _)| *st == c.station) {
+                    Some((_, v)) => v.push(ci),
+                    None => groups.push((c.station.clone(), vec![ci])),
+                }
+            }
+            for (_, list) in &groups {
+                let Some(start) = s.step_target(list[0], 0) else {
+                    continue;
+                };
+                if !seen(start) {
+                    continue;
+                }
+                for &ci in list {
+                    if let Some(p) = s.step_target(ci, 0) {
+                        dot(m, to_map(p), 6.0, flag, true);
+                    }
+                }
+                let name = match list.as_slice() {
+                    [one] => s.data.courses.courses[*one].name.clone(),
+                    _ => format!("{} Parcours", list.len()),
+                };
+                label(
+                    m,
+                    to_map(start) - Vec2::new(0.0, 26.0),
+                    format!("⚑ {name}"),
+                    flag,
+                );
+            }
             for mi in &s.active {
                 if let Some(t) = mi.nav_target(s)
                     && blink == 0
                 {
                     dot(m, to_map(t), 12.0, ACCENT, true);
                 }
+            }
+            if let Some(t) = s.course_target()
+                && blink == 0
+            {
+                dot(m, to_map(t), 10.0, flag, true);
             }
             for mi in s.offers.iter().filter(|m| m.is_distress()) {
                 let site = match &mi.kind {

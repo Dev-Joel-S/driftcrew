@@ -99,7 +99,16 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - **Richtzeit, Zeit- und Sauberkeitsbonus** bei jedem Auftrag
 - **Funk** beim Anflug und Andocken, erzählt nebenbei Bruchstücke der Welt
 - **Auswertung** nach jedem Auftrag mit Spaßstatistik pro Slot (meiste Schubzeit, meiste Kollisionen …)
+- **Flugmanöver als Auftragsziel:** Messflug (im Messfeld stillhalten – am Anomalierand, im Sonnenwind, im rotierenden Wrackring), Schwerlast präzise in eine **Lastaufnahme** setzen (Kepler, Vega). Gleiche Physik, keine Sonderregeln
 - Weitere Typen später erweiterbar
+
+## Training und Zeitrennen
+
+- **In der offenen Welt**, nicht in eigenen Szenarien: Parcours sind Folgen von Toren, Punkten, Bojen, Halte-Feldern und Andockplätzen (Daten in `courses.ron`)
+- Ein Lauf startet beim Durchfliegen des **Starttors in Pfeilrichtung** (oder nach Auswahl im Stationsmenü am Starttor). Abbruch durch Abkommen vom Kurs, Andocken anderswo oder im Pausemenü
+- **Grundkurs** als Training: Drehen, Schub, Bremsen, Andocken – mit Hinweisen, einmaliger Zuschuss
+- **Zeitrennen** mit Strafzeit (Kollisionen, beim Präzisionsandocken Versatz und Aufsetzgeschwindigkeit), Medaillen Bronze/Silber/Gold mit einmaliger Prämie und **Bestenliste pro Spielstand** (fünf beste Läufe mit Schiff und Crewgröße)
+- Alles läuft in der deterministischen Simulation; die Anzeige liest nur
 
 ## Grafikstil
 
@@ -148,3 +157,7 @@ Was sich gegenüber der ersten Fassung geändert hat (Begründungen und Details 
 - **Runde 2, Treibstoff:** neu, mit Notreserve (25 % Schub) statt Stillstand
 - **Runde 2, Zerstörung:** Rettungskapsel und Bergungskosten statt einfachem Neustart an der Station
 - **Runde 2, Zielen:** Werkzeuge zielen ausschließlich mit dem Gerät des Slot-Besitzers
+- **Runde 3, Training und Zeitrennen:** in der offenen Welt mit Toren statt eigener Trainingsszenarien, Bestenliste pro Spielstand *(umgesetzt in Phase 7)*
+- **Runde 3, NPC-Schiffe:** volle Physik wie das Crew-Schiff, gesteuert per Autopilot über echte Triebwerke *(entschieden, Umsetzung in Phase 12)*
+- **Runde 3, Modulbau und Schiffseditor:** feste Bauplätze pro Rumpf (Daten) statt freiem Raster; die Belegung steht im Spielstand und lässt sich als RON exportieren *(entschieden, Umsetzung in Phase 11)*
+- **Runde 3, Material:** gemeinsames Crew-Lager wie die Kasse *(entschieden, Umsetzung in Phase 11)*

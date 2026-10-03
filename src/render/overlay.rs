@@ -25,6 +25,8 @@ impl Plugin for OverlayPlugin {
                 draw_scan,
                 draw_drop_zones,
                 draw_precision_marks,
+                draw_courses,
+                draw_survey_and_sockets,
             )
                 .run_if(in_state(AppState::Playing)),
         );
@@ -310,5 +312,253 @@ fn draw_precision_marks(
             PRECISION_RADIUS + 0.5 * pulse,
             c.with_alpha(0.4 * pulse),
         );
+    }
+}
+
+/// Kreis aus Strichen (gestrichelt) bzw. Bogen von 0 bis `frac` (durchgezogen).
+fn dashed_circle(gizmos: &mut Gizmos, c: Vec2, r: f32, col: Color, spin: f32) {
+    let n = 40;
+    for k in (0..n).step_by(2) {
+        let a0 = std::f32::consts::TAU * k as f32 / n as f32 + spin;
+        let a1 = std::f32::consts::TAU * (k + 1) as f32 / n as f32 + spin;
+        gizmos.line(
+            (c + Vec2::from_angle(a0) * r).extend(Z),
+            (c + Vec2::from_angle(a1) * r).extend(Z),
+            col,
+        );
+    }
+}
+
+fn arc(gizmos: &mut Gizmos, c: Vec2, r: f32, frac: f32, col: Color) {
+    let n = (48.0 * frac).ceil() as usize;
+    let start = std::f32::consts::FRAC_PI_2;
+    for k in 0..n {
+        let a0 = start - std::f32::consts::TAU * frac * k as f32 / n as f32;
+        let a1 = start - std::f32::consts::TAU * frac * (k + 1) as f32 / n as f32;
+        gizmos.line(
+            (c + Vec2::from_angle(a0) * r).extend(Z),
+            (c + Vec2::from_angle(a1) * r).extend(Z),
+            col,
+        );
+    }
+}
+
+/// Ein Parcours-Schritt: Torlinie mit Pfeilen, Punkt, Boje, Feld oder Zielplattform.
+fn draw_step(
+    gizmos: &mut Gizmos,
+    s: &crate::sim::SimState,
+    course: usize,
+    step: usize,
+    col: Color,
+    progress: Option<f32>,
+    t: f32,
+) {
+    use crate::sim::data::{StepKind, v};
+    let Some(st) = s.data.courses.courses[course].steps.get(step) else {
+        return;
+    };
+    match &st.kind {
+        StepKind::Gate { pos, dir, width } => {
+            let c = v(*pos);
+            let d = Vec2::new(dir.to_radians().cos(), dir.to_radians().sin());
+            let side = Vec2::new(-d.y, d.x);
+            let half = width * 0.5;
+            // Torlinie gestrichelt, damit sie nicht wie eine Wand wirkt.
+            let n = 12;
+            for k in (0..n).step_by(2) {
+                let a = c + side * (-half + *width * k as f32 / n as f32);
+                let b = c + side * (-half + *width * (k + 1) as f32 / n as f32);
+                gizmos.line(a.extend(Z), b.extend(Z), col.with_alpha(0.55));
+            }
+            // Drei Pfeile in Flugrichtung, die langsam durchs Tor wandern.
+            let phase = (t * 1.5).fract() * 3.0;
+            for k in 0..3 {
+                let m = c + d * (k as f32 * 3.0 - 4.5 + phase);
+                for sgn in [-1.0f32, 1.0] {
+                    gizmos.line(
+                        (m + d * 1.2).extend(Z),
+                        (m - d * 0.6 + side * sgn * 1.6).extend(Z),
+                        col,
+                    );
+                }
+            }
+        }
+        StepKind::Pass { pos, radius } => {
+            let c = v(*pos);
+            dashed_circle(gizmos, c, *radius, col, t * 0.4);
+            gizmos.line((c - Vec2::X).extend(Z), (c + Vec2::X).extend(Z), col);
+            gizmos.line((c - Vec2::Y).extend(Z), (c + Vec2::Y).extend(Z), col);
+        }
+        StepKind::Face { pos, tolerance, .. } => {
+            let c = v(*pos);
+            gizmos.circle(Isometry3d::from_translation(c.extend(Z)), 2.2, col);
+            // Peillinie von der Schiffsnase: grün, sobald sie auf die Boje zeigt.
+            let ship = s.ship.pos;
+            let nose = s.ship_nose();
+            let to = (c - ship).normalize_or_zero();
+            let ok = nose.angle_to(to).abs().to_degrees() <= *tolerance;
+            let lc = if ok {
+                Color::srgb(0.35, 1.0, 0.55)
+            } else {
+                Color::srgba(1.0, 1.0, 1.0, 0.5)
+            };
+            gizmos.line(ship.extend(Z), (ship + nose * 18.0).extend(Z), lc);
+            let len = (c - ship).length();
+            let n = (len / 3.0) as usize;
+            for k in (0..n).step_by(2) {
+                let a = ship + to * (len * k as f32 / n as f32);
+                let b = ship + to * (len * (k + 1) as f32 / n as f32);
+                gizmos.line(a.extend(Z), b.extend(Z), col.with_alpha(0.35));
+            }
+            if let Some(f) = progress {
+                arc(gizmos, c, 3.2, f, Color::srgb(0.35, 1.0, 0.55));
+            }
+        }
+        StepKind::Hold { pos, radius, .. } => {
+            let c = v(*pos);
+            dashed_circle(gizmos, c, *radius, col, t * 0.3);
+            if let Some(f) = progress {
+                arc(gizmos, c, *radius + 0.8, f, Color::srgb(0.35, 1.0, 0.55));
+            }
+        }
+        StepKind::Dock { station, near } => {
+            for pad in s.dock_pads(station, *near) {
+                if near.is_none() {
+                    continue;
+                }
+                let p = &s.world.pads[pad];
+                let tg = p.tangent() * p.half_width;
+                let up = p.normal * 5.0;
+                let a = p.center - tg;
+                let b = p.center + tg;
+                for (x, y) in [(a, b), (a, a + up), (b, b + up), (a + up, b + up)] {
+                    gizmos.line(x.extend(Z), y.extend(Z), col);
+                }
+            }
+        }
+    }
+}
+
+/// Parcours: aktuelles Ziel hell, das nächste gedämpft; ohne Lauf die Starttore in der Nähe.
+fn draw_courses(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mut gizmos: Gizmos) {
+    if map.0 {
+        return;
+    }
+    let s = &sim.0;
+    let t = time.elapsed_secs();
+    let bright = Color::srgba(1.0, 0.8, 0.25, 0.75 + 0.25 * (t * 4.0).sin());
+    let start = Color::srgba(0.4, 1.0, 0.55, 0.75);
+    match &s.course {
+        Some(r) => {
+            let col = if r.started() { bright } else { start };
+            draw_step(
+                &mut gizmos,
+                s,
+                r.course,
+                r.step,
+                col,
+                s.course_hold_fraction(),
+                t,
+            );
+            if r.started() {
+                draw_step(
+                    &mut gizmos,
+                    s,
+                    r.course,
+                    r.step + 1,
+                    Color::srgba(1.0, 0.85, 0.5, 0.3),
+                    None,
+                    t,
+                );
+            }
+        }
+        None => {
+            for ci in 0..s.data.courses.courses.len() {
+                if s.step_target(ci, 0)
+                    .is_some_and(|p| (p - s.ship.pos).length() < 400.0)
+                {
+                    draw_step(&mut gizmos, s, ci, 0, start, None, t);
+                }
+            }
+        }
+    }
+}
+
+/// Messfelder laufender Messflüge und Lastaufnahmen, in die eine Kiste soll.
+fn draw_survey_and_sockets(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mut gizmos: Gizmos) {
+    use crate::sim::missions::{MissionKind, SOCKET_SETTLE};
+    use crate::sim::world::{SOCKET_HALF_DEPTH, SOCKET_HALF_WIDTH};
+    if map.0 {
+        return;
+    }
+    let s = &sim.0;
+    let t = time.elapsed_secs();
+    let teal = Color::srgba(0.35, 0.95, 0.9, 0.7 + 0.2 * (t * 3.0).sin());
+    for m in &s.active {
+        match &m.kind {
+            MissionKind::Survey { sites, done, hold } => {
+                let Some(&i) = sites.get(*done) else { continue };
+                let site = &s.data.courses.survey_sites[i];
+                let c = crate::sim::data::v(site.pos);
+                dashed_circle(&mut gizmos, c, site.radius, teal, -t * 0.3);
+                for k in 0..4 {
+                    let d = Vec2::from_angle(std::f32::consts::FRAC_PI_2 * k as f32);
+                    gizmos.line(
+                        (c + d * (site.radius - 1.2)).extend(Z),
+                        (c + d * (site.radius + 1.2)).extend(Z),
+                        teal,
+                    );
+                }
+                let f = hold / s.data.missions.survey.seconds.max(0.01);
+                if f > 0.0 {
+                    arc(
+                        &mut gizmos,
+                        c,
+                        site.radius + 0.9,
+                        f.min(1.0),
+                        Color::srgb(0.35, 1.0, 0.55),
+                    );
+                }
+            }
+            MissionKind::Haul { to, settle, .. } => {
+                let Some(sock) = s.world.stations[*to].socket else {
+                    continue;
+                };
+                let side = Vec2::new(-sock.open.y, sock.open.x);
+                let col = Color::srgba(1.0, 0.75, 0.2, 0.55 + 0.35 * (t * 2.5).sin());
+                let a = sock.center - sock.open * SOCKET_HALF_DEPTH;
+                let b = sock.center + sock.open * SOCKET_HALF_DEPTH;
+                let corners = [
+                    a - side * SOCKET_HALF_WIDTH,
+                    a + side * SOCKET_HALF_WIDTH,
+                    b + side * SOCKET_HALF_WIDTH,
+                    b - side * SOCKET_HALF_WIDTH,
+                ];
+                for k in 0..4 {
+                    gizmos.line(corners[k].extend(Z), corners[(k + 1) % 4].extend(Z), col);
+                }
+                // Einflugpfeile vor der Öffnung, nach innen gerichtet.
+                for k in 0..3 {
+                    let m = sock.center + sock.open * (SOCKET_HALF_DEPTH + 3.0 + k as f32 * 2.5);
+                    for sgn in [-1.0f32, 1.0] {
+                        gizmos.line(
+                            (m - sock.open * 1.0).extend(Z),
+                            (m + sock.open * 0.6 + side * sgn * 1.3).extend(Z),
+                            col,
+                        );
+                    }
+                }
+                if *settle > 0.0 {
+                    arc(
+                        &mut gizmos,
+                        sock.center,
+                        SOCKET_HALF_WIDTH + 1.4,
+                        (settle / SOCKET_SETTLE).min(1.0),
+                        Color::srgb(0.35, 1.0, 0.55),
+                    );
+                }
+            }
+            _ => {}
+        }
     }
 }

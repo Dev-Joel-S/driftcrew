@@ -238,7 +238,7 @@ impl SimState {
             }
         }
         for (si, sp) in self.world.spinners.iter().enumerate() {
-            if (sp.pos - self.ship.pos).length() > sp.arm_length + self.ship.bound_radius() + 1.0 {
+            if (sp.pos - self.ship.pos).length() > sp.reach() + self.ship.bound_radius() + 1.0 {
                 continue;
             }
             for arm in sp.quads() {
@@ -393,7 +393,7 @@ impl SimState {
                 }
             }
             for (si, sp) in self.world.spinners.iter().enumerate() {
-                if (sp.pos - pos).length() > sp.arm_length + r + 1.0 {
+                if (sp.pos - pos).length() > sp.reach() + r + 1.0 {
                     continue;
                 }
                 for arm in sp.quads() {

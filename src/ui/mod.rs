@@ -1,5 +1,6 @@
 //! Benutzeroberfläche: gemeinsame Bausteine, Menülisten, Meldungen.
 
+pub mod course;
 pub mod hud;
 pub mod lobby;
 pub mod map;
@@ -60,6 +61,7 @@ impl Plugin for UiPlugin {
                 pause::PausePlugin,
                 report::ReportPlugin,
                 radio::RadioPlugin,
+                course::CoursePlugin,
             ));
     }
 }
@@ -333,10 +335,22 @@ fn collect_toasts(mut events: MessageReader<SimMsg>, mut toasts: ResMut<Toasts>,
 fn draw_toasts(
     mut commands: Commands,
     mut toasts: ResMut<Toasts>,
-    root: Query<Entity, With<ToastRoot>>,
+    sim: Option<Res<crate::game::Sim>>,
+    mut root: Query<(Entity, &mut Node), With<ToastRoot>>,
 ) {
-    let root = match root.single() {
-        Ok(r) => r,
+    // Läuft ein Parcours, steht oben dessen Anzeige: Meldungen rücken darunter.
+    let top = if sim.is_some_and(|s| s.0.course.is_some()) {
+        Val::Px(132.0)
+    } else {
+        Val::Px(84.0)
+    };
+    let root = match root.single_mut() {
+        Ok((r, mut n)) => {
+            if n.top != top {
+                n.top = top;
+            }
+            r
+        }
         Err(_) => commands
             .spawn((
                 Node {

@@ -997,6 +997,7 @@ fn update_markers(
     // Solange das Stationsmenü offen ist, keine Wegmarken dahinter.
     let menu_open = super::station::menu_open(s);
     let blocked = |q: Vec2| menu_open && q.x > size.x - 520.0 && q.y > 225.0 && q.y < size.y - 95.0;
+    let course_panel = s.course.is_some();
     let mut placed: Vec<Vec2> = Vec::new();
     let mut add =
         |c: &mut Commands, world: Vec2, label: String, color: Color, arrow_always: bool| {
@@ -1041,6 +1042,10 @@ fn update_markers(
                 let mut at = center + dir * t;
                 if at.x > size.x - 250.0 && at.y < 250.0 {
                     at.y = 250.0;
+                }
+                // Nicht unter die Parcours-Anzeige oben in der Mitte.
+                if course_panel && at.y < 125.0 && (at.x - size.x * 0.5).abs() < 310.0 {
+                    at.y = 125.0;
                 }
                 // Nicht über die Slot-Leiste und die Balken legen.
                 at.y = at.y.min(size.y - 150.0);
@@ -1130,6 +1135,27 @@ fn update_markers(
         if let Some(t) = m.nav_target(s) {
             let label = if m.is_distress() { "Notruf" } else { "Ziel" };
             add(&mut commands, t, label.to_string(), ACCENT, true);
+        }
+    }
+    // Parcours: nächstes Ziel als Pfeil am Rand, sonst Starttore in der Nähe beschriften.
+    let flag = Color::srgb(0.45, 1.0, 0.55);
+    match &s.course {
+        Some(r) => {
+            if let Some(t) = s.course_target() {
+                add(&mut commands, t, s.step_label(r.course, r.step), flag, true);
+            }
+        }
+        None => {
+            // Nur beschriften, wenn das Starttor im Bild ist (bei Nova liegen drei nah beisammen).
+            for ci in 0..s.data.courses.courses.len() {
+                if let Some(t) = s.step_target(ci, 0)
+                    && cam
+                        .world_to_viewport(cam_t, t.extend(0.0))
+                        .is_ok_and(|v| v.x > 0.0 && v.y > 0.0 && v.x < size.x && v.y < size.y)
+                {
+                    add(&mut commands, t, s.step_label(ci, 0), flag, false);
+                }
+            }
         }
     }
     // Scanner-Funde im Bild beschriften (nur Wracks und Vorkommen, sonst wird es zu voll).

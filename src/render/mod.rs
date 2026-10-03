@@ -1,5 +1,6 @@
 //! Darstellung: 2.5D – 3D-Grafik, Spiel in der XY-Ebene, Kamera schaut entlang -Z.
 
+pub mod course_vis;
 pub mod fx;
 pub mod meshes;
 pub mod overlay;
@@ -40,6 +41,7 @@ impl Plugin for RenderPlugin {
                 (
                     setup_camera,
                     world_vis::spawn_world,
+                    course_vis::spawn_course_vis,
                     world_vis::spawn_background,
                     world_vis::spawn_dust,
                 ),
@@ -60,6 +62,7 @@ impl Plugin for RenderPlugin {
                     ship_vis::blink_nav_lights,
                     world_vis::update_pad_lights,
                     world_vis::update_stage_vis,
+                    course_vis::update_gate_caps,
                 )
                     .chain(),
             )

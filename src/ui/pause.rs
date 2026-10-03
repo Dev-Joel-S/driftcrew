@@ -7,8 +7,9 @@ use super::{
     ACCENT, Item, ItemButton, MENU_PAUSE, MUTED, MenuFocus, TEXT, mouse_pick, navigate, panel,
     spawn_items, text,
 };
-use crate::game::{AppState, LobbyMode, MapOpen, Paused, Sim, write_save};
+use crate::game::{AppState, LobbyMode, MapOpen, Paused, PendingCommands, Sim, write_save};
 use crate::input::MenuInput;
+use crate::sim::{Command, SimState};
 
 pub struct PausePlugin;
 
@@ -28,24 +29,33 @@ pub struct PauseHelp;
 #[derive(Clone, Debug, PartialEq)]
 enum PauseAct {
     Resume,
+    AbortCourse,
     Redistribute,
     Help,
     SaveTitle,
     Quit,
 }
 
-fn items() -> Vec<Item<PauseAct>> {
-    vec![
-        Item::new("Weiter", PauseAct::Resume),
+fn items(sim: &SimState) -> Vec<Item<PauseAct>> {
+    let mut v = vec![Item::new("Weiter", PauseAct::Resume)];
+    if let Some(r) = &sim.course {
+        let name = &sim.data.courses.courses[r.course].name;
+        v.push(
+            Item::new(format!("{name} abbrechen"), PauseAct::AbortCourse)
+                .detail("Parcours ohne Wertung beenden"),
+        );
+    }
+    v.extend([
         Item::new("Slots neu verteilen", PauseAct::Redistribute)
             .detail("Jemand kommt dazu oder fällt aus"),
         Item::new("Steuerung & Spielprinzip", PauseAct::Help),
         Item::new("Speichern & zum Titel", PauseAct::SaveTitle),
         Item::new("Spiel beenden", PauseAct::Quit).detail("Der Spielstand wird gespeichert"),
-    ]
+    ]);
+    v
 }
 
-fn spawn_pause(commands: &mut Commands) {
+fn spawn_pause(commands: &mut Commands, sim: &SimState) {
     commands
         .spawn((
             Node {
@@ -68,7 +78,7 @@ fn spawn_pause(commands: &mut Commands) {
                     height: Val::Px(8.0),
                     ..default()
                 });
-                spawn_items(p, MENU_PAUSE, &items());
+                spawn_items(p, MENU_PAUSE, &items(sim));
             });
         });
 }
@@ -98,6 +108,7 @@ pub fn pause_input(
     roots: Query<Entity, With<PauseRoot>>,
     help: Query<Entity, With<PauseHelp>>,
     mut exit: MessageWriter<AppExit>,
+    mut pending: ResMut<PendingCommands>,
 ) {
     if !help.is_empty() {
         if input.escape || input.enter || input.start || input.back {
@@ -119,7 +130,7 @@ pub fn pause_input(
         if !map.0 && (input.escape || start_pauses) {
             paused.0 = true;
             focus.0[MENU_PAUSE] = 0;
-            spawn_pause(&mut commands);
+            spawn_pause(&mut commands, &sim.0);
         }
         return;
     }
@@ -127,7 +138,7 @@ pub fn pause_input(
         close(&mut commands, &mut paused);
         return;
     }
-    let its = items();
+    let its = items(&sim.0);
     let mut f = focus.0[MENU_PAUSE];
     let mut act = if navigate(&mut f, its.len(), &input) {
         Some(f)
@@ -146,6 +157,10 @@ pub fn pause_input(
     };
     match a {
         PauseAct::Resume => close(&mut commands, &mut paused),
+        PauseAct::AbortCourse => {
+            pending.0.push(Command::AbortCourse);
+            close(&mut commands, &mut paused);
+        }
         PauseAct::Redistribute => {
             close(&mut commands, &mut paused);
             *mode = LobbyMode::Redistribute;

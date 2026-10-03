@@ -530,6 +530,55 @@ pub fn spawn_world(
                 SpinnerVis(i),
             ))
             .id();
+        if let crate::sim::data::SpinnerShape::Ring { .. } = sp.shape {
+            // Wrackring: Rumpfplatten im Kreis, jede zweite rostig, Lichter an den Öffnungen.
+            let rust = mats.add(art.panel_mat(Color::srgb(0.55, 0.32, 0.2), 0.7, 0.2));
+            let lamp = mats.add(art.emissive_mat(Color::srgb(1.0, 0.45, 0.15), 5.0));
+            let len = sp.segment_length();
+            let plate = art.bevel_box(&mut meshes, Vec3::new(len, sp.arm_width, 1.5));
+            let segs = sp.ring_segments();
+            let n = segs.len();
+            for (k, (c, a)) in segs.iter().enumerate() {
+                let m = if k % 2 == 0 {
+                    arm_mat.clone()
+                } else {
+                    rust.clone()
+                };
+                let e = commands
+                    .spawn((
+                        Mesh3d(plate.clone()),
+                        MeshMaterial3d(m),
+                        Transform::from_xyz(c.x, c.y, (k % 3) as f32 * 0.04)
+                            .with_rotation(Quat::from_rotation_z(a + std::f32::consts::FRAC_PI_2)),
+                    ))
+                    .id();
+                commands.entity(root).add_child(e);
+                // Lichter an den Kanten der Öffnungen: wo das nächste Segment fehlt.
+                let next = segs[(k + 1) % n].1;
+                let step = std::f32::consts::TAU / n as f32;
+                let gap_after = crate::sim::world::angle_diff(next, *a).abs() > step * 1.2 && n > 1;
+                let gap_before = crate::sim::world::angle_diff(*a, segs[(k + n - 1) % n].1).abs()
+                    > step * 1.2
+                    && n > 1;
+                for (edge, on) in [(1.0f32, gap_after), (-1.0, gap_before)] {
+                    if !on {
+                        continue;
+                    }
+                    let tangent = Vec2::new(-a.sin(), a.cos());
+                    let p = *c + tangent * edge * len * 0.5;
+                    let l = commands
+                        .spawn((
+                            Mesh3d(art.sphere.clone()),
+                            MeshMaterial3d(lamp.clone()),
+                            Transform::from_xyz(p.x, p.y, 0.95).with_scale(Vec3::splat(0.45)),
+                            NotShadowCaster,
+                        ))
+                        .id();
+                    commands.entity(root).add_child(l);
+                }
+            }
+            continue;
+        }
         for a in 0..sp.arms {
             let ang = std::f32::consts::PI * a as f32 / sp.arms as f32;
             let m = art.bevel_box(

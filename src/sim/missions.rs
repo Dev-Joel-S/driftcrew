@@ -7,13 +7,16 @@ use super::rng::hash32;
 use super::ship::{CargoKind, CraneState};
 use super::stats::{CrewStats, MissionReport};
 use super::world::Owner;
-use super::{Body, BodyKind, SimEvent, SimState, ToastKind};
+use super::{Body, BodyKind, DT, SimEvent, SimState, ToastKind};
 
 pub const MAX_ACTIVE: usize = 4;
 /// Ab dieser Beschleunigung (m/s²) wird es den Passagieren ungemütlich.
 pub const COMFORT_ACCEL: f32 = 10.0;
 /// Kollisionsradius einer Schwerlastkiste.
 pub const CRATE_RADIUS: f32 = 1.5;
+/// Lastaufnahme: so ruhig und so lange muss die Kiste darin liegen.
+pub const SOCKET_MAX_SPEED: f32 = 0.5;
+pub const SOCKET_SETTLE: f32 = 1.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum MissionKind {
@@ -32,6 +35,8 @@ pub enum MissionKind {
         cargo: String,
         mass: f32,
         body: Option<u32>,
+        /// Hat die Zielstation eine Lastaufnahme: wie lange die Kiste schon ruhig darin liegt.
+        settle: f32,
     },
     Mining {
         ore: Ore,
@@ -67,6 +72,14 @@ pub enum MissionKind {
         total: u32,
         delivered: u32,
         to: usize,
+    },
+    /// Messflug: Messfelder der Reihe nach anfliegen und dort stillhalten.
+    Survey {
+        /// Indizes in `courses.ron`, survey_sites.
+        sites: Vec<usize>,
+        done: usize,
+        /// Sekunden, die im aktuellen Feld schon gemessen wurden.
+        hold: f32,
     },
 }
 
@@ -112,6 +125,7 @@ impl Mission {
             MissionKind::Bulky { .. } => MissionType::Bulky,
             MissionKind::Tow { .. } => MissionType::Tow,
             MissionKind::Capsules { .. } => MissionType::Capsules,
+            MissionKind::Survey { .. } => MissionType::Survey,
         }
     }
 
@@ -145,6 +159,10 @@ impl Mission {
             MissionKind::Capsules { total, to, .. } => {
                 format!("Notruf: {total} Rettungskapseln → {}", st(*to))
             }
+            MissionKind::Survey { sites, .. } => match sites.as_slice() {
+                [one] => format!("Messflug: {}", s.data.courses.survey_sites[*one].name),
+                _ => format!("Messflug: {} Messfelder", sites.len()),
+            },
         }
     }
 
@@ -182,10 +200,46 @@ impl Mission {
                 2.0 * (half_len + thick),
                 s.world.stations[*to].name
             ),
-            MissionKind::Haul { from, mass, .. } => format!(
-                "{mass:.0} t Kiste am Kran schleppen, Abholung an {}",
-                s.world.stations[*from].name
-            ),
+            MissionKind::Haul {
+                from,
+                to,
+                mass,
+                body,
+                ..
+            } => {
+                let socket = s.world.stations[*to].socket.is_some();
+                if body.is_some() && socket {
+                    format!(
+                        "{mass:.0} t am Kran – in die Lastaufnahme von {} setzen, ruhig ablegen und loslassen",
+                        s.world.stations[*to].name
+                    )
+                } else if socket {
+                    format!(
+                        "{mass:.0} t Kiste am Kran, Abholung an {} – Ziel hat eine Lastaufnahme",
+                        s.world.stations[*from].name
+                    )
+                } else {
+                    format!(
+                        "{mass:.0} t Kiste am Kran schleppen, Abholung an {}",
+                        s.world.stations[*from].name
+                    )
+                }
+            }
+            MissionKind::Survey { sites, done, hold } => {
+                let sd = &s.data.missions.survey;
+                match sites.get(*done) {
+                    Some(&i) => format!(
+                        "Messfeld {}/{}: {} – {:.1}/{:.0} s stillhalten (unter {:.1} m/s)",
+                        done + 1,
+                        sites.len(),
+                        s.data.courses.survey_sites[i].name,
+                        hold,
+                        sd.seconds,
+                        sd.max_speed
+                    ),
+                    None => "Messdaten übertragen".into(),
+                }
+            }
             MissionKind::Mining { ore, .. } => {
                 let have = s.ship.ore_amount(*ore).max(0.0);
                 let source = s
@@ -261,12 +315,22 @@ impl Mission {
                         .or(Some(*site))
                 }
             }
+            MissionKind::Survey { sites, done, .. } => sites
+                .get(*done)
+                .map(|&i| v(s.data.courses.survey_sites[i].pos)),
             MissionKind::Haul { from, to, body, .. } => {
                 let attached = s.ship.tools.iter().any(
                     |t| matches!(t.crane, CraneState::Attached { body: b, .. } if Some(b) == *body),
                 );
+                let socket = s.world.stations[*to].socket.map(|k| k.center);
                 if attached {
-                    Some(station(*to))
+                    Some(socket.unwrap_or(station(*to)))
+                } else if let Some(k) = socket
+                    && let Some(b) = body.and_then(|id| s.bodies.iter().find(|b| b.id == id))
+                    && (b.pos - k).length() < 30.0
+                {
+                    // Kiste liegt schon an der Aufnahme: dorthin zeigen.
+                    Some(k)
                 } else {
                     body.and_then(|id| s.bodies.iter().find(|b| b.id == id).map(|b| b.pos))
                         .or(Some(station(*from)))
@@ -429,6 +493,7 @@ impl SimState {
             MissionType::Mining => ores_exist,
             MissionType::Passengers => n_st > 1,
             MissionType::Bulky => !md.bulky.is_empty(),
+            MissionType::Survey => !self.data.courses.survey_sites.is_empty(),
             MissionType::Shipment | MissionType::Tow | MissionType::Capsules => false,
         });
         if types.is_empty() {
@@ -441,6 +506,36 @@ impl SimState {
         let ty = types[self.rng.index(types.len())];
         let bonus = 1.0 + 0.1 * level as f32;
         let (kind, reward) = match ty {
+            MissionType::Survey => {
+                let n_sites = self.data.courses.survey_sites.len();
+                let want = self
+                    .rng
+                    .range_u32(md.survey.fields.0, md.survey.fields.1)
+                    .clamp(1, n_sites as u32) as usize;
+                let mut sites: Vec<usize> = Vec::new();
+                while sites.len() < want {
+                    let i = self.rng.index(n_sites);
+                    if !sites.contains(&i) {
+                        sites.push(i);
+                    }
+                }
+                // Strecke: Station → Feld → Feld …
+                let mut at = self.world.stations[si].pos;
+                let mut dist = 0.0;
+                for &i in &sites {
+                    let p = v(self.data.courses.survey_sites[i].pos);
+                    dist += (p - at).length();
+                    at = p;
+                }
+                (
+                    MissionKind::Survey {
+                        sites,
+                        done: 0,
+                        hold: 0.0,
+                    },
+                    want as f32 * md.survey.reward_per_field + dist * md.reward_per_distance,
+                )
+            }
             MissionType::Bulky => {
                 let t = md.bulky[self.rng.index(md.bulky.len())].clone();
                 // Fundort: ein Notrufort oder Wrack in der Welt, leicht verstreut.
@@ -505,6 +600,7 @@ impl SimState {
                         cargo: t.name.clone(),
                         mass: t.mass,
                         body: None,
+                        settle: 0.0,
                     }
                 } else {
                     MissionKind::Delivery {
@@ -575,6 +671,26 @@ impl SimState {
             MissionKind::Tow { site, to, .. } => (*site - st(*to)).length() / 6.0 + 150.0,
             MissionKind::Bulky { site, to, .. } => (*site - st(*to)).length() / 6.0 + 180.0,
             MissionKind::Capsules { site, to, .. } => (*site - st(*to)).length() / 10.0 + 240.0,
+            MissionKind::Survey { sites, .. } => {
+                // Ab der nächstgelegenen Station mit Aufträgen grob abgeschätzt.
+                let mut at = sites
+                    .first()
+                    .map(|&i| v(self.data.courses.survey_sites[i].pos))
+                    .unwrap_or_default();
+                let start = self
+                    .world
+                    .stations
+                    .iter()
+                    .map(|st| (st.pos - at).length())
+                    .fold(f32::MAX, f32::min);
+                let mut d = start;
+                for &i in sites.iter().skip(1) {
+                    let p = v(self.data.courses.survey_sites[i].pos);
+                    d += (p - at).length();
+                    at = p;
+                }
+                d / 10.0 + sites.len() as f32 * (self.data.missions.survey.seconds + 30.0) + 30.0
+            }
         };
         (t / 10.0).round() * 10.0
     }
@@ -846,7 +962,7 @@ impl SimState {
                     });
                 }
             }
-            MissionKind::Mining { .. } => {}
+            MissionKind::Mining { .. } | MissionKind::Survey { .. } => {}
         }
         self.offers.remove(idx);
         let title = m.title(self);
@@ -988,11 +1104,60 @@ impl SimState {
     }
 
     /// Prüfungen, die jeden Tick laufen: Geschlepptes (Wrack, Schwerlastkiste) ist am Ziel,
-    /// sobald es nahe genug an der Zielstation ist.
+    /// sobald es nahe genug an der Zielstation ist – bei Stationen mit Lastaufnahme erst, wenn
+    /// die Kiste ruhig darin liegt und nicht mehr am Kran hängt. Messflüge messen.
     pub(crate) fn update_missions(&mut self) {
+        self.update_survey();
+        // Lastaufnahme: wie lange liegt die Kiste schon ruhig drin?
+        let hooked: Vec<u32> = self
+            .ship
+            .tools
+            .iter()
+            .filter_map(|t| match t.crane {
+                CraneState::Attached { body, .. } => Some(body),
+                _ => None,
+            })
+            .collect();
+        for m in &mut self.active {
+            if let MissionKind::Haul {
+                to,
+                body: Some(bid),
+                settle,
+                ..
+            } = &mut m.kind
+                && let Some(sock) = self.world.stations[*to].socket
+            {
+                let resting = self
+                    .bodies
+                    .iter()
+                    .find(|b| b.id == *bid && b.alive)
+                    .is_some_and(|b| {
+                        sock.holds(b.pos)
+                            && b.vel.length() < SOCKET_MAX_SPEED
+                            && b.ang_vel.abs() < 0.8
+                    });
+                *settle = if resting && !hooked.contains(bid) {
+                    *settle + DT
+                } else {
+                    0.0
+                };
+            }
+        }
         let mut done = None;
         for (i, m) in self.active.iter().enumerate() {
             let (to, bid, bulky) = match &m.kind {
+                MissionKind::Haul {
+                    to,
+                    body: Some(b),
+                    settle,
+                    ..
+                } if self.world.stations[*to].socket.is_some() => {
+                    if *settle >= SOCKET_SETTLE {
+                        done = Some((i, *b));
+                        break;
+                    }
+                    continue;
+                }
                 MissionKind::Tow {
                     to, body: Some(b), ..
                 }
@@ -1028,6 +1193,56 @@ impl SimState {
                     self.events.push(SimEvent::CraneRelease);
                 }
             }
+            self.complete_mission(i);
+        }
+    }
+
+    /// Messflug: im aktuellen Feld stillhalten; nach dem letzten Feld ist der Auftrag erfüllt.
+    fn update_survey(&mut self) {
+        let sd = self.data.missions.survey.clone();
+        let mut finished = None;
+        for i in 0..self.active.len() {
+            let MissionKind::Survey { sites, done, hold } = &self.active[i].kind else {
+                continue;
+            };
+            let Some(&site) = sites.get(*done) else {
+                continue;
+            };
+            let (n, done_now, hold_now) = (sites.len(), *done, *hold);
+            let def = &self.data.courses.survey_sites[site];
+            let (pos, radius) = (v(def.pos), def.radius);
+            let still = self.holding_still(pos, radius, sd.max_speed);
+            let mut hold = if still {
+                hold_now + DT
+            } else {
+                (hold_now - 2.0 * DT).max(0.0)
+            };
+            let mut done = done_now;
+            if hold >= sd.seconds {
+                done += 1;
+                hold = 0.0;
+                self.events.push(SimEvent::SurveyField { pos });
+                if done < n {
+                    self.toast(
+                        format!("Messung {done}/{n} übertragen – weiter zum nächsten Feld"),
+                        ToastKind::Good,
+                    );
+                } else {
+                    finished = Some(i);
+                }
+            }
+            if let MissionKind::Survey {
+                done: d, hold: h, ..
+            } = &mut self.active[i].kind
+            {
+                *d = done;
+                *h = hold;
+            }
+            if finished.is_some() {
+                break;
+            }
+        }
+        if let Some(i) = finished {
             self.complete_mission(i);
         }
     }

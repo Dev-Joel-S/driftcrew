@@ -47,6 +47,7 @@ enum Tab {
     Market,
     Ships,
     Project,
+    Courses,
 }
 
 impl Tab {
@@ -59,6 +60,7 @@ impl Tab {
             Tab::Market => "Markt",
             Tab::Ships => "Werft",
             Tab::Project => "Aufbau",
+            Tab::Courses => "Parcours",
         }
     }
 }
@@ -73,6 +75,96 @@ enum Act {
     Deliver,
     Switch(String),
     Undock,
+    Course(usize),
+    AbortCourse,
+}
+
+/// Parcours, die an dieser Station angeboten werden.
+fn courses_here(sim: &SimState) -> Vec<usize> {
+    let Some(si) = sim.docked_station() else {
+        return Vec::new();
+    };
+    let id = &sim.world.stations[si].id;
+    (0..sim.data.courses.courses.len())
+        .filter(|&c| &sim.data.courses.courses[c].station == id)
+        .collect()
+}
+
+/// Reiter „Parcours“: Training und Zeitrennen mit Medaillenzeiten und Bestenliste.
+fn course_items(sim: &SimState, v: &mut Vec<Item<Act>>) {
+    use crate::sim::course::{MEDAL_NAMES, fmt_time};
+    use crate::sim::data::CourseKind;
+    if let Some(r) = &sim.course {
+        let name = &sim.data.courses.courses[r.course].name;
+        v.push(
+            Item::new(format!("{name} abbrechen"), Act::AbortCourse).detail(if r.started() {
+                "Der Lauf ist unterwegs – ohne Wertung beenden".to_string()
+            } else {
+                "Gewählt – startet am Starttor".to_string()
+            }),
+        );
+    }
+    for ci in courses_here(sim) {
+        let c = &sim.data.courses.courses[ci];
+        let rec = &sim.records[ci];
+        let kind = match c.kind {
+            CourseKind::Training => "Training",
+            CourseKind::Race => "Zeitrennen",
+        };
+        let right = match (c.kind, rec.entries.first()) {
+            (CourseKind::Training, _) if rec.finished > 0 => "✓ geschafft".to_string(),
+            (CourseKind::Training, _) if c.prize > 0 => format!("+{} Cr", c.prize),
+            (_, Some(best)) => {
+                let medal = if rec.medal > 0 {
+                    format!(" · {}", MEDAL_NAMES[rec.medal as usize])
+                } else {
+                    String::new()
+                };
+                format!("Bestzeit {}{medal}", fmt_time(best.total))
+            }
+            _ => "noch keine Zeit".to_string(),
+        };
+        let mut detail = format!("{kind} · {} Schritte · {}", c.steps.len(), c.intro);
+        if let Some((g, sv, b)) = c.medals {
+            let (pb, ps, pg) = sim.data.courses.medal_prizes;
+            detail.push_str(&format!(
+                "\nGold {} (+{pg}) · Silber {} (+{ps}) · Bronze {} (+{pb}) – Prämie je Medaille einmal",
+                fmt_time(g),
+                fmt_time(sv),
+                fmt_time(b)
+            ));
+        }
+        if !rec.entries.is_empty() {
+            let board: Vec<String> = rec
+                .entries
+                .iter()
+                .take(3)
+                .enumerate()
+                .map(|(i, e)| {
+                    format!(
+                        "{}. {} ({}, Crew {})",
+                        i + 1,
+                        fmt_time(e.total),
+                        e.ship,
+                        e.crew
+                    )
+                })
+                .collect();
+            detail.push_str(&format!("\n{}", board.join("  ·  ")));
+        }
+        let armed = sim.course.as_ref().is_some_and(|r| r.course == ci);
+        let label = if armed {
+            format!("▶ {}", c.name)
+        } else {
+            c.name.clone()
+        };
+        v.push(
+            Item::new(label, Act::Course(ci))
+                .right(right)
+                .detail(detail)
+                .enabled(!armed),
+        );
+    }
 }
 
 /// Reiter „Aufbau“: was die laufende Etappe braucht, was schon da ist, was an Bord ist.
@@ -210,6 +302,9 @@ fn tabs_for(sim: &SimState) -> Vec<Tab> {
             if st.has(Service::Market) {
                 v.push(Tab::Market);
             }
+            if !courses_here(sim).is_empty() {
+                v.push(Tab::Courses);
+            }
             v
         }
         Some(Owner::Planet(_)) if sim.landed_in_zone() => Vec::new(),
@@ -344,6 +439,7 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
             }
         }
         Tab::Project => project_items(sim, &mut v),
+        Tab::Courses => course_items(sim, &mut v),
         Tab::Paint => {
             use crate::render::srgb;
             use crate::sim::data::hex;
@@ -464,6 +560,13 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                     MissionKind::Delivery { mass, .. } => {
                         format!("{mass:.1} t Container – landet seitlich im Frachtraum")
                     }
+                    MissionKind::Haul { mass, to, .. }
+                        if has_crane && sim.world.stations[*to].socket.is_some() =>
+                    {
+                        format!(
+                            "{mass:.0} t Kiste am Kran – am Ziel präzise in die Lastaufnahme setzen und loslassen"
+                        )
+                    }
                     MissionKind::Haul { mass, .. } if has_crane => format!(
                         "{mass:.0} t Kiste – passt in keinen Frachtraum, am Kran schleppen. Pendelt!"
                     ),
@@ -476,6 +579,19 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                     }
                     MissionKind::Capsules { .. } => {
                         "Kapseln einsammeln (Kran oder sanft berühren) und abliefern.".into()
+                    }
+                    MissionKind::Survey { sites, .. } => {
+                        let sd = &sim.data.missions.survey;
+                        let names: Vec<&str> = sites
+                            .iter()
+                            .map(|&i| sim.data.courses.survey_sites[i].name.as_str())
+                            .collect();
+                        format!(
+                            "{} – im Feld {:.0} s stillhalten (unter {:.1} m/s), Daten gehen per Funk raus",
+                            names.join(", "),
+                            sd.seconds,
+                            sd.max_speed
+                        )
                     }
                 };
                 let (lo, hi) = m.crew(sim);
@@ -699,6 +815,8 @@ fn station_menu(
             Some(Act::Deliver) => pending.0.push(Command::DeliverProject),
             Some(Act::Switch(id)) => pending.0.push(Command::SwitchShip { id }),
             Some(Act::Undock) => pending.0.push(Command::Undock),
+            Some(Act::Course(course)) => pending.0.push(Command::StartCourse { course }),
+            Some(Act::AbortCourse) => pending.0.push(Command::AbortCourse),
             None => {}
         }
     }

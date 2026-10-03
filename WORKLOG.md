@@ -182,12 +182,13 @@ online funktionieren.
 | 61d | Monumente | große feste Strukturen (Tor, Signalturm), reagieren auf Artefakte, Scans und Kapitel |
 | 61f | Artefakt bleibt im Wrack | bei Hülle 0 bleibt das Artefakt im Schiffswrack und muss geholt werden (abschaltbar) |
 
-### Phase 7 – Training und Zeitrennen (Rückfrage)
+### Phase 7 – Training und Zeitrennen (erledigt, siehe Protokoll)
 
 | Nr. | Punkt |
 |---|---|
 | 28 | Trainingsmission Drehen/Bremsen/Andocken |
 | 29 | Zeit-Herausforderungen mit Bestenliste |
+| 74 | Flugmanöver als Missionsziele (aus dem Backlog dazugenommen) |
 
 ---
 
@@ -210,7 +211,7 @@ Der Rest wird in die bestehenden Phasen einsortiert bzw. bekommt eigene Phasen.
 | 71 | Präzisionsarbeit im Flug | **Phase 8b** (deckt auch einen Teil von 36 ab) |
 | 72 | Physische Notfallreparatur mit dem Kran | Phase 10 (Minispiele) als Alternative zum Takt-Spiel |
 | 73 | Manöveransagen | Phase 15: kurze Signale („Bremsen“, „Schub aus“, „Links drehen“, „Werkzeug bereit“) in Slotfarbe, optionaler Ton, keine Rollen |
-| 74 | Flugmanöver als Missionsziele | Phase 7 (Tore/Parcours), nutzt dieselbe Physik |
+| 74 | Flugmanöver als Missionsziele | **erledigt in Phase 7** (Wrackring, Messflug, Lastaufnahme) |
 | 75 | Stationen sichtbar wiederaufbauen | **Phase 8b** |
 | 76 | Lokale Folgen von Aufträgen | Phase 16 (Welt reagiert) |
 | 77 | Freiwillige Zusatzbergung | Phase 14 |
@@ -249,6 +250,68 @@ Der Rest wird in die bestehenden Phasen einsortiert bzw. bekommt eigene Phasen.
 ---
 
 ## Protokoll
+
+### Runde 3 – Phase 7: Training, Zeitrennen, Flugmanöver als Auftragsziel (erledigt)
+
+Wie in der Rückfrage entschieden: alles in der offenen Welt, Bestenliste pro Spielstand.
+
+- **Parcours als Daten** (`assets/data/courses.ron`, `sim/course.rs`): ein Parcours ist eine Folge
+  von Schritten – `Gate` (Tor mit Flugrichtung und Breite), `Pass` (Punkt erreichen), `Face` (Nase
+  auf eine Boje richten und halten), `Hold` (im Feld zur Ruhe kommen und stillhalten), `Dock`
+  (andocken, optional an einer bestimmten Plattform). Jeder Schritt kann einen Hinweistext haben.
+  Die Prüfung läuft in der Simulation auf dem Schiffszustand: Tor = Flugstrecke des Ticks
+  schneidet die Torlinie in Pfeilrichtung; `Pass` prüft die Strecke, damit schnelle Schiffe nicht
+  durchrutschen; Halte-Schritte bauen Fortschritt auf und verlieren ihn doppelt so schnell wieder.
+- **Start in der offenen Welt:** Ein Lauf beginnt beim Durchfliegen eines Starttors – aber nur,
+  wenn die Flugrichtung höchstens ~30° vom Pfeil abweicht. Sonst würde jeder Vorbeiflug an Nova
+  einen Lauf starten. Alternativ im Stationsmenü wählen (`Command::StartCourse`): Der Parcours
+  ist dann „bereit“, die Zeit läuft erst am Starttor. Durch das eigene Starttor fliegen startet
+  neu. Abbruch: mehr als 450 m vom nächsten Ziel, andocken außerhalb eines `Dock`-Schritts,
+  falsche Plattform, Zerstörung, 15 Minuten, oder „Parcours abbrechen“ im Pausemenü bzw.
+  Stationsmenü (`Command::AbortCourse`).
+- **Wertung:** Flugzeit + Strafzeit. Jede Kollision 2 s; beim Präzisionsandocken zusätzlich
+  1,5 s pro Meter Versatz zur Plattformmitte und 1 s pro m/s Aufsetzgeschwindigkeit. Gemessen wird
+  im Tick des Aufsetzens, bevor das Schiff auf die Plattform gezogen wird; die Geschwindigkeit
+  stammt aus dem Tick davor (`prev_vel`) – deshalb läuft `update_course` vor `update_tracking`.
+- **Medaillen und Bestenliste:** Bronze/Silber/Gold pro Zeitrennen, die Prämie (60/120/250) gibt
+  es je Medaille einmal pro Spielstand; wer gleich Gold holt, bekommt alle drei. Die Bestenliste
+  (`CrewSave::records`) hält die fünf besten Läufe mit Zeit, Strafzeit, Schiff, Crewgröße und
+  Laufnummer, dazu die beste Medaille und die Zahl der Abschlüsse.
+- **28 Grundkurs** (Training vor Nova): Starttor → Boje anpeilen und halten (Drehen) → Schub durch
+  ein Tor → im Feld vor der Boje stillstehen (Bremsen) → an Nova andocken. Boje, Tor und Feld
+  liegen auf einer Linie, damit „Nase auf die Boje“ zugleich die Flugrichtung für die nächsten
+  Schritte ist. 150 Credits Ausbildungszuschuss beim ersten Abschluss.
+- **29 Zeitrennen:** *Nova-Ring* (um den Hub und mitten durch den Ring), *Dockprüfung*
+  (Präzisionsandocken auf der oberen rechten Plattform im Ring), *Wrackring* (siehe unten).
+- **74 Flugmanöver als Auftragsziel** – drei Varianten, alle mit derselben Physik:
+  - **Rotierende Wracköffnung:** Rotoren können jetzt auch ein Ring mit Öffnungen sein
+    (`SpinnerShape::Ring`, Segmente als kinematische Kollider wie die Rotorarme). Der
+    **Wrackring** im Schiffsfriedhof dreht sich mit 18°/s und hat zwei Öffnungen. Er ist Teil
+    des Zeitrennens und ein Messfeld.
+  - **Messflug** (`MissionKind::Survey`, Auftraggeber Ivo, Selin, Ines): ein oder zwei Messfelder
+    anfliegen und dort 6 s stillhalten (unter 0,6 m/s, kaum Drehung). Die Felder liegen dort, wo
+    Stillhalten schwer ist: Anomalierand (Sog), Sonnenwind-Korridor, Schleiernebel, Splitterzone,
+    Kobaltschwarm, Wrackring – und eine leichte Ruhezone bei Nova.
+  - **Lastaufnahme** (`socket` in `world.ron`, Kepler und Vega): U-förmige Halterung aus drei
+    statischen Kollidern. Schwerlast-Aufträge zu diesen Stationen sind erst erfüllt, wenn die
+    Kiste ruhig (unter 0,5 m/s) im Inneren liegt, nicht mehr am Kran hängt und das 1 s lang.
+    Andere Ziele behalten die alte Regel (Nähe der Station). Einflugpfeile und ein Ring für den
+    Fortschritt zeigen, was gemeint ist.
+- **Anzeige:** Torpfosten mit Leuchtkappe (Starttore grün, nächstes Ziel hell, übernächstes
+  gedämpft), Torlinien mit wandernden Pfeilen, Bojen mit Peillinie von der Schiffsnase, Felder
+  mit Fortschrittsring, die Zielplattform eingerahmt. Oben Mitte: Parcours, Schritt, nächste
+  erreichbare Medaille, Zeit, Strafzeit, Hinweis, Fortschrittsbalken; Meldungen rücken darunter.
+  Nach dem Ziel eine Tafel mit Wertung, Medaille, Prämie, nächster Medaille und Bestenliste
+  (eigener Lauf hervorgehoben). Stationsreiter **Parcours** mit Medaillenzeiten und den drei
+  besten Läufen. Karte: Starttore als Fähnchen (bei Nova zusammengefasst). Starttore im Bild
+  werden beschriftet, das laufende Ziel bekommt einen Randpfeil.
+- Vorführszene `DRIFTCREW_SCENE=courses`.
+- Tests: 79 grün, neu in `course_tests.rs`: Starttor nur in Pfeilrichtung, Rennen mit
+  Bestenliste/Medaillen/Speichern+Laden, Strafzeit, Grundkurs Schritt für Schritt,
+  Präzisionsandocken (Versatz, Aufsetzgeschwindigkeit, falsche Plattform), Abbruch,
+  Wrackring-Öffnungen, Messflug, Messflug-Angebote, Lastaufnahme (nur abgesetzt und gelöst),
+  Wände der Lastaufnahme, alle Tore und Felder liegen frei. Der bestehende Schwerlast-Test liefert
+  jetzt zur Werft Orion (ohne Lastaufnahme).
 
 ### Backlog – Phase 8b: Sperrige Bergung, Präzisionsarbeit, Wiederaufbau (erledigt)
 

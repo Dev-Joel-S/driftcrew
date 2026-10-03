@@ -704,6 +704,275 @@ fn rebuild_scene() -> Vec<(f32, Act)> {
     ]
 }
 
+fn course_index(c: &Ctx, id: &str) -> usize {
+    c.sim
+        .0
+        .data
+        .courses
+        .courses
+        .iter()
+        .position(|k| k.id == id)
+        .unwrap_or(0)
+}
+
+/// Schiff kurz vor ein Tor setzen, mit Schwung in Pfeilrichtung (startet bzw. zählt das Tor).
+fn approach_gate(c: &mut Ctx, course: usize, step: usize, back: f32, speed: f32) {
+    use crate::sim::data::{StepKind, v};
+    let StepKind::Gate { pos, dir, .. } = c.sim.0.data.courses.courses[course].steps[step].kind
+    else {
+        return;
+    };
+    let d = Vec2::new(dir.to_radians().cos(), dir.to_radians().sin());
+    teleport(c, v(pos) - d * back, 0.0, 0.0);
+    let s = &mut c.sim.0;
+    s.ship.vel = d * speed;
+    s.ship.angle = f32::atan2(-d.x, d.y);
+    s.ship.prev_angle = s.ship.angle;
+}
+
+/// Phase 7: Parcours im Stationsmenü, Training (Drehen, Bremsen), Zeitrennen durch den
+/// Nova-Ring, Wrackring, Ergebnis mit Bestenliste, Messflug und Lastaufnahme.
+fn courses_scene() -> Vec<(f32, Act)> {
+    vec![
+        (0.5, |c| {
+            keyboard_crew(c, false);
+            c.next.set(AppState::Playing);
+        }),
+        (2.0, |c| {
+            // Ein paar frühere Läufe, damit die Bestenliste etwas zeigt.
+            use crate::sim::data::RecordEntry;
+            let ring = course_index(c, "nova_ring");
+            let train = course_index(c, "grundkurs");
+            let s = &mut c.sim.0;
+            let rec = &mut s.records[ring];
+            for (i, (t, ship, crew)) in [
+                (58.4, "Driftkutter", 2),
+                (63.9, "Driftkutter", 3),
+                (71.2, "Kolibri", 1),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                rec.entries.push(RecordEntry {
+                    total: t,
+                    penalty: if i == 1 { 4.0 } else { 0.0 },
+                    ship: ship.into(),
+                    crew,
+                    run: i as u32 + 1,
+                });
+            }
+            rec.finished = 3;
+            rec.medal = 2;
+            s.records[train].finished = 1;
+        }),
+        (2.4, |c| c.menu.right = true),
+        (2.7, |c| c.menu.right = true),
+        (3.0, |c| c.menu.right = true),
+        (3.3, |c| c.menu.right = true),
+        (3.6, |c| c.menu.right = true),
+        (5.0, |c| shot(c, "parcours_menue")),
+        (6.0, |c| {
+            let ci = course_index(c, "grundkurs");
+            approach_gate(c, ci, 0, 5.0, 9.0);
+        }),
+        (7.0, |c| {
+            // Nach dem Starttor: Boje anpeilen, Nase noch etwas daneben.
+            let s = &mut c.sim.0;
+            s.ship.vel = Vec2::new(0.0, -1.0);
+            s.ship.ang_vel = 0.0;
+            s.ship.angle = 1.1;
+            s.ship.prev_angle = 1.1;
+            if let Some(r) = s.course.as_mut() {
+                r.progress = 0.0;
+            }
+        }),
+        (8.4, |c| shot(c, "training_drehen")),
+        (9.4, |c| {
+            use crate::sim::data::{StepKind, v};
+            let ci = course_index(c, "grundkurs");
+            let StepKind::Hold { pos, .. } = c.sim.0.data.courses.courses[ci].steps[3].kind else {
+                return;
+            };
+            teleport(c, v(pos) + Vec2::new(-3.0, 2.0), 0.0, 0.0);
+            let s = &mut c.sim.0;
+            s.ship.angle = 2.0;
+            s.ship.prev_angle = 2.0;
+            if let Some(r) = s.course.as_mut() {
+                r.step = 3;
+                r.time = 38.6;
+                r.progress = 0.4;
+            }
+        }),
+        (10.4, |c| shot(c, "training_bremsen")),
+        (11.2, |c| {
+            c.pending.0.push(Command::AbortCourse);
+            let ci = course_index(c, "nova_ring");
+            approach_gate(c, ci, 0, 4.0, 12.0);
+        }),
+        (12.0, |c| {
+            let ci = course_index(c, "nova_ring");
+            approach_gate(c, ci, 3, 22.0, 11.0);
+            let s = &mut c.sim.0;
+            if let Some(r) = s.course.as_mut() {
+                r.step = 3;
+                r.time = 21.4;
+            }
+        }),
+        (13.0, |c| shot(c, "nova_ring")),
+        (14.0, |c| {
+            // Wrackring: vor der Öffnung, der Lauf ist unterwegs.
+            c.pending.0.push(Command::AbortCourse);
+            let ci = course_index(c, "wrackring");
+            approach_gate(c, ci, 0, 4.0, 9.0);
+        }),
+        (14.8, |c| {
+            let ci = course_index(c, "wrackring");
+            let center = c
+                .sim
+                .0
+                .step_target(ci, 1)
+                .unwrap_or(Vec2::new(-1050.0, 1400.0));
+            teleport(c, center + Vec2::new(-34.0, 0.0), 0.0, 0.0);
+            let s = &mut c.sim.0;
+            s.ship.vel = Vec2::new(2.0, 0.0);
+            s.ship.angle = -std::f32::consts::FRAC_PI_2;
+            s.ship.prev_angle = s.ship.angle;
+            if let Some(r) = s.course.as_mut() {
+                r.time = 6.8;
+            }
+        }),
+        (16.6, |c| shot(c, "wrackring")),
+        (17.4, |c| {
+            c.pending.0.push(Command::AbortCourse);
+        }),
+        (17.6, |c| {
+            // Messflug am Rand der Anomalie: der Sog zieht, die Crew hält dagegen.
+            use crate::sim::missions::{Mission, MissionKind};
+            let s = &mut c.sim.0;
+            let site = s
+                .data
+                .courses
+                .survey_sites
+                .iter()
+                .position(|x| x.name == "Anomalierand")
+                .unwrap_or(0);
+            let id = s.next_id();
+            s.active.push(Mission {
+                id,
+                kind: MissionKind::Survey {
+                    sites: vec![site, 0],
+                    done: 0,
+                    hold: 3.4,
+                },
+                reward: 380,
+                origin: Some(crate::sim::world::Owner::Station(0)),
+                giver: None,
+                start: Some(Box::new(s.stats.clone())),
+                top_speed: 0.0,
+                par: 420.0,
+            });
+            let p = crate::sim::data::v(s.data.courses.survey_sites[site].pos);
+            teleport(c, p + Vec2::new(1.5, -1.0), 0.0, 0.0);
+            let s = &mut c.sim.0;
+            s.ship.angle = -2.6;
+            s.ship.prev_angle = s.ship.angle;
+        }),
+        (18.4, |c| shot(c, "messflug")),
+        (19.4, |c| {
+            // Schwerlast an Kepler: Kiste am Seil, die Lastaufnahme wartet.
+            use crate::sim::missions::{Mission, MissionKind};
+            let kepler = station(c, "kepler");
+            let Some(sock) = c.sim.0.world.stations[kepler].socket else {
+                return;
+            };
+            c.sim.0.active.clear();
+            let ship_at = sock.center + sock.open * 16.0 + Vec2::new(0.0, 4.0);
+            teleport(c, ship_at, 0.0, 0.0);
+            let s = &mut c.sim.0;
+            s.ship.angle = std::f32::consts::FRAC_PI_2;
+            s.ship.prev_angle = s.ship.angle;
+            let mid = s.next_id();
+            let bid = s.next_id();
+            let crate_at = sock.center + sock.open * 6.5 + Vec2::new(0.0, -1.0);
+            s.bodies.push(crate::sim::Body {
+                id: bid,
+                kind: crate::sim::BodyKind::Crate {
+                    mission: mid,
+                    name: "Druckkessel".into(),
+                },
+                pos: crate_at,
+                vel: Vec2::ZERO,
+                angle: 0.2,
+                ang_vel: 0.0,
+                radius: crate::sim::missions::CRATE_RADIUS,
+                mass: 9.0,
+                prev_pos: crate_at,
+                prev_angle: 0.2,
+                alive: true,
+                seed: 3,
+                age: 0.0,
+            });
+            s.active.push(Mission {
+                id: mid,
+                kind: MissionKind::Haul {
+                    from: 0,
+                    to: kepler,
+                    cargo: "Druckkessel".into(),
+                    mass: 9.0,
+                    body: Some(bid),
+                    settle: 0.0,
+                },
+                reward: 340,
+                origin: Some(crate::sim::world::Owner::Station(0)),
+                giver: None,
+                start: Some(Box::new(s.stats.clone())),
+                top_speed: 0.0,
+                par: 300.0,
+            });
+            let ci = s
+                .ship
+                .tools
+                .iter()
+                .position(|t| t.kind == crate::sim::data::ToolKind::Crane)
+                .unwrap_or(0);
+            let mount = s.ship.tool_world_pos(ci);
+            s.ship.tools[ci].crane = crate::sim::ship::CraneState::Attached {
+                body: bid,
+                rope: (crate_at - mount).length(),
+                local: Vec2::ZERO,
+            };
+        }),
+        (21.0, |c| shot(c, "lastaufnahme")),
+        (21.6, |c| {
+            c.sim.0.active.clear();
+            c.sim
+                .0
+                .bodies
+                .retain(|b| !matches!(b.kind, crate::sim::BodyKind::Crate { .. }));
+            for t in &mut c.sim.0.ship.tools {
+                t.crane = crate::sim::ship::CraneState::Idle;
+            }
+        }),
+        (22.0, |c| {
+            // Nova-Ring: letztes Tor, dann Ziel.
+            c.pending.0.push(Command::AbortCourse);
+            let ci = course_index(c, "nova_ring");
+            approach_gate(c, ci, 0, 4.0, 12.0);
+        }),
+        (22.8, |c| {
+            let ci = course_index(c, "nova_ring");
+            let last = c.sim.0.data.courses.courses[ci].steps.len() - 1;
+            if let Some(r) = c.sim.0.course.as_mut() {
+                r.step = last;
+                r.time = 55.6;
+            }
+            approach_gate(c, ci, last, 6.0, 14.0);
+        }),
+        (24.4, |c| shot(c, "parcours_ziel")),
+        (25.4, |_| {}),
+    ]
+}
+
 fn ui_scene() -> Vec<(f32, Act)> {
     vec![
         (2.5, |c| shot(c, "titel")),
@@ -770,6 +1039,7 @@ fn demo_script(
         "sectors" => sectors_scene(),
         "rules" => rules_scene(),
         "rebuild" => rebuild_scene(),
+        "courses" => courses_scene(),
         _ => tour(),
     };
     let mut pad = pads.iter().next();

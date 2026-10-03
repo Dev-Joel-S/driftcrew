@@ -2,8 +2,8 @@
 
 use bevy::math::Vec2;
 
-use super::data::{AnomalyKind, GameData, Ore, Prices, Service, StationKind, v};
-use super::geom::{Aabb, Poly};
+use super::data::{AnomalyKind, GameData, Ore, Prices, Service, SpinnerShape, StationKind, v};
+use super::geom::{Aabb, Poly, rot};
 use super::rng::Rng;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -174,6 +174,8 @@ pub struct Station {
     /// Erreichte Wiederaufbau-Etappe und die Dienste, die die Station von Anfang an hat.
     pub stage: u8,
     pub base_services: Vec<Service>,
+    /// Lastaufnahme für Schwerlastkisten (falls vorhanden).
+    pub socket: Option<Socket>,
 }
 
 impl Station {
@@ -222,20 +224,129 @@ pub struct Spinner {
     pub angle: f32,
     pub prev_angle: f32,
     pub color: [f32; 3],
+    pub shape: SpinnerShape,
 }
 
 impl Spinner {
-    pub fn quads(&self) -> Vec<Poly> {
-        (0..self.arms)
+    /// Größter Abstand eines Teils von der Drehachse (für die Grobprüfung).
+    pub fn reach(&self) -> f32 {
+        match self.shape {
+            SpinnerShape::Arms => self.arm_length,
+            SpinnerShape::Ring { radius, .. } => radius + self.arm_width,
+        }
+    }
+
+    /// Ringsegmente in lokalen Koordinaten (Mitte, Winkel), ohne die Öffnungen.
+    /// Bei Armen leer.
+    pub fn ring_segments(&self) -> Vec<(Vec2, f32)> {
+        let SpinnerShape::Ring {
+            radius,
+            segments,
+            openings,
+            gap,
+        } = self.shape
+        else {
+            return Vec::new();
+        };
+        let n = segments.max(3);
+        let period = (n / openings.max(1)).max(1);
+        (0..n)
+            .filter(|i| openings == 0 || i % period >= gap)
             .map(|i| {
-                let a = self.angle + std::f32::consts::PI * i as f32 / self.arms as f32;
-                Poly::obb(
-                    self.pos,
-                    Vec2::new(self.arm_length, self.arm_width * 0.5),
-                    a,
-                )
+                let a = std::f32::consts::TAU * (i as f32 + 0.5) / n as f32;
+                (Vec2::new(a.cos(), a.sin()) * radius, a)
             })
             .collect()
+    }
+
+    /// Länge eines Ringsegments (Sehne plus etwas Überlappung).
+    pub fn segment_length(&self) -> f32 {
+        match self.shape {
+            SpinnerShape::Ring {
+                radius, segments, ..
+            } => 2.0 * radius * (std::f32::consts::PI / segments.max(3) as f32).sin() + 0.3,
+            SpinnerShape::Arms => 0.0,
+        }
+    }
+
+    pub fn quads(&self) -> Vec<Poly> {
+        match self.shape {
+            SpinnerShape::Arms => (0..self.arms)
+                .map(|i| {
+                    let a = self.angle + std::f32::consts::PI * i as f32 / self.arms as f32;
+                    Poly::obb(
+                        self.pos,
+                        Vec2::new(self.arm_length, self.arm_width * 0.5),
+                        a,
+                    )
+                })
+                .collect(),
+            SpinnerShape::Ring { .. } => {
+                let half = Vec2::new(self.segment_length() * 0.5, self.arm_width * 0.5);
+                self.ring_segments()
+                    .into_iter()
+                    .map(|(c, a)| {
+                        Poly::obb(
+                            self.pos + rot(c, self.angle),
+                            half,
+                            a + self.angle + std::f32::consts::FRAC_PI_2,
+                        )
+                    })
+                    .collect()
+            }
+        }
+    }
+}
+
+/// Lastaufnahme: U-förmige Halterung an einer Station. Eine Schwerlastkiste gilt als
+/// abgesetzt, wenn sie ruhig im Inneren liegt und nicht mehr am Kran hängt.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Socket {
+    /// Mitte des Innenraums.
+    pub center: Vec2,
+    /// Richtung der Öffnung (Einheitsvektor).
+    pub open: Vec2,
+}
+
+/// Innenmaße der Lastaufnahme (halbe Breite quer zur Öffnung, halbe Tiefe) und Wandstärke.
+pub const SOCKET_HALF_WIDTH: f32 = 2.3;
+pub const SOCKET_HALF_DEPTH: f32 = 1.9;
+pub const SOCKET_WALL: f32 = 0.6;
+
+impl Socket {
+    /// Steckt ein Körper mit dieser Mitte weit genug in der Halterung?
+    pub fn holds(&self, p: Vec2) -> bool {
+        let d = p - self.center;
+        let side = Vec2::new(-self.open.y, self.open.x);
+        let depth = d.dot(self.open);
+        (-SOCKET_HALF_DEPTH..=SOCKET_HALF_DEPTH - 0.9).contains(&depth)
+            && d.dot(side).abs() <= SOCKET_HALF_WIDTH
+    }
+
+    /// Die drei Wände als Quader: Boden (gegenüber der Öffnung) und zwei Seiten.
+    pub fn walls(&self) -> [Poly; 3] {
+        let side = Vec2::new(-self.open.y, self.open.x);
+        let angle = f32::atan2(self.open.y, self.open.x);
+        let back = self.center - self.open * (SOCKET_HALF_DEPTH + SOCKET_WALL * 0.5);
+        let half_side = Vec2::new(SOCKET_HALF_DEPTH + SOCKET_WALL, SOCKET_WALL * 0.5);
+        let side_off = SOCKET_HALF_WIDTH + SOCKET_WALL * 0.5;
+        [
+            Poly::obb(
+                back,
+                Vec2::new(SOCKET_WALL * 0.5, SOCKET_HALF_WIDTH + SOCKET_WALL),
+                angle,
+            ),
+            Poly::obb(
+                self.center + side * side_off - self.open * (SOCKET_WALL * 0.5),
+                half_side,
+                angle,
+            ),
+            Poly::obb(
+                self.center - side * side_off - self.open * (SOCKET_WALL * 0.5),
+                half_side,
+                angle,
+            ),
+        ]
     }
 }
 
@@ -364,6 +475,10 @@ impl World {
                 ships_for_sale: sd.ships_for_sale.clone(),
                 stage: 0,
                 base_services: sd.services.clone(),
+                socket: sd.socket.map(|(off, deg)| Socket {
+                    center: pos + v(off),
+                    open: Vec2::new(deg.to_radians().cos(), deg.to_radians().sin()),
+                }),
             };
 
             for row in 0..h {
@@ -473,6 +588,11 @@ impl World {
                         continue;
                     }
                     col += 1;
+                }
+            }
+            if let Some(sock) = station.socket {
+                for q in sock.walls() {
+                    w.push_staged(q, Surface::Block, si, 0);
                 }
             }
             w.stations.push(station);
@@ -596,6 +716,7 @@ impl World {
                 angle: 0.0,
                 prev_angle: 0.0,
                 color: super::data::hex(&sp.color),
+                shape: sp.shape,
             });
         }
         for an in &wd.anomalies {

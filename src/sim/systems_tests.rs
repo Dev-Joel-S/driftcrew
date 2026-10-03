@@ -284,16 +284,18 @@ fn crane_rope_is_a_hard_length_limit() {
 fn heavy_haul_is_towed_and_completes_at_target() {
     let mut s = sim();
     let nova = s.data.station_index("nova").unwrap();
-    let kepler = s.data.station_index("kepler").unwrap();
+    // Ziel ohne Lastaufnahme: dort reicht die Nähe der Station.
+    let orion = s.data.station_index("werft").unwrap();
     let id = s.next_id();
     s.offers.push(Mission {
         id,
         kind: MissionKind::Haul {
             from: nova,
-            to: kepler,
+            to: orion,
             cargo: "Druckkessel".into(),
             mass: 9.0,
             body: None,
+            settle: 0.0,
         },
         reward: 300,
         origin: Some(Owner::Station(nova)),
@@ -315,8 +317,8 @@ fn heavy_haul_is_towed_and_completes_at_target() {
         MissionKind::Haul { body: Some(b), .. } => b,
         _ => panic!("Kiste fehlt"),
     };
-    // Kiste in die Nähe von Kepler bringen → Auftrag erfüllt.
-    let target = s.world.stations[kepler].pos + Vec2::new(0.0, 30.0);
+    // Kiste in die Nähe der Werft bringen → Auftrag erfüllt.
+    let target = s.world.stations[orion].pos + Vec2::new(0.0, 45.0);
     let credits = s.crew.credits;
     let b = s.bodies.iter_mut().find(|b| b.id == crate_id).unwrap();
     b.pos = target;
