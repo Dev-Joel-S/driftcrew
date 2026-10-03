@@ -104,7 +104,17 @@ impl SimState {
     }
 
     pub(crate) fn dock_at_station(&mut self, si: usize) {
-        let Some(&pad) = self.world.stations.get(si).and_then(|s| s.pads.first()) else {
+        // Die Plattform, die dem Zentrum der Station am nächsten liegt (meist die sicherste).
+        let Some(st) = self.world.stations.get(si) else { return };
+        let Some(&pad) = st
+            .pads
+            .iter()
+            .min_by(|a, b| {
+                let da = (self.world.pads[**a].center - st.pos).length();
+                let db = (self.world.pads[**b].center - st.pos).length();
+                da.total_cmp(&db)
+            })
+        else {
             return;
         };
         let p = self.world.pads[pad].clone();

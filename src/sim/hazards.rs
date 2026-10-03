@@ -314,3 +314,31 @@ impl SimState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sim::data::{CrewSave, GameData};
+    use crate::sim::ship::Loadout;
+    use crate::sim::TickInput;
+    use std::sync::Arc;
+
+    #[test]
+    fn asteroid_fields_stay_populated() {
+        let data = Arc::new(GameData::load().unwrap());
+        let save = CrewSave::new_game(&data);
+        let def = data.ship(&save.current_ship).clone();
+        let mut s = SimState::new(data.clone(), &save, Loadout::full(&def), 1);
+        for _ in 0..600 {
+            s.step(&TickInput::default());
+        }
+        let f = &data.world.asteroid_fields[0];
+        let c = Vec2::new(f.center.0, f.center.1);
+        let inside = s
+            .bodies
+            .iter()
+            .filter(|b| matches!(b.kind, BodyKind::Asteroid { field: 0, .. }) && (b.pos - c).length() < f.radius * 1.2)
+            .count();
+        assert!(inside as u32 > f.count * 3 / 4, "nur {inside} von {} Asteroiden im Feld", f.count);
+    }
+}

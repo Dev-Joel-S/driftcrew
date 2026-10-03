@@ -9,7 +9,7 @@ use super::{BodyKind, SimEvent, SimState, ToastKind, DT};
 
 const SLOP: f32 = 0.01;
 /// Aufprallgeschwindigkeit, ab der die Hülle Schaden nimmt.
-pub const SAFE_IMPACT: f32 = 4.5;
+pub const SAFE_IMPACT: f32 = 6.0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Dyn {
@@ -223,7 +223,7 @@ impl SimState {
                 let (e, mu) = match surface {
                     Surface::Pad(_) => (0.1, 0.9),
                     Surface::Planet(_) => (0.25, 0.7),
-                    Surface::Block => (0.35, 0.5),
+                    Surface::Block | Surface::Structure => (0.35, 0.5),
                 };
                 let imp = solve_contact(&mut stat, &mut d, c, e, mu, *sv, if iter == 0 { share } else { 0.0 });
                 if iter == 0 && imp > max_impact {
@@ -241,7 +241,7 @@ impl SimState {
             });
         }
         if max_impact > SAFE_IMPACT {
-            let dmg = (max_impact - SAFE_IMPACT) * 5.0;
+            let dmg = (max_impact - SAFE_IMPACT) * 3.6;
             self.ship_damage(dmg, impact_at.0, true);
         }
     }
@@ -310,7 +310,7 @@ impl SimState {
             }
             if impact > SAFE_IMPACT {
                 let factor = (bmass / self.ship.mass * 1.5).clamp(0.15, 1.0);
-                self.ship_damage((impact - SAFE_IMPACT) * 5.0 * factor, c.point, true);
+                self.ship_damage((impact - SAFE_IMPACT) * 3.6 * factor, c.point, true);
             }
         }
     }

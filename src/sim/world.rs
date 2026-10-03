@@ -57,6 +57,8 @@ pub enum Shape {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Surface {
     Block,
+    /// Kleine Bauten auf Planeten (Außenposten).
+    Structure,
     Pad(usize),
     Planet(usize),
 }
@@ -261,7 +263,19 @@ impl World {
                     }
                     if solid(ch) {
                         let start = col;
+                        col += 1;
                         while col < wcols && solid(at(col, row)) {
+                            let k = match at(col, row) {
+                                'X' => CellKind::Accent,
+                                'W' => CellKind::Window,
+                                _ => CellKind::Block,
+                            };
+                            station.cells.push(Cell {
+                                kind: k,
+                                center: center_of(col, row),
+                                col,
+                                row,
+                            });
                             col += 1;
                         }
                         let a = center_of(start, row);
@@ -358,7 +372,7 @@ impl World {
                 for side in [-1.0f32, 1.0] {
                     let t = Vec2::new(n.y, -n.x);
                     let c = pos + n * (pd.radius + 0.8) + t * side * 4.2;
-                    w.push_quad(Quad::obb(c, Vec2::new(1.1, 1.6), angle), Surface::Block);
+                    w.push_quad(Quad::obb(c, Vec2::new(1.1, 1.6), angle), Surface::Structure);
                 }
             }
             // Erzvorkommen gleichmäßig verteilt, mit etwas Zufall, nicht auf der Landestation.
@@ -450,4 +464,25 @@ pub fn angle_diff(a: f32, b: f32) -> f32 {
 /// Punkt auf einem Planetenrand.
 pub fn rim_point(p: &Planet, angle: f32, extra: f32) -> Vec2 {
     p.pos + rot(Vec2::X, angle) * (p.radius + extra)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_solid_cell_is_visible() {
+        let data = GameData::embedded().unwrap();
+        let w = World::build(&data, &mut Rng::new(1));
+        for (st, sd) in w.stations.iter().zip(&data.world.stations) {
+            let solid = sd
+                .layout
+                .iter()
+                .flat_map(|r| r.chars())
+                .filter(|c| matches!(c, '#' | 'X' | 'W'))
+                .count();
+            let cells = st.cells.iter().filter(|c| c.kind != CellKind::Light).count();
+            assert_eq!(solid, cells, "Station {}", st.id);
+        }
+    }
 }

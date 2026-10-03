@@ -52,7 +52,7 @@ impl Mission {
                 format!("{mass:.1} t Fracht, Abholung an {}", s.world.stations[*from].name)
             }
             MissionKind::Mining { ore, .. } => {
-                let have = s.ship.ore_amount(*ore);
+                let have = s.ship.ore_amount(*ore).max(0.0);
                 let source = s
                     .world
                     .planets
