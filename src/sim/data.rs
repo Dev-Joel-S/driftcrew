@@ -816,6 +816,9 @@ pub struct UpgradeDef {
     pub parts: u32,
     #[serde(default)]
     pub artifact: bool,
+    /// Nur bei dieser Person zu haben (Kennung aus npcs.ron) – an ihrem Ort.
+    #[serde(default)]
+    pub vendor: Option<String>,
 }
 
 fn default_tier() -> u8 {
@@ -978,6 +981,11 @@ pub struct MissionsDef {
     /// Messflüge (Orte stehen in `courses.ron`).
     #[serde(default)]
     pub survey: SurveyDef,
+    /// Geleitschutz und Schmuggel.
+    #[serde(default)]
+    pub escort: EscortDef,
+    #[serde(default)]
+    pub smuggle: SmuggleDef,
     pub distress_offers: u32,
     pub delivery_cargo: Vec<CargoTemplate>,
     pub reward_per_distance: f32,
@@ -1005,6 +1013,46 @@ impl Default for SurveyDef {
             seconds: 6.0,
             max_speed: 0.6,
             reward_per_field: 140.0,
+        }
+    }
+}
+
+/// Geleitschutz: Grundbelohnung und Namen der Frachter.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct EscortDef {
+    pub reward: f32,
+    pub names: Vec<String>,
+}
+
+impl Default for EscortDef {
+    fn default() -> Self {
+        EscortDef {
+            reward: 320.0,
+            names: vec!["Frachter".into()],
+        }
+    }
+}
+
+/// Schmuggel: Ware, Masse, Grundbelohnung, Strafe beim Erwischtwerden, Dauer eines Zollscans.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct SmuggleDef {
+    pub cargo: Vec<String>,
+    pub mass: P,
+    pub reward: f32,
+    pub fine: u32,
+    pub scan_time: f32,
+}
+
+impl Default for SmuggleDef {
+    fn default() -> Self {
+        SmuggleDef {
+            cargo: Vec::new(),
+            mass: (1.0, 3.0),
+            reward: 380.0,
+            fine: 250,
+            scan_time: 3.5,
         }
     }
 }
@@ -1159,6 +1207,97 @@ pub struct SurveySiteDef {
 }
 
 // ---------------------------------------------------------------------------
+// Verkehr: NPC-Schiffe (Frachter, Drohnen, Schürfroboter, Händlerin, Rivalen), Zoll
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct TrafficDef {
+    /// Wo NPC-Schiffe andocken: Plattform nächst `near`, Anflug über `via` (Wegpunkte).
+    pub docks: Vec<NpcDockDef>,
+    pub traders: Vec<TraderDef>,
+    pub nests: Vec<NestDef>,
+    pub miners: Vec<MinerDef>,
+    pub checkpoints: Vec<CheckpointDef>,
+    pub merchant: Option<MerchantDef>,
+    pub rival: Option<RivalDef>,
+    /// Konvoi-Aufträge: Schiff des Frachters, Zahl der Piraten im Hinterhalt.
+    pub convoy_ship: String,
+    pub ambush: u32,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct NpcDockDef {
+    pub station: String,
+    pub near: P,
+    #[serde(default)]
+    pub via: Vec<P>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct TraderDef {
+    pub name: String,
+    pub ship: String,
+    pub colors: (String, String),
+    pub route: Vec<String>,
+}
+
+/// Piratennest: so viele Drohnen, solange die Crew in der Nähe ist.
+#[derive(Deserialize, Clone, Debug)]
+pub struct NestDef {
+    pub name: String,
+    pub center: P,
+    pub radius: f32,
+    pub count: u32,
+}
+
+/// Schürfroboter: bauen in einem Asteroidenfeld ab und liefern an einer Station ab.
+#[derive(Deserialize, Clone, Debug)]
+pub struct MinerDef {
+    pub name: String,
+    pub field: String,
+    pub home: String,
+}
+
+/// Zollboje: scannt Schiffe in Reichweite (Schmuggelware).
+#[derive(Deserialize, Clone, Debug)]
+pub struct CheckpointDef {
+    pub name: String,
+    pub pos: P,
+    pub radius: f32,
+}
+
+/// Wiederkehrende Händlerin mit eigenem Schiff und Spezialsortiment.
+#[derive(Deserialize, Clone, Debug)]
+pub struct MerchantDef {
+    pub name: String,
+    pub ship: String,
+    pub colors: (String, String),
+    pub route: Vec<String>,
+    pub goods: Vec<GoodsDef>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct GoodsDef {
+    pub name: String,
+    pub price: u32,
+    /// Material ins Crew-Lager (Sorte, t) und/oder Bauteile.
+    #[serde(default)]
+    pub material: Option<(Ore, f32)>,
+    #[serde(default)]
+    pub parts: u32,
+}
+
+/// Rivalen-Crew mit eigenem Schiff: jagt dieselben Notrufe.
+#[derive(Deserialize, Clone, Debug)]
+pub struct RivalDef {
+    pub name: String,
+    pub ship: String,
+    pub colors: (String, String),
+    pub home: String,
+}
+
+// ---------------------------------------------------------------------------
 // Auftraggeber
 // ---------------------------------------------------------------------------
 
@@ -1179,6 +1318,10 @@ pub enum MissionType {
     Bulky,
     /// Messflug: in Messfeldern zur Ruhe kommen und eine Weile stillhalten.
     Survey,
+    /// Konvoi: einen NPC-Frachter sicher von A nach B bringen.
+    Escort,
+    /// Schmuggel: Ware an den Zollbojen vorbei zum Ziel bringen.
+    Smuggle,
 }
 
 /// Sperriges Bergungsobjekt: Länge (halbe), Dicke, Masse.
@@ -1368,6 +1511,7 @@ pub struct GameData {
     pub radio: RadioDef,
     pub courses: CoursesDef,
     pub modules: Vec<ModuleDef>,
+    pub traffic: TrafficDef,
 }
 
 const SHIPS_RON: &str = include_str!("../../assets/data/ships.ron");
@@ -1378,6 +1522,7 @@ const NPCS_RON: &str = include_str!("../../assets/data/npcs.ron");
 const RADIO_RON: &str = include_str!("../../assets/data/radio.ron");
 const COURSES_RON: &str = include_str!("../../assets/data/courses.ron");
 const MODULES_RON: &str = include_str!("../../assets/data/modules.ron");
+const TRAFFIC_RON: &str = include_str!("../../assets/data/traffic.ron");
 
 fn read_or(name: &str, embedded: &str) -> String {
     let path = std::path::Path::new("assets/data").join(name);
@@ -1400,6 +1545,7 @@ impl GameData {
             radio: parse("radio.ron", &read_or("radio.ron", RADIO_RON))?,
             courses: parse("courses.ron", &read_or("courses.ron", COURSES_RON))?,
             modules: parse("modules.ron", &read_or("modules.ron", MODULES_RON))?,
+            traffic: parse("traffic.ron", &read_or("traffic.ron", TRAFFIC_RON))?,
         };
         data.validate()?;
         Ok(data)
@@ -1417,6 +1563,7 @@ impl GameData {
             radio: parse("radio.ron", RADIO_RON)?,
             courses: parse("courses.ron", COURSES_RON)?,
             modules: parse("modules.ron", MODULES_RON)?,
+            traffic: parse("traffic.ron", TRAFFIC_RON)?,
         };
         data.validate()?;
         Ok(data)

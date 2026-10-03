@@ -26,6 +26,9 @@ pub enum Purchase {
     RemoveModule {
         mount: String,
     },
+    /// Sonderangebot der Händlerin (Index in `traffic.ron`, merchant.goods) – nur, wenn ihr
+    /// Schiff an derselben Station angedockt hat.
+    Goods(usize),
     /// Lackierung des aktuellen Schiffs ändern (`None` = zurück zum Werkslack).
     Paint {
         part: PaintPart,
@@ -247,6 +250,18 @@ impl SimState {
                     return Err(format!("{} hat keine Upgrade-Werkstatt", st.name));
                 }
                 let u = self.data.upgrade(id).ok_or("Unbekannt")?;
+                if let Some(vendor) = &u.vendor
+                    && !self.vendor_here(vendor)
+                {
+                    let who = self
+                        .data
+                        .npcs
+                        .iter()
+                        .find(|n| &n.id == vendor)
+                        .map(|n| n.name.clone())
+                        .unwrap_or_default();
+                    return Err(format!("Gibt es nur bei {who}"));
+                }
                 if self.crew.upgrades.contains(id) {
                     return Err("Bereits eingebaut".into());
                 }
@@ -349,6 +364,14 @@ impl SimState {
                     .map(|m| m.name.clone())
                     .unwrap_or_default();
                 (format!("{name} abbauen"), 0)
+            }
+            Purchase::Goods(i) => {
+                let m = self.data.traffic.merchant.as_ref().ok_or("Unbekannt")?;
+                let g = m.goods.get(*i).ok_or("Unbekannt")?;
+                if !self.merchant_here() {
+                    return Err(format!("{} ist gerade nicht hier", m.name));
+                }
+                (format!("{}: {}", m.name, g.name), g.price)
             }
             Purchase::Insurance(on) => {
                 if *on == self.crew.insured {
@@ -549,6 +572,21 @@ impl SimState {
             }
             Purchase::RepayLoan => {
                 self.crew.loan = None;
+            }
+            Purchase::Goods(i) => {
+                if let Some(g) = self
+                    .data
+                    .traffic
+                    .merchant
+                    .as_ref()
+                    .and_then(|m| m.goods.get(*i))
+                    .cloned()
+                {
+                    if let Some((ore, t)) = g.material {
+                        self.store_material(ore, t);
+                    }
+                    self.crew.storage_parts += g.parts;
+                }
             }
             Purchase::Insurance(on) => {
                 self.crew.insured = *on;

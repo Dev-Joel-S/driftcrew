@@ -15,7 +15,17 @@
         (Passengers, (1, 3)),
         (Bulky, (2, 4)),
         (Survey, (1, 3)),
+        (Escort, (2, 4)),
+        (Smuggle, (1, 3)),
     ],
+    // Geleitschutz: ein NPC-Frachter fliegt mit, unterwegs greifen Piratendrohnen an.
+    escort: (reward: 340.0, names: ["Frachter Albatros", "Frachter Lerche", "Frachter Reiher", "Frachter Zaunkönig"]),
+    // Schmuggel (Vex im Nebelhafen): Ware an den Zollbojen vorbei. Scan dauert scan_time
+    // Sekunden im Radius einer Boje; erwischt = Ware weg, Strafe, Ruf sinkt.
+    smuggle: (
+        cargo: ["Unverzollte Ionitkristalle", "Gefälschte Bordchips", "Schwarzmarkt-Medizin", "Nebelperlen"],
+        mass: (1.0, 3.0), reward: 420.0, fine: 250, scan_time: 3.5,
+    ),
     // Sperrige Bergung: passt in keinen Frachtraum, wird außen am Kran geschleppt und muss in
     // die Ablagezone der Station (Nova-Hub: durch die Ringöffnungen). Lange Teile pendeln,
     // wenn man sie am Ende greift. Angeboten wird nur, was das Schiff schaffen kann.

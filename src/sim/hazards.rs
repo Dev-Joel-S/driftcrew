@@ -364,6 +364,62 @@ impl SimState {
                     }
                 }
             }
+            // NPC-Schiffe (Drohnen treffen keine Drohnen) und – bei Piratenschüssen – die Crew.
+            let hostile = self.projectiles[pi].hostile;
+            let mut ship_hit: Option<(f32, Option<usize>)> = None;
+            for (ni, n) in self.npcs.iter().enumerate() {
+                if !n.alive
+                    || (hostile && n.hostile)
+                    || (n.ship.pos - from).length() > len + n.ship.bound_radius() + 1.0
+                {
+                    continue;
+                }
+                for q in n.ship.quads() {
+                    if let Some(t) = ray_poly(from, dir, len, &q)
+                        && ship_hit.is_none_or(|(ht, _)| t < ht)
+                    {
+                        ship_hit = Some((t, Some(ni)));
+                    }
+                }
+            }
+            if hostile
+                && !self.ship.destroyed
+                && self.ship.docked.is_none()
+                && (self.ship.pos - from).length() < len + self.ship.bound_radius() + 1.0
+            {
+                for q in self.ship.quads() {
+                    if let Some(t) = ray_poly(from, dir, len, &q)
+                        && ship_hit.is_none_or(|(ht, _)| t < ht)
+                    {
+                        ship_hit = Some((t, None));
+                    }
+                }
+            }
+            if let Some((st, who)) = ship_hit
+                && hit.is_none_or(|(ht, _)| st < ht)
+            {
+                let p = from + dir * st;
+                self.projectiles[pi].life = 0.0;
+                self.projectiles[pi].pos = p;
+                self.events.push(SimEvent::ProjectileHit { pos: p });
+                match who {
+                    Some(ni) => {
+                        let n = &mut self.npcs[ni].ship;
+                        n.vel += vel * (0.6 / n.mass);
+                        let dmg = if hostile {
+                            super::npc::DRONE_DAMAGE
+                        } else {
+                            super::npc::SHOT_DAMAGE_NPC
+                        };
+                        self.damage_npc(ni, dmg);
+                    }
+                    None => {
+                        self.ship.apply_impulse(vel * 0.6, p);
+                        self.ship_damage(super::npc::DRONE_DAMAGE, p, true);
+                    }
+                }
+                continue;
+            }
             let Some((t, target)) = hit else {
                 continue;
             };

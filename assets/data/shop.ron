@@ -65,6 +65,10 @@
         (id: "drill1", name: "Diamantbohrkopf", part: Drill, tier: 1, description: "Doppelt so schnell abbauen.", drawback: "+0,3 t je Bohrer", price: 380, effect: DrillRate(2.0), mass: 0.3, materials: [(Solarit, 2.0)]),
         (id: "tank1", name: "Zusatztank", part: Tank, tier: 1, description: "+50 % Treibstoff.", drawback: "+1,2 t hinten – der Schwerpunkt wandert Richtung Heck", price: 260, effect: FuelTank(0.5), mass: 1.2, materials: [(Ferrit, 3.0)]),
         (id: "drones", name: "Reparaturdrohnen", part: Systems, tier: 2, description: "Flicken die Hülle im Flug (0,5 pro Sekunde).", drawback: "+0,5 t im Rumpf", price: 680, effect: RepairDrones(0.5), mass: 0.5, materials: [(Kobalt, 3.0)], parts: 2),
+        // Nur beim Mechaniker Orsk (Werft Orion): Feintuning ohne Zusatzmasse, dafür teuer.
+        (id: "fein_schub", name: "Feintuning: Düsenabstimmung", vendor: Some("orsk"), part: Thrusters, tier: 1, description: "+8 % Schub – von Hand abgestimmt, ganz ohne Zusatzmasse.", price: 560, effect: ThrustMul(1.08), materials: [(Kobalt, 1.0)], parts: 1),
+        (id: "fein_spar", name: "Feintuning: Einspritzung", vendor: Some("orsk"), part: Thrusters, tier: 1, description: "−12 % Treibstoffverbrauch ohne Zusatzmasse.", price: 420, effect: FuelBurn(0.88), parts: 1),
+        (id: "fein_seil", name: "Feintuning: Seilwinde", vendor: Some("orsk"), part: Crane, tier: 1, description: "Seil hält 20 % mehr aus, ohne Zusatzmasse.", price: 380, effect: CraneLoad(1.2), parts: 1),
         (id: "scan1", name: "Weitbereichsscanner", part: Scanner, tier: 1, description: "+60 % Scanner-Reichweite.", drawback: "+0,2 t je Scanner", price: 300, effect: ScanRange(1.6), mass: 0.2, materials: [(Ionit, 1.0)]),
     ],
     ore_prices: [

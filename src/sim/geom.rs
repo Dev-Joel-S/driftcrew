@@ -51,6 +51,44 @@ impl Aabb {
     pub fn contains(&self, p: Vec2) -> bool {
         p.x >= self.min.x && p.x <= self.max.x && p.y >= self.min.y && p.y <= self.max.y
     }
+    /// Schneidet die Strecke a→b die Box? (Slab-Test)
+    pub fn hits_segment(&self, a: Vec2, b: Vec2) -> bool {
+        self.segment_entry(a, b).is_some()
+    }
+    /// Wo (0..1 entlang a→b) die Strecke in die Box eintritt.
+    pub fn segment_entry(&self, a: Vec2, b: Vec2) -> Option<f32> {
+        let d = b - a;
+        let (mut t0, mut t1) = (0.0f32, 1.0f32);
+        for (o, dd, lo, hi) in [
+            (a.x, d.x, self.min.x, self.max.x),
+            (a.y, d.y, self.min.y, self.max.y),
+        ] {
+            if dd.abs() < 1e-6 {
+                if o < lo || o > hi {
+                    return None;
+                }
+                continue;
+            }
+            let (mut ta, mut tb) = ((lo - o) / dd, (hi - o) / dd);
+            if ta > tb {
+                std::mem::swap(&mut ta, &mut tb);
+            }
+            t0 = t0.max(ta);
+            t1 = t1.min(tb);
+            if t0 > t1 {
+                return None;
+            }
+        }
+        Some(t0)
+    }
+    pub fn corners(&self) -> [Vec2; 4] {
+        [
+            self.min,
+            Vec2::new(self.max.x, self.min.y),
+            self.max,
+            Vec2::new(self.min.x, self.max.y),
+        ]
+    }
 }
 
 pub const MAX_VERTS: usize = 8;

@@ -1,0 +1,58 @@
+// Verkehr: NPC-Schiffe mit derselben Physik wie die Crew. Sie fliegen mit zwei Triebwerken
+// über den Autopiloten (wie eine Zwei-Personen-Crew) und docken an echten Plattformen an.
+//   docks:       wo NPCs andocken – die Plattform am nächsten zu `near`, Anflug über `via`
+//                (Wegpunkte von außen nach innen; beim Abflug rückwärts)
+//   traders:     Frachter, die ihre Route abfliegen (Stationskennungen)
+//   nests:       Piratennester – so viele Drohnen, solange die Crew in der Nähe ist
+//   miners:      Schürfroboter: bauen in einem Feld ab und liefern an `home`
+//   checkpoints: Zollbojen – scannen Schiffe mit Schmuggelware in ihrem Radius
+//   merchant:    wiederkehrende Händlerin mit Spezialsortiment (Material/Bauteile ins Crew-Lager)
+//   rival:       Rivalen-Crew, die dieselben Notrufe jagt
+//   convoy_ship: Schiff der Geleitschutz-Frachter, ambush: Drohnen im Hinterhalt
+(
+    docks: [
+        (station: "nova",   near: (22.0, 0.0),     via: [(118.0, 6.0), (52.0, 8.0)]),
+        (station: "nova",   near: (-22.0, 0.0),    via: [(-118.0, 6.0), (-52.0, 8.0)]),
+        (station: "kepler", near: (1228.0, -248.0), via: [(1200.0, -205.0)]),
+        (station: "kepler", near: (1272.0, -264.0), via: [(1300.0, -215.0)]),
+        (station: "vega",   near: (2014.0, 142.0),  via: [(1990.0, 190.0)]),
+        (station: "vega",   near: (2086.0, 142.0),  via: [(2110.0, 190.0)]),
+        (station: "vega",   near: (2034.0, 158.0),  via: [(2034.0, 205.0)]),
+        // Werft Orion: durch die seitlichen Hallentore hinein.
+        (station: "werft",  near: (-1202.0, 362.0), via: [(-1262.0, 386.0), (-1222.0, 386.0)]),
+        (station: "werft",  near: (-1098.0, 362.0), via: [(-1038.0, 386.0), (-1078.0, 386.0)]),
+    ],
+    traders: [
+        (name: "Möwe",    ship: "lastesel",    colors: ("#9ea4aa", "#3f7fbf"), route: ["nova", "kepler", "vega"]),
+        (name: "Kranich", ship: "driftkutter", colors: ("#d8d2c4", "#2f8f6f"), route: ["werft", "nova", "kepler"]),
+    ],
+    nests: [
+        (name: "Nebelpiraten",  center: (1380.0, -1060.0), radius: 200.0, count: 3),
+        (name: "Schlundpiraten", center: (-1450.0, -760.0), radius: 200.0, count: 2),
+    ],
+    miners: [
+        (name: "Schürfer K-1", field: "Kobaltschwarm", home: "kepler"),
+        (name: "Schürfer K-2", field: "Kobaltschwarm", home: "kepler"),
+    ],
+    checkpoints: [
+        (name: "Zollboje Nova",   pos: (128.0, -111.0),  radius: 90.0),
+        (name: "Zollboje Kepler", pos: (1298.0, -402.0), radius: 80.0),
+        (name: "Zollboje Vega",   pos: (2012.0, 5.0),    radius: 80.0),
+    ],
+    merchant: Some((
+        name: "Juno",
+        ship: "pelikan",
+        colors: ("#c9a24a", "#7a2f6b"),
+        route: ["kepler", "vega", "nova", "werft"],
+        goods: [
+            (name: "Ferrit-Barren (8 t)",    price: 55,  material: Some((Ferrit, 8.0))),
+            (name: "Kobalt-Ballen (6 t)",    price: 70,  material: Some((Kobalt, 6.0))),
+            (name: "Solarit-Kiste (4 t)",    price: 70,  material: Some((Solarit, 4.0))),
+            (name: "Ionit-Phiolen (3 t)",    price: 75,  material: Some((Ionit, 3.0))),
+            (name: "Kiste Bauteile (2)",     price: 120, parts: 2),
+        ],
+    )),
+    rival: Some((name: "Crew Kestrel", ship: "hornisse", colors: ("#2a2f36", "#e04a2a"), home: "vega")),
+    convoy_ship: "lastesel",
+    ambush: 3,
+)

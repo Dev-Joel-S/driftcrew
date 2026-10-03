@@ -1,10 +1,12 @@
-//! Einfacher Autopilot für Tests und Vorführungen: steuert nur mit den beiden äußersten
-//! Triebwerken (links/rechts), wie eine Zwei-Personen-Crew.
+//! Einfacher Autopilot: steuert nur mit den beiden äußersten Triebwerken (links/rechts), wie
+//! eine Zwei-Personen-Crew. Fliegt die NPC-Schiffe und hilft in Tests und Vorführungen.
 
 use bevy::math::Vec2;
 
+#[cfg(test)]
 use super::SimState;
 use super::geom::forward;
+use super::ship::Ship;
 use super::world::angle_diff;
 
 pub struct Autopilot {
@@ -20,8 +22,13 @@ impl Default for Autopilot {
 impl Autopilot {
     /// Slot-Bitmaske für einen Tick, um `target` zu erreichen. Mit `landing` wird
     /// vorsichtig angeflogen und mit der Nase Richtung `up` aufgesetzt.
+    #[cfg(test)]
     pub fn steer(&self, sim: &SimState, target: Vec2, up: Vec2, landing: bool) -> u32 {
-        let ship = &sim.ship;
+        self.steer_ship(&sim.ship, target, up, landing)
+    }
+
+    /// Wie [`Autopilot::steer`], für ein beliebiges Schiff (NPCs fliegen genauso).
+    pub fn steer_ship(&self, ship: &Ship, target: Vec2, up: Vec2, landing: bool) -> u32 {
         if ship.thrusters.len() < 2 {
             return 0;
         }

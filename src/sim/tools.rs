@@ -164,6 +164,7 @@ impl SimState {
             prev_pos: mount + dir * 0.6,
             vel,
             life: 1.6,
+            hostile: false,
         });
         self.ship.apply_impulse(-dir * SHOT_RECOIL, mount);
         self.ship.ammo -= 1;

@@ -49,6 +49,11 @@ impl SimState {
         self.crew.storage[ore_index(ore)]
     }
 
+    /// Material direkt ins Crew-Lager legen (Händlerin, Belohnungen).
+    pub(crate) fn store_material(&mut self, ore: Ore, t: f32) {
+        self.crew.storage[ore_index(ore)] += t;
+    }
+
     /// Reicht es? Ok oder der erste fehlende Posten.
     pub fn can_afford(&self, cost: &Cost) -> Result<(), String> {
         if self.crew.credits < cost.credits {

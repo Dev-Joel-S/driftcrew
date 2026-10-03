@@ -1,13 +1,13 @@
 // Auftraggeber an Stationen und Planeten-Außenposten.
 //   at:    Kennung einer Station (world.ron, stations) oder eines Planeten (world.ron, planets)
 //   gives: welche Aufträge die Person vergibt (Delivery, Haul, Mining, Shipment, Passengers,
-//          Bulky, Survey)
+//          Bulky, Survey, Escort, Smuggle; doppelt = häufiger), leer = vergibt keine Aufträge
 //   look:  Farben für das Porträt im Stationsmenü
 //   lines: Sprüche, einer wird pro Besuch angezeigt
 [
     (
         id: "mara", name: "Mara Okonkwo", role: "Frachtmeisterin", at: "nova",
-        gives: [Delivery, Haul, Bulky],
+        gives: [Delivery, Haul, Bulky, Escort],
         look: (skin: "#8d5a3b", hair: "#1c1a1a", suit: "#c4602c"),
         lines: [
             "Fracht wartet nicht. Ihr hoffentlich auch nicht.",
@@ -36,7 +36,7 @@
     ),
     (
         id: "selin", name: "Selin Aydın", role: "Logistik", at: "kepler",
-        gives: [Delivery, Mining, Survey],
+        gives: [Delivery, Mining, Survey, Escort],
         look: (skin: "#c69276", hair: "#2b1d16", suit: "#14b8a6"),
         lines: [
             "Kepler liegt am Rand. Alles, was ihr bringt, wird gebraucht.",
@@ -100,12 +100,24 @@
     ),
     (
         id: "vex", name: "Vex Moreau", role: "Hehlerin", at: "nebelhafen",
-        gives: [Delivery, Haul],
+        gives: [Delivery, Haul, Smuggle, Smuggle],
         look: (skin: "#d1a07e", hair: "#7a1f4d", suit: "#2b2838"),
         lines: [
             "Wer reinkommt, ohne Alarm auszulösen, kriegt hier gute Preise.",
             "Ionit kaufe ich zu jedem Kurs. Fragen stelle ich keine.",
             "Der Port merkt sich nicht, wer ihr seid. Nur, ob ihr die Reihenfolge könnt.",
+            "Die Zollbojen scannen nur, wer lange genug bleibt. Also bleibt nicht.",
+        ],
+    ),
+    (
+        // Mechaniker in der Werft Orion: verkauft eigene Feintuning-Upgrades (shop.ron, vendor).
+        id: "orsk", name: "Orsk Valtonen", role: "Mechaniker", at: "werft",
+        gives: [],
+        look: (skin: "#d6a689", hair: "#8a8a8a", suit: "#5a4a3a"),
+        lines: [
+            "Ab Werk ist nichts richtig eingestellt. Gebt mir zehn Minuten.",
+            "Mehr Schub ohne mehr Gewicht? Geht. Kostet halt.",
+            "Wer seine Düsen nicht hört, hört sie irgendwann gar nicht mehr.",
         ],
     ),
 ]

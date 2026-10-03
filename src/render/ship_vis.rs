@@ -21,6 +21,8 @@ pub struct ShipModelOpts {
     pub hull: Option<[f32; 3]>,
     pub accent: Option<[f32; 3]>,
     pub flame: Option<[f32; 3]>,
+    /// NPC-Schiff: Flammen in dieser Farbe (ohne Slotringe), Kennung für die Zuordnung.
+    pub npc: Option<(u32, [f32; 3])>,
 }
 
 /// Lackierung der Crew für das aktuelle Schiff als Farben.
@@ -45,6 +47,8 @@ pub struct ShipVis {
 
 #[derive(Component)]
 pub struct FlameVis {
+    /// None = Crew-Schiff, sonst die Kennung des NPC-Schiffs.
+    pub owner: Option<u32>,
     pub thruster: usize,
     pub core: bool,
     pub len: f32,
@@ -321,6 +325,8 @@ pub fn spawn_ship_model(
             .unwrap_or(Vec2::splat(0.22));
         let col = if opts.slot_colors {
             slot_color(t.slot)
+        } else if let Some((_, c)) = opts.npc {
+            srgb(c)
         } else {
             srgb([0.6, 0.65, 0.7])
         };
@@ -338,19 +344,22 @@ pub fn spawn_ship_model(
                 ))
                 .id(),
         );
-        if opts.slot_colors {
-            // Schmaler Kennring in Slotfarbe (das einzige Leuchten am Rumpf).
-            let ring_mat = mats.add(art.emissive_mat(col, 1.4));
-            let ring = art.bevel_box(meshes, Vec3::new(half.x * 2.04, 0.07, 1.04));
-            children.push(
-                commands
-                    .spawn((
-                        Mesh3d(ring),
-                        MeshMaterial3d(ring_mat),
-                        Transform::from_xyz(t.pos.x, t.pos.y + half.y * 0.2, -0.1),
-                    ))
-                    .id(),
-            );
+        if opts.slot_colors || opts.npc.is_some() {
+            if opts.slot_colors {
+                // Schmaler Kennring in Slotfarbe (das einzige Leuchten am Rumpf).
+                let ring_mat = mats.add(art.emissive_mat(col, 1.4));
+                let ring = art.bevel_box(meshes, Vec3::new(half.x * 2.04, 0.07, 1.04));
+                children.push(
+                    commands
+                        .spawn((
+                            Mesh3d(ring),
+                            MeshMaterial3d(ring_mat),
+                            Transform::from_xyz(t.pos.x, t.pos.y + half.y * 0.2, -0.1),
+                        ))
+                        .id(),
+                );
+            }
+            let owner = opts.npc.map(|(id, _)| id);
             let flame_len = 2.3;
             // Eigene Flammenfarbe außen, der Kern behält die Slotfarbe.
             let fcol = opts.flame.map(srgb).unwrap_or(col);
@@ -381,6 +390,7 @@ pub fn spawn_ship_model(
                                 .with_rotation(Quat::from_rotation_z(std::f32::consts::PI))
                                 .with_scale(Vec3::new(r, 0.01, r)),
                             FlameVis {
+                                owner,
                                 thruster: ti,
                                 core: core_flag,
                                 len: flame_len * if core_flag { 0.55 } else { 1.0 },
@@ -399,6 +409,7 @@ pub fn spawn_ship_model(
                         MeshMaterial3d(outer),
                         Transform::from_xyz(tip.x, tip.y - 0.3, 0.7).with_scale(Vec3::splat(0.01)),
                         FlameVis {
+                            owner,
                             thruster: ti,
                             core: false,
                             len: -1.0,
@@ -697,6 +708,7 @@ pub fn sync_ship(
                 hull,
                 accent,
                 flame,
+                npc: None,
             },
         );
         commands.entity(e).insert(ShipVis { sig });
@@ -716,6 +728,9 @@ pub fn sync_ship(
     let tsec = time.elapsed_secs();
     let mut total = 0.0;
     for (f, mut t) in &mut flames {
+        if f.owner.is_some() {
+            continue;
+        }
         let Some(th) = ship.thrusters.get(f.thruster) else {
             continue;
         };
@@ -741,7 +756,7 @@ pub fn sync_ship(
     }
     // Kegel-Mitte so verschieben, dass die Basis an der Düse bleibt.
     for (f, mut t) in &mut flames {
-        if f.len < 0.0 {
+        if f.len < 0.0 || f.owner.is_some() {
             continue;
         }
         let Some(th) = ship.thrusters.get(f.thruster) else {
@@ -1250,12 +1265,18 @@ pub fn sync_projectiles(
         if p.life <= 0.0 || maps.projectiles.contains_key(&p.id) {
             continue;
         }
+        // Piratenschüsse rot, die der Crew warmweiß.
+        let (core, halo) = if p.hostile {
+            (LinearRgba::rgb(16.0, 2.0, 1.5), Color::srgb(1.0, 0.2, 0.15))
+        } else {
+            (LinearRgba::rgb(14.0, 10.0, 4.0), Color::srgb(1.0, 0.8, 0.3))
+        };
         let bolt = mats.add(StandardMaterial {
-            base_color: Color::LinearRgba(LinearRgba::rgb(14.0, 10.0, 4.0)),
+            base_color: Color::LinearRgba(core),
             unlit: true,
             ..default()
         });
-        let glow = art.glow_mat(&mut mats, Color::srgb(1.0, 0.8, 0.3), 3.0);
+        let glow = art.glow_mat(&mut mats, halo, 3.0);
         let e = commands
             .spawn((
                 Mesh3d(art.capsule.clone()),

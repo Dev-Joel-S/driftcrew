@@ -7,7 +7,6 @@
 //!
 //! Die Simulation weiß nicht, wer gedrückt hat – nur welcher Slot.
 
-#[cfg(test)]
 pub mod autopilot;
 pub mod course;
 #[cfg(test)]
@@ -25,6 +24,9 @@ pub mod minigame;
 #[cfg(test)]
 mod minigame_tests;
 pub mod missions;
+pub mod npc;
+#[cfg(test)]
+mod npc_tests;
 pub mod physics;
 pub mod precision;
 #[cfg(test)]
@@ -237,6 +239,16 @@ pub enum SimEvent {
     HackStarted,
     HackDone,
     Alarm,
+    /// Die Rivalen-Crew hat einen Notruf übernommen; eine Piratendrohne ist zerstört.
+    RivalTook,
+    DroneDown {
+        pos: Vec2,
+    },
+    /// Zoll: Scan gestartet, Schmuggelware entdeckt.
+    CustomsScan {
+        pos: Vec2,
+    },
+    Busted,
 }
 
 /// Markierung eines Crewmitglieds (Ping), verblasst nach [`PING_SECONDS`].
@@ -390,6 +402,8 @@ pub struct Projectile {
     pub prev_pos: Vec2,
     pub vel: Vec2,
     pub life: f32,
+    /// Von einer Piratendrohne abgefeuert (trifft die Crew und Konvois, nicht Drohnen).
+    pub hostile: bool,
 }
 
 /// Rettungskapsel der Crew, nachdem das Schiff zerstört wurde (fliegt bis zur Bergung).
@@ -506,6 +520,13 @@ pub struct SimState {
     pub hack: Option<minigame::Hack>,
     pub unlocked: Vec<f32>,
     pub hack_lockout: Vec<f32>,
+    /// NPC-Schiffe mit eigener Physik, ihre Andockplätze, Punkte der Rivalen-Crew,
+    /// Abklingzeit der Piratennester, laufender Zollscan.
+    pub npcs: Vec<npc::Npc>,
+    pub npc_docks: Vec<npc::NpcDock>,
+    pub rival_score: u32,
+    pub nest_cooldown: Vec<f32>,
+    pub customs: Option<npc::CustomsScan>,
 }
 
 impl SimState {
@@ -613,6 +634,11 @@ impl SimState {
             hack: None,
             unlocked: vec![0.0; n_stations],
             hack_lockout: vec![0.0; n_stations],
+            npcs: Vec::new(),
+            npc_docks: Vec::new(),
+            rival_score: 0,
+            nest_cooldown: Vec::new(),
+            customs: None,
         };
         s.load_projects(save);
         s.load_records(save);
@@ -622,6 +648,8 @@ impl SimState {
         s.populate_wrecks();
         s.refresh_offers();
         s.dock_at_station(home);
+        s.nest_cooldown = vec![0.0; s.data.traffic.nests.len()];
+        s.spawn_traffic();
         s.events.clear();
         s
     }
@@ -758,6 +786,7 @@ impl SimState {
         self.apply_forces();
         self.integrate();
         self.collide();
+        self.update_npcs();
         self.update_projectiles();
         if !self.ship.destroyed {
             self.update_docking(input);

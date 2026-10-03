@@ -29,6 +29,7 @@ impl Plugin for OverlayPlugin {
                 draw_survey_and_sockets,
                 draw_repair_marks,
                 draw_mounts,
+                draw_traffic,
             )
                 .run_if(in_state(AppState::Playing)),
         );
@@ -646,5 +647,89 @@ fn draw_mounts(
                 );
             }
         }
+    }
+}
+
+/// Verkehr: Leitstrahlen der Stationen, Bohrstrahlen der Schürfroboter, Zollbojen (Radius und
+/// Scanfortschritt), Gefahrenzone um Piratennester.
+fn draw_traffic(
+    sim: Res<Sim>,
+    time: Res<Time>,
+    fixed: Res<Time<Fixed>>,
+    map: Res<MapOpen>,
+    mut gizmos: Gizmos,
+) {
+    if map.0 {
+        return;
+    }
+    let s = &sim.0;
+    let t = time.elapsed_secs();
+    let alpha = fixed.overstep_fraction();
+    let me = s.ship.pos;
+    for n in s.npcs.iter().filter(|n| n.alive) {
+        let pos = n.ship.prev_pos.lerp(n.ship.pos, alpha);
+        if (pos - me).length() > 260.0 {
+            continue;
+        }
+        if let Some(pad) = n.in_tractor() {
+            let p = &s.world.pads[pad];
+            let from = p.center + p.normal * 0.4;
+            let side = p.tangent() * 1.2;
+            for k in -1..=1 {
+                let a = 0.25 + 0.15 * (t * 4.0 + k as f32).sin();
+                gizmos.line(
+                    (from + side * k as f32).extend(Z),
+                    (pos + side * 0.5 * k as f32).extend(Z),
+                    Color::srgba(0.3, 0.9, 1.0, a),
+                );
+            }
+        }
+        if let Some(rock) = n.drilling {
+            let nose = pos + rot(Vec2::Y, n.ship.angle) * 1.2;
+            let a = 0.6 + 0.3 * (t * 20.0).sin();
+            gizmos.line(
+                nose.extend(Z),
+                rock.extend(Z),
+                Color::srgba(1.0, 0.7, 0.2, a),
+            );
+        }
+    }
+    let smuggling = s.contraband().is_some();
+    for (ci, cp) in s.data.traffic.checkpoints.iter().enumerate() {
+        let c = Vec2::new(cp.pos.0, cp.pos.1);
+        if (c - me).length() > cp.radius + 300.0 {
+            continue;
+        }
+        let scanning = s.customs.as_ref().filter(|x| x.checkpoint == ci);
+        let col = match (scanning, smuggling) {
+            (Some(_), _) => Color::srgba(1.0, 0.2, 0.15, 0.8 + 0.2 * (t * 10.0).sin()),
+            (None, true) => Color::srgba(1.0, 0.7, 0.15, 0.7),
+            (None, false) => Color::srgba(1.0, 0.75, 0.2, 0.22),
+        };
+        dashed_circle(&mut gizmos, c, cp.radius, col, t * 0.1);
+        if let Some(sc) = scanning {
+            arc(
+                &mut gizmos,
+                c,
+                cp.radius - 3.0,
+                sc.progress,
+                Color::srgb(1.0, 0.25, 0.2),
+            );
+            // Scanstrahl zur Crew.
+            gizmos.line(c.extend(Z), me.extend(Z), Color::srgba(1.0, 0.3, 0.2, 0.5));
+        }
+    }
+    for n in &s.data.traffic.nests {
+        let c = Vec2::new(n.center.0, n.center.1);
+        if (c - me).length() > n.radius + 500.0 {
+            continue;
+        }
+        dashed_circle(
+            &mut gizmos,
+            c,
+            n.radius,
+            Color::srgba(1.0, 0.15, 0.1, 0.25),
+            -t * 0.05,
+        );
     }
 }

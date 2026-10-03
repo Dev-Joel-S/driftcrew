@@ -3,6 +3,7 @@
 pub mod course_vis;
 pub mod fx;
 pub mod meshes;
+pub mod npc_vis;
 pub mod overlay;
 pub mod ship_vis;
 pub mod textures;
@@ -35,6 +36,7 @@ impl Plugin for RenderPlugin {
             })
             .init_resource::<CameraRig>()
             .init_resource::<ship_vis::VisMaps>()
+            .init_resource::<npc_vis::NpcMap>()
             .add_systems(PreStartup, setup_art)
             .add_systems(
                 Startup,
@@ -44,6 +46,7 @@ impl Plugin for RenderPlugin {
                     course_vis::spawn_course_vis,
                     world_vis::spawn_background,
                     world_vis::spawn_dust,
+                    npc_vis::spawn_traffic_props,
                 ),
             )
             .add_systems(
@@ -54,6 +57,7 @@ impl Plugin for RenderPlugin {
                     world_vis::update_dust,
                     world_vis::update_dynamic_world,
                     ship_vis::sync_ship,
+                    npc_vis::sync_npcs,
                     ship_vis::sync_bodies,
                     ship_vis::sync_projectiles,
                     ship_vis::sync_tools,

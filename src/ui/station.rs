@@ -50,6 +50,7 @@ enum Tab {
     Project,
     Courses,
     Build,
+    Merchant,
 }
 
 impl Tab {
@@ -64,6 +65,7 @@ impl Tab {
             Tab::Project => "Aufbau",
             Tab::Courses => "Parcours",
             Tab::Build => "Bau",
+            Tab::Merchant => "Händlerin",
         }
     }
 }
@@ -464,6 +466,10 @@ fn tabs_for(sim: &SimState) -> Vec<Tab> {
             if !courses_here(sim).is_empty() {
                 v.push(Tab::Courses);
             }
+            // Die Händlerin hat hier angedockt: ihr Sonderangebot.
+            if sim.merchant_here() {
+                v.push(Tab::Merchant);
+            }
             v
         }
         Some(Owner::Planet(_)) if sim.landed_in_zone() => Vec::new(),
@@ -533,10 +539,23 @@ fn items_for(sim: &SimState, tab: Tab, sel: &Option<String>) -> Vec<Item<Act>> {
         }
         Tab::Upgrades => {
             for u in &sim.data.shop.upgrades {
+                // Feintuning gibt es nur dort, wo die Person arbeitet.
+                let vendor = u
+                    .vendor
+                    .as_ref()
+                    .and_then(|id| sim.data.npcs.iter().find(|n| &n.id == id));
+                if let Some(vn) = vendor
+                    && !sim.vendor_here(&vn.id)
+                {
+                    continue;
+                }
                 let p = Purchase::Upgrade(u.id.clone());
                 let owned = sim.crew.upgrades.contains(&u.id);
                 let tier = ["", "I", "II", "III"][u.tier.min(3) as usize];
-                let name = format!("{} · {}", u.part.label(), u.name);
+                let name = match vendor {
+                    Some(vn) => format!("{} · {} (nur bei {})", u.part.label(), u.name, vn.name),
+                    None => format!("{} · {}", u.part.label(), u.name),
+                };
                 let cost = crate::sim::economy::upgrade_cost(u);
                 let info = if u.drawback.is_empty() {
                     format!("Stufe {tier} · {}", u.description)
@@ -666,6 +685,32 @@ fn items_for(sim: &SimState, tab: Tab, sel: &Option<String>) -> Vec<Item<Act>> {
         Tab::Project => project_items(sim, &mut v),
         Tab::Courses => course_items(sim, &mut v),
         Tab::Build => build_items(sim, sel, &mut v),
+        Tab::Merchant => {
+            if let Some(m) = &sim.data.traffic.merchant {
+                v.push(
+                    Item::new(format!("{} ist mit ihrem Schiff hier", m.name), Act::Undock)
+                        .detail(format!(
+                            "Sonderposten direkt ins Crew-Lager – nur solange sie angedockt hat. {}",
+                            storage_line(sim)
+                        ))
+                        .enabled(false),
+                );
+                for (i, g) in m.goods.iter().enumerate() {
+                    let p = Purchase::Goods(i);
+                    let what = match (g.material, g.parts) {
+                        (Some((o, t)), 0) => format!("{t:.0} t {} ins Lager", o.label()),
+                        (Some((o, t)), n) => format!("{t:.0} t {} und {n} Bauteile", o.label()),
+                        (None, n) => format!("{n} Bauteile ins Lager"),
+                    };
+                    let it = Item::new(g.name.clone(), Act::Buy(p.clone()))
+                        .right(format!("{} Cr", g.price));
+                    v.push(match price_or(&p) {
+                        Ok(_) => it.detail(what),
+                        Err(reason) => it.detail(format!("{what} – {reason}")).enabled(false),
+                    });
+                }
+            }
+        }
         Tab::Paint => {
             use crate::render::srgb;
             use crate::sim::data::hex;
@@ -764,7 +809,9 @@ fn items_for(sim: &SimState, tab: Tab, sel: &Option<String>) -> Vec<Item<Act>> {
                         here == Some(Owner::Station(*from)) && has_crane
                     }
                     MissionKind::Bulky { mass, .. } => sim.bulky_feasible(*mass).is_ok(),
-                    MissionKind::Passengers { from, .. } => here == Some(Owner::Station(*from)),
+                    MissionKind::Passengers { from, .. }
+                    | MissionKind::Escort { from, .. }
+                    | MissionKind::Smuggle { from, .. } => here == Some(Owner::Station(*from)),
                     _ => true,
                 } && sim.active.len() < crate::sim::missions::MAX_ACTIVE;
                 let detail = match &m.kind {
@@ -806,6 +853,15 @@ fn items_for(sim: &SimState, tab: Tab, sel: &Option<String>) -> Vec<Item<Act>> {
                     MissionKind::Capsules { .. } => {
                         "Kapseln einsammeln (Kran oder sanft berühren) und abliefern.".into()
                     }
+                    MissionKind::Escort { .. } => {
+                        "Frachter legt mit euch ab – unterwegs lauern Piratendrohnen. Abfangen, bevor sie ihn zerlegen."
+                            .into()
+                    }
+                    MissionKind::Smuggle { mass, .. } => format!(
+                        "{mass:.1} t heiße Ware im Frachtraum – Zollbojen ({:.0} s Scan) im Bogen umfliegen oder schnell durch. Erwischt: Ware weg, {} Cr Strafe",
+                        sim.data.missions.smuggle.scan_time,
+                        sim.data.missions.smuggle.fine
+                    ),
                     MissionKind::Survey { sites, .. } => {
                         let sd = &sim.data.missions.survey;
                         let names: Vec<&str> = sites

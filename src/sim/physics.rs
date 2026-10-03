@@ -3,8 +3,8 @@
 use bevy::math::Vec2;
 
 use super::geom::{Aabb, Contact, circle_circle, cross, cross_sv, poly_circle, poly_poly};
-use super::ship::CargoKind;
-use super::world::{Shape, Surface};
+use super::ship::{CargoKind, Ship};
+use super::world::{Shape, Surface, World};
 use super::{BodyKind, DT, SimEvent, SimState, ToastKind};
 
 const SLOP: f32 = 0.01;
@@ -203,86 +203,11 @@ impl SimState {
     }
 
     fn collide_ship_static(&mut self) {
-        let quads = self.ship.quads();
-        let bound = Aabb::around(self.ship.pos, self.ship.bound_radius() + 0.5);
-        // (Kontakt, Oberflächengeschwindigkeit, Oberfläche)
-        let mut contacts: Vec<(Contact, Vec2, Surface)> = Vec::new();
-        let mut tmp = Vec::new();
-        for col in &self.world.colliders {
-            if !col.enabled || !col.aabb.overlaps(&bound) {
-                continue;
-            }
-            for q in &quads {
-                match col.shape {
-                    Shape::Poly(sq) => {
-                        tmp.clear();
-                        poly_poly(&sq, q, &mut tmp);
-                        for c in &tmp {
-                            contacts.push((*c, Vec2::ZERO, col.surface));
-                        }
-                    }
-                    Shape::Circle { c, r } => {
-                        if let Some(ct) = poly_circle(q, c, r) {
-                            contacts.push((
-                                Contact {
-                                    point: ct.point,
-                                    normal: -ct.normal,
-                                    depth: ct.depth,
-                                },
-                                Vec2::ZERO,
-                                col.surface,
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-        for (si, sp) in self.world.spinners.iter().enumerate() {
-            if (sp.pos - self.ship.pos).length() > sp.reach() + self.ship.bound_radius() + 1.0 {
-                continue;
-            }
-            for arm in sp.quads() {
-                for q in &quads {
-                    tmp.clear();
-                    poly_poly(&arm, q, &mut tmp);
-                    for c in &tmp {
-                        let v = self.world.spinner_velocity(si, c.point);
-                        contacts.push((*c, v, Surface::Block));
-                    }
-                }
-            }
-        }
+        let contacts = static_contacts(&self.ship, &self.world);
         if contacts.is_empty() {
             return;
         }
-        let mut d = self.ship_dyn();
-        let mut max_impact = 0.0f32;
-        let mut impact_at = (Vec2::ZERO, Vec2::Y);
-        let share = 1.0 / contacts.len() as f32;
-        for iter in 0..4 {
-            for (c, sv, surface) in &contacts {
-                let mut stat = Dyn::STATIC;
-                let (e, mu) = match surface {
-                    Surface::Pad(_) => (0.1, 0.9),
-                    Surface::Planet(_) => (0.25, 0.7),
-                    Surface::Block | Surface::Structure => (0.35, 0.5),
-                };
-                let imp = solve_contact(
-                    &mut stat,
-                    &mut d,
-                    c,
-                    e,
-                    mu,
-                    *sv,
-                    if iter == 0 { share } else { 0.0 },
-                );
-                if iter == 0 && imp > max_impact {
-                    max_impact = imp;
-                    impact_at = (c.point, c.normal);
-                }
-            }
-        }
-        self.set_ship_dyn(d);
+        let (max_impact, impact_at) = resolve_static(&mut self.ship, &contacts);
         if max_impact > 1.5 {
             self.events.push(SimEvent::Impact {
                 pos: impact_at.0,
@@ -511,7 +436,7 @@ impl SimState {
         }
     }
 
-    fn count_collision(&mut self, at: Vec2) {
+    pub(crate) fn count_collision(&mut self, at: Vec2) {
         if let Some(slot) = self.nearest_slot(at) {
             self.stats.slot(slot).collisions += 1;
         }
@@ -630,7 +555,168 @@ impl SimState {
     }
 }
 
-fn b_mass(r: f32) -> f32 {
+/// Kontakte eines Schiffs mit der festen Welt (Stationen, Planeten, Rotoren):
+/// (Kontakt, Geschwindigkeit der Oberfläche, Oberfläche). Für Crew- und NPC-Schiffe gleich.
+pub fn static_contacts(ship: &Ship, world: &World) -> Vec<(Contact, Vec2, Surface)> {
+    let quads = ship.quads();
+    let bound = Aabb::around(ship.pos, ship.bound_radius() + 0.5);
+    let mut contacts: Vec<(Contact, Vec2, Surface)> = Vec::new();
+    let mut tmp = Vec::new();
+    for col in &world.colliders {
+        if !col.enabled || !col.aabb.overlaps(&bound) {
+            continue;
+        }
+        for q in &quads {
+            match col.shape {
+                Shape::Poly(sq) => {
+                    tmp.clear();
+                    poly_poly(&sq, q, &mut tmp);
+                    for c in &tmp {
+                        contacts.push((*c, Vec2::ZERO, col.surface));
+                    }
+                }
+                Shape::Circle { c, r } => {
+                    if let Some(ct) = poly_circle(q, c, r) {
+                        contacts.push((
+                            Contact {
+                                point: ct.point,
+                                normal: -ct.normal,
+                                depth: ct.depth,
+                            },
+                            Vec2::ZERO,
+                            col.surface,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    for (si, sp) in world.spinners.iter().enumerate() {
+        if (sp.pos - ship.pos).length() > sp.reach() + ship.bound_radius() + 1.0 {
+            continue;
+        }
+        for arm in sp.quads() {
+            for q in &quads {
+                tmp.clear();
+                poly_poly(&arm, q, &mut tmp);
+                for c in &tmp {
+                    let v = world.spinner_velocity(si, c.point);
+                    contacts.push((*c, v, Surface::Block));
+                }
+            }
+        }
+    }
+    contacts
+}
+
+/// Kontakte mit der festen Welt auflösen. Ergebnis: stärkster Stoß und wo er war.
+pub fn resolve_static(
+    ship: &mut Ship,
+    contacts: &[(Contact, Vec2, Surface)],
+) -> (f32, (Vec2, Vec2)) {
+    let mut d = Dyn {
+        pos: ship.pos,
+        vel: ship.vel,
+        w: ship.ang_vel,
+        inv_m: 1.0 / ship.mass,
+        inv_i: 1.0 / ship.inertia,
+    };
+    let mut max_impact = 0.0f32;
+    let mut impact_at = (Vec2::ZERO, Vec2::Y);
+    let share = 1.0 / contacts.len().max(1) as f32;
+    for iter in 0..4 {
+        for (c, sv, surface) in contacts {
+            let mut stat = Dyn::STATIC;
+            let (e, mu) = match surface {
+                Surface::Pad(_) => (0.1, 0.9),
+                Surface::Planet(_) => (0.25, 0.7),
+                Surface::Block | Surface::Structure => (0.35, 0.5),
+            };
+            let imp = solve_contact(
+                &mut stat,
+                &mut d,
+                c,
+                e,
+                mu,
+                *sv,
+                if iter == 0 { share } else { 0.0 },
+            );
+            if iter == 0 && imp > max_impact {
+                max_impact = imp;
+                impact_at = (c.point, c.normal);
+            }
+        }
+    }
+    ship.pos = d.pos;
+    ship.vel = d.vel;
+    ship.ang_vel = d.w;
+    (max_impact, impact_at)
+}
+
+/// Zwei Schiffe stoßen aneinander (Crew gegen NPC oder NPC gegen NPC). Ergebnis: Stoßstärke
+/// und Ort, falls sie sich berühren.
+pub fn collide_two_ships(a: &mut Ship, b: &mut Ship) -> Option<(f32, Vec2)> {
+    if (a.pos - b.pos).length() > a.bound_radius() + b.bound_radius() + 0.2 {
+        return None;
+    }
+    let qa = a.quads();
+    let qb = b.quads();
+    let mut contacts = Vec::new();
+    let mut tmp = Vec::new();
+    for x in &qa {
+        for y in &qb {
+            tmp.clear();
+            poly_poly(x, y, &mut tmp);
+            contacts.extend(tmp.iter().copied());
+        }
+    }
+    if contacts.is_empty() {
+        return None;
+    }
+    let mut da = Dyn {
+        pos: a.pos,
+        vel: a.vel,
+        w: a.ang_vel,
+        inv_m: 1.0 / a.mass,
+        inv_i: 1.0 / a.inertia,
+    };
+    let mut db = Dyn {
+        pos: b.pos,
+        vel: b.vel,
+        w: b.ang_vel,
+        inv_m: 1.0 / b.mass,
+        inv_i: 1.0 / b.inertia,
+    };
+    let share = 1.0 / contacts.len() as f32;
+    let mut max_imp = 0.0f32;
+    let mut at = contacts[0].point;
+    for iter in 0..4 {
+        for c in &contacts {
+            let imp = solve_contact(
+                &mut da,
+                &mut db,
+                c,
+                0.3,
+                0.4,
+                Vec2::ZERO,
+                if iter == 0 { share } else { 0.0 },
+            );
+            if iter == 0 && imp > max_imp {
+                max_imp = imp;
+                at = c.point;
+            }
+        }
+    }
+    a.pos = da.pos;
+    a.vel = da.vel;
+    a.ang_vel = da.w;
+    b.pos = db.pos;
+    b.vel = db.vel;
+    b.ang_vel = db.w;
+    Some((max_imp, at))
+}
+
+pub(crate) fn b_mass(r: f32) -> f32 {
     r * r * 3.0
 }
 

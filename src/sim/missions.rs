@@ -83,6 +83,22 @@ pub enum MissionKind {
         /// Sekunden, die im aktuellen Feld schon gemessen wurden.
         hold: f32,
     },
+    /// Geleitschutz: ein NPC-Frachter fliegt von A nach B, unterwegs lauern Piratendrohnen.
+    Escort {
+        from: usize,
+        to: usize,
+        /// Name des Frachters, sein NPC (sobald er an der Plattform steht), Hinterhalt ausgelöst?
+        name: String,
+        npc: Option<u32>,
+        ambushed: bool,
+    },
+    /// Schmuggel: Ware im Frachtraum an den Zollbojen vorbei zum Ziel bringen.
+    Smuggle {
+        from: usize,
+        to: usize,
+        cargo: String,
+        mass: f32,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -130,6 +146,8 @@ impl Mission {
             MissionKind::Tow { .. } => MissionType::Tow,
             MissionKind::Capsules { .. } => MissionType::Capsules,
             MissionKind::Survey { .. } => MissionType::Survey,
+            MissionKind::Escort { .. } => MissionType::Escort,
+            MissionKind::Smuggle { .. } => MissionType::Smuggle,
         }
     }
 
@@ -167,6 +185,10 @@ impl Mission {
                 [one] => format!("Messflug: {}", s.data.courses.survey_sites[*one].name),
                 _ => format!("Messflug: {} Messfelder", sites.len()),
             },
+            MissionKind::Escort { name, to, .. } => {
+                format!("Geleitschutz: {name} → {}", st(*to))
+            }
+            MissionKind::Smuggle { cargo, to, .. } => format!("Schmuggel: {cargo} → {}", st(*to)),
         }
     }
 
@@ -264,6 +286,31 @@ impl Mission {
                 format!("Vorkommen: {source} · an Bord {have:.1} t")
             }
             MissionKind::Tow { .. } => "Treibendes Schiff mit dem Kran zur Station ziehen".into(),
+            MissionKind::Escort { from, npc, .. } => {
+                match npc.and_then(|id| s.npcs.iter().find(|n| n.id == id && n.alive)) {
+                    Some(n) if n.docked_pad().is_some() && !n.has_departed() => format!(
+                        "Der Frachter wartet in {} – abdocken und in der Nähe bleiben",
+                        s.world.stations[*from].name
+                    ),
+                    Some(n) => format!(
+                        "Frachter: Hülle {:.0} % – Drohnen abfangen, dicht dranbleiben",
+                        n.ship.hull / n.ship.max_hull * 100.0
+                    ),
+                    None => "Frachter unterwegs".into(),
+                }
+            }
+            MissionKind::Smuggle { mass, .. } => {
+                let scan = s.data.missions.smuggle.scan_time;
+                match &s.customs {
+                    Some(c) => format!(
+                        "ZOLLSCAN {:.0} % – raus aus dem Radius der Boje!",
+                        c.progress * 100.0
+                    ),
+                    None => format!(
+                        "{mass:.1} t im Frachtraum – Zollbojen meiden (Scan dauert {scan:.0} s)"
+                    ),
+                }
+            }
             MissionKind::Capsules {
                 total, delivered, ..
             } => {
@@ -322,6 +369,14 @@ impl Mission {
             MissionKind::Survey { sites, done, .. } => sites
                 .get(*done)
                 .map(|&i| v(s.data.courses.survey_sites[i].pos)),
+            MissionKind::Escort { from, to, npc, .. } => {
+                match npc.and_then(|id| s.npcs.iter().find(|n| n.id == id && n.alive)) {
+                    Some(n) if n.has_departed() => Some(n.ship.pos),
+                    Some(_) => Some(station(*from)),
+                    None => Some(station(*to)),
+                }
+            }
+            MissionKind::Smuggle { to, .. } => Some(station(*to)),
             MissionKind::Haul { from, to, body, .. } => {
                 let attached = s.ship.tools.iter().any(
                     |t| matches!(t.crane, CraneState::Attached { body: b, .. } if Some(b) == *body),
@@ -498,6 +553,8 @@ impl SimState {
             MissionType::Passengers => n_st > 1,
             MissionType::Bulky => !md.bulky.is_empty(),
             MissionType::Survey => !self.data.courses.survey_sites.is_empty(),
+            MissionType::Escort => !self.escort_targets(si).is_empty(),
+            MissionType::Smuggle => n_st > 1 && !md.smuggle.cargo.is_empty(),
             MissionType::Shipment | MissionType::Tow | MissionType::Capsules => false,
         });
         if types.is_empty() {
@@ -510,6 +567,42 @@ impl SimState {
         let ty = types[self.rng.index(types.len())];
         let bonus = 1.0 + 0.1 * level as f32;
         let (kind, reward) = match ty {
+            MissionType::Escort => {
+                let targets = self.escort_targets(si);
+                let to = targets[self.rng.index(targets.len())];
+                let names = &md.escort.names;
+                let name = names
+                    .get(self.rng.index(names.len().max(1)))
+                    .cloned()
+                    .unwrap_or_else(|| "Frachter".into());
+                let dist = (self.world.stations[to].pos - self.world.stations[si].pos).length();
+                (
+                    MissionKind::Escort {
+                        from: si,
+                        to,
+                        name,
+                        npc: None,
+                        ambushed: false,
+                    },
+                    md.escort.reward + dist * md.reward_per_distance * 1.5,
+                )
+            }
+            MissionType::Smuggle => {
+                let to = self.smuggle_target(si);
+                let sm = &md.smuggle;
+                let cargo = sm.cargo[self.rng.index(sm.cargo.len())].clone();
+                let mass = (self.rng.range(sm.mass.0, sm.mass.1) * 2.0).round() / 2.0;
+                let dist = (self.world.stations[to].pos - self.world.stations[si].pos).length();
+                (
+                    MissionKind::Smuggle {
+                        from: si,
+                        to,
+                        cargo,
+                        mass,
+                    },
+                    sm.reward + dist * md.reward_per_distance * 2.0,
+                )
+            }
             MissionType::Survey => {
                 let n_sites = self.data.courses.survey_sites.len();
                 let want = self
@@ -676,6 +769,9 @@ impl SimState {
             MissionKind::Tow { site, to, .. } => (*site - st(*to)).length() / 6.0 + 150.0,
             MissionKind::Bulky { site, to, .. } => (*site - st(*to)).length() / 6.0 + 180.0,
             MissionKind::Capsules { site, to, .. } => (*site - st(*to)).length() / 10.0 + 240.0,
+            // Der Frachter fliegt höchstens 16 m/s, dazu Abflug, Anflug und Gefecht.
+            MissionKind::Escort { from, to, .. } => (st(*from) - st(*to)).length() / 9.0 + 120.0,
+            MissionKind::Smuggle { from, to, .. } => (st(*from) - st(*to)).length() / 10.0 + 90.0,
             MissionKind::Survey { sites, .. } => {
                 // Ab der nächstgelegenen Station mit Aufträgen grob abgeschätzt.
                 let mut at = sites
@@ -969,6 +1065,46 @@ impl SimState {
                     });
                 }
             }
+            MissionKind::Escort {
+                from,
+                name,
+                npc,
+                to,
+                ..
+            } => {
+                if self.docked_station() != Some(*from) {
+                    let st = self.world.stations[*from].name.clone();
+                    self.toast(
+                        format!("Der Frachter startet in {st} – dort andocken"),
+                        ToastKind::Warn,
+                    );
+                    return;
+                }
+                *npc = Some(self.spawn_convoy(name, m.id, *from, *to));
+            }
+            MissionKind::Smuggle {
+                from, cargo, mass, ..
+            } => {
+                if self.docked_station() != Some(*from) {
+                    let name = self.world.stations[*from].name.clone();
+                    self.toast(
+                        format!("Die Ware liegt in {name} – dort andocken"),
+                        ToastKind::Warn,
+                    );
+                    return;
+                }
+                let stored = self.ship.store(
+                    CargoKind::Container {
+                        mission: m.id,
+                        name: cargo.clone(),
+                    },
+                    *mass,
+                );
+                if stored <= 0.0 {
+                    self.toast("Kein Platz im Frachtraum für die Ware", ToastKind::Warn);
+                    return;
+                }
+            }
             MissionKind::Mining { .. } | MissionKind::Survey { .. } => {}
         }
         self.offers.remove(idx);
@@ -1023,7 +1159,7 @@ impl SimState {
         }
     }
 
-    fn complete_mission(&mut self, idx: usize) {
+    pub(crate) fn complete_mission(&mut self, idx: usize) {
         let m = self.active.remove(idx);
         let start = m.start.as_deref().cloned().unwrap_or_default();
         let stats = self.stats.since(&start, m.top_speed);
@@ -1276,7 +1412,7 @@ impl SimState {
         while i < self.active.len() {
             let m = self.active[i].clone();
             let finished = match &m.kind {
-                MissionKind::Delivery { to, .. } => *to == si,
+                MissionKind::Delivery { to, .. } | MissionKind::Smuggle { to, .. } => *to == si,
                 MissionKind::Passengers { to, aboard, .. } => *aboard && *to == si,
                 MissionKind::Mining { ore, amount, to } => {
                     if *to == si && self.ship.ore_amount(*ore) + 1e-3 >= *amount {
