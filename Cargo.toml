@@ -15,3 +15,9 @@ opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 3
+
+# Testversionen zum Weitergeben: schlank und schnell.
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true

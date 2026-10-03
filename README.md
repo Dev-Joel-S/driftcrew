@@ -47,6 +47,26 @@ eigener Name, eigener Look, alle Grafiken und Klänge werden beim Start prozedur
 
 ## Starten
 
+### Fertige Testversion
+
+- **Windows:** `driftcrew-windows.zip` entpacken, `driftcrew.exe` starten. Braucht eine
+  Grafikkarte mit DirectX 12 oder Vulkan (alles ab etwa 2016). Windows Defender meldet
+  unsignierte Programme manchmal („Weitere Informationen → Trotzdem ausführen“).
+- **Linux:** `driftcrew-linux.tar.gz` entpacken, `./driftcrew` starten (Vulkan-Treiber nötig,
+  glibc ab 2.39).
+- **NixOS:** Ein fertiges Linux-Binary findet dort seine Bibliotheken nicht. Entweder aus dem
+  Quellcode: `nix run .` im Repository (baut über `flake.nix`, beim ersten Mal einige Minuten),
+  oder das fertige Binary mit `nix-shell -p steam-run --run "steam-run ./driftcrew"` starten.
+
+Stürzt das Spiel ab, steht der Grund in `crash.txt` neben dem Spielstand (Pfade unten).
+
+**Koop:** Gespielt wird an *einem* Rechner – jede Person mit Tastatur, Gamepad oder Joy-Con.
+Online-Koop gibt es noch nicht. Über Streaming (z. B. Steam Remote Play Together oder Parsec)
+kann jemand von woanders mitspielen: Der Host startet DriftCrew, der Gast schickt seine
+Gamepad-Eingaben über das Streaming-Programm.
+
+### Aus dem Quellcode
+
 Voraussetzungen: Rust ab 1.95 (stabil), eine Grafikkarte mit Vulkan, Metal oder DirectX 12.
 
 Unter Linux braucht Bevy zusätzlich:
@@ -63,6 +83,11 @@ cargo run --release
 
 Der erste Build dauert eine Weile (Bevy wird komplett übersetzt), danach geht es schnell.
 `cargo test` startet die Tests der Simulation.
+
+Unter NixOS: `nix develop` öffnet eine Shell mit Rust und allen Bibliotheken, danach wie oben
+`cargo run --release`. Für Windows lässt sich unter Linux mit `rustup target add
+x86_64-pc-windows-gnu`, MinGW (`mingw-w64`) und `cargo build --release --target
+x86_64-pc-windows-gnu` übersetzen.
 
 Der Spielstand der Crew liegt unter
 
