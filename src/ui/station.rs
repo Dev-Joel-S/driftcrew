@@ -10,7 +10,7 @@ use super::{
 use crate::game::{AppState, MapOpen, Paused, PendingCommands, Sim};
 use crate::input::{ActiveBindings, Crew, Device, MenuInput, btn_just_pressed};
 use crate::sim::data::{Service, ServiceEffect, StationKind};
-use crate::sim::economy::{Purchase, VOTE_SECONDS};
+use crate::sim::economy::{PaintPart, Purchase, VOTE_SECONDS};
 use crate::sim::missions::MissionKind;
 use crate::sim::world::Owner;
 use crate::sim::{Command, SimState};
@@ -42,6 +42,7 @@ struct VoteRoot;
 enum Tab {
     Service,
     Upgrades,
+    Paint,
     Missions,
     Market,
     Ships,
@@ -52,6 +53,7 @@ impl Tab {
         match self {
             Tab::Service => "Service",
             Tab::Upgrades => "Upgrades",
+            Tab::Paint => "Lack",
             Tab::Missions => "Aufträge",
             Tab::Market => "Markt",
             Tab::Ships => "Werft",
@@ -118,6 +120,7 @@ fn tabs_for(sim: &SimState) -> Vec<Tab> {
             }
             if st.has(Service::Upgrades) {
                 v.push(Tab::Upgrades);
+                v.push(Tab::Paint);
             }
             v.push(Tab::Missions);
             if st.has(Service::Market) {
@@ -254,6 +257,87 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                 }
             }
         }
+        Tab::Paint => {
+            use crate::render::srgb;
+            use crate::sim::data::hex;
+            let price = sim.data.shop.paint_price;
+            let current = sim.crew.livery(&sim.crew.current_ship);
+            let def = sim.data.ship(&sim.crew.current_ship);
+            let mut push = |part: PaintPart,
+                            choice: Option<usize>,
+                            name: String,
+                            color: Option<&str>,
+                            detail: &str| {
+                let now = match part {
+                    PaintPart::Hull => current.hull,
+                    PaintPart::Accent => current.accent,
+                    PaintPart::Flame => current.flame,
+                };
+                let p = Purchase::Paint { part, choice };
+                let label = format!("{} · {name}", part.label());
+                let mut it = if now == choice {
+                    Item::new(label, Act::Buy(p))
+                        .right("✓ aktuell")
+                        .enabled(false)
+                } else {
+                    let ok = sim.purchase_info(&p).is_ok();
+                    Item::new(label, Act::Buy(p))
+                        .right(format!("{price} Cr"))
+                        .enabled(ok)
+                };
+                it = it.detail(detail);
+                if let Some(c) = color {
+                    it = it.swatch(srgb(hex(c)));
+                }
+                v.push(it);
+            };
+            push(
+                PaintPart::Hull,
+                None,
+                "Werkslack".into(),
+                Some(&def.hull_color),
+                "Rumpf und Cockpit",
+            );
+            for (i, c) in sim.data.shop.paints.iter().enumerate() {
+                push(
+                    PaintPart::Hull,
+                    Some(i),
+                    c.name.clone(),
+                    Some(&c.color),
+                    "Rumpf und Cockpit",
+                );
+            }
+            push(
+                PaintPart::Accent,
+                None,
+                "Werkslack".into(),
+                Some(&def.accent_color),
+                "Streifen, Panzer, Frachtmodule",
+            );
+            for (i, c) in sim.data.shop.paints.iter().enumerate() {
+                push(
+                    PaintPart::Accent,
+                    Some(i),
+                    c.name.clone(),
+                    Some(&c.color),
+                    "Streifen, Panzer, Frachtmodule",
+                );
+            }
+            for (i, f) in sim.data.shop.flames.iter().enumerate() {
+                let choice = f.color.as_ref().map(|_| i);
+                let detail = match &f.color {
+                    Some(_) => "Außenflamme – der Kern und die Ringe bleiben in Slotfarbe",
+                    None => "Jede Flamme in ihrer Slotfarbe – man sieht, wer schiebt",
+                };
+                push(
+                    PaintPart::Flame,
+                    choice,
+                    f.name.clone(),
+                    f.color.as_deref(),
+                    detail,
+                );
+            }
+        }
         Tab::Missions => {
             for m in &sim.active {
                 v.push(
@@ -263,14 +347,21 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                 );
             }
             for m in sim.offers_here() {
-                let here = sim.docked_station();
+                let here = sim.docked_owner();
                 let has_crane = sim.ship.has_tool(crate::sim::data::ToolKind::Crane);
                 let enabled = match &m.kind {
                     MissionKind::Delivery { from, .. } => here == Some(*from),
-                    MissionKind::Haul { from, .. } => here == Some(*from) && has_crane,
+                    MissionKind::Haul { from, .. } => {
+                        here == Some(Owner::Station(*from)) && has_crane
+                    }
                     _ => true,
                 } && sim.active.len() < crate::sim::missions::MAX_ACTIVE;
                 let detail = match &m.kind {
+                    MissionKind::Delivery {
+                        mass,
+                        from: Owner::Planet(_),
+                        ..
+                    } => format!("{mass:.1} t Erzladung – verschiebt Masse und Schwerpunkt"),
                     MissionKind::Delivery { mass, .. } => {
                         format!("{mass:.1} t Container – landet seitlich im Frachtraum")
                     }
@@ -287,6 +378,10 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                     MissionKind::Capsules { .. } => {
                         "Kapseln einsammeln (Kran oder sanft berühren) und abliefern.".into()
                     }
+                };
+                let detail = match m.giver.and_then(|g| sim.data.npcs.get(g)) {
+                    Some(n) => format!("{} ({}) · {detail}", n.name, n.role),
+                    None => detail,
                 };
                 v.push(
                     Item::new(m.title(sim), Act::Accept(m.id))
@@ -312,10 +407,22 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                     credits += (t * price(ore) as f32).round() as u32;
                 }
             }
-            let it = Item::new("Erz verkaufen", Act::Sell)
+            let mut parts = 0;
+            for c in &sim.ship.cargo {
+                if let crate::sim::ship::CargoKind::Salvage { value, .. } = c.kind {
+                    credits += value;
+                    parts += 1;
+                }
+            }
+            let what = if parts > 0 {
+                format!("{total:.1} t Erz/Schrott und {parts} Bauteile an Bord")
+            } else {
+                format!("{total:.1} t an Bord")
+            };
+            let it = Item::new("Fracht verkaufen", Act::Sell)
                 .right(format!("+{credits} Cr"))
-                .detail(format!("{total:.1} t an Bord"))
-                .enabled(total > 0.05 && sim.can_sell_here());
+                .detail(what)
+                .enabled((total > 0.05 || parts > 0) && sim.can_sell_here());
             v.push(it);
             // Preistafel: hier, und wo es am meisten gibt.
             for ore in crate::sim::data::Ore::ALL {
@@ -341,6 +448,9 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                         format!("Container: {name}")
                     }
                     crate::sim::ship::CargoKind::Capsule { .. } => "Rettungskapsel".into(),
+                    crate::sim::ship::CargoKind::Salvage { name, value } => {
+                        format!("Bauteil: {name} ({value} Cr)")
+                    }
                 };
                 v.push(
                     Item::new(name, Act::Sell)
@@ -518,6 +628,27 @@ fn station_menu(
                 14.0,
                 ACCENT,
             ));
+            if let Some(si) = s.docked_station() {
+                p.spawn(text(reputation_line(s, si), 13.0, MUTED));
+            }
+            if current == Tab::Missions
+                && let Some(owner) = s.docked_owner()
+            {
+                let npcs = s.npcs_at(owner);
+                if !npcs.is_empty() {
+                    p.spawn(Node {
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(6.0),
+                        margin: UiRect::vertical(Val::Px(4.0)),
+                        ..default()
+                    })
+                    .with_children(|col| {
+                        for &n in &npcs {
+                            spawn_npc_row(col, s, n);
+                        }
+                    });
+                }
+            }
             p.spawn(Node {
                 column_gap: Val::Px(6.0),
                 margin: UiRect::vertical(Val::Px(6.0)),
@@ -568,6 +699,127 @@ fn station_menu(
 
 #[derive(Component)]
 struct TabButton(usize);
+
+/// „Ruf: Bekannt ★★☆ · 4/7“ für eine Station.
+fn reputation_line(s: &SimState, si: usize) -> String {
+    use crate::sim::missions::{REP_LEVELS, REP_NAMES};
+    let pts = s.crew.reputation.get(si).copied().unwrap_or(0);
+    let lvl = s.rep_level_at(si) as usize;
+    let stars: String = (1..REP_LEVELS.len())
+        .map(|i| if i <= lvl { '★' } else { '☆' })
+        .collect();
+    let next = REP_LEVELS
+        .get(lvl + 1)
+        .map(|n| format!(" · {pts}/{n} bis {}", REP_NAMES[lvl + 1]))
+        .unwrap_or_else(|| " · höchste Stufe".into());
+    let perk = if lvl > 0 {
+        format!(" · {} % Rabatt, +{} Aufträge", lvl * 5, lvl)
+    } else {
+        String::new()
+    };
+    format!("Ruf: {} {stars}{next}{perk}", REP_NAMES[lvl])
+}
+
+/// Porträt aus einfachen Formen (Schultern, Kopf, Haare oder Helm).
+pub fn spawn_portrait(p: &mut ChildSpawnerCommands, look: &crate::sim::data::Look, size: f32) {
+    use crate::render::srgb;
+    use crate::sim::data::hex;
+    let c = |h: &str| srgb(hex(h));
+    let abs = |left: f32, top: f32, w: f32, h: f32| Node {
+        position_type: PositionType::Absolute,
+        left: Val::Px(left * size),
+        top: Val::Px(top * size),
+        width: Val::Px(w * size),
+        height: Val::Px(h * size),
+        ..default()
+    };
+    p.spawn((
+        Node {
+            width: Val::Px(size),
+            height: Val::Px(size),
+            flex_shrink: 0.0,
+            border_radius: BorderRadius::all(Val::Px(8.0)),
+            overflow: Overflow::clip(),
+            ..default()
+        },
+        BackgroundGradient::from(LinearGradient::to_bottom(vec![
+            ColorStop::auto(Color::srgb(0.16, 0.2, 0.28)),
+            ColorStop::auto(Color::srgb(0.06, 0.07, 0.1)),
+        ])),
+    ))
+    .with_children(|f| {
+        // Schultern
+        f.spawn((
+            Node {
+                border_radius: BorderRadius::top(Val::Px(size * 0.3)),
+                ..abs(0.08, 0.7, 0.84, 0.4)
+            },
+            BackgroundColor(c(&look.suit)),
+        ));
+        // Hals
+        f.spawn((abs(0.42, 0.56, 0.16, 0.16), BackgroundColor(c(&look.skin))));
+        if look.helmet {
+            f.spawn((
+                Node {
+                    border: UiRect::all(Val::Px(size * 0.05)),
+                    border_radius: BorderRadius::all(Val::Percent(50.0)),
+                    ..abs(0.2, 0.1, 0.6, 0.6)
+                },
+                BorderColor::all(Color::srgb(0.75, 0.78, 0.8)),
+                BackgroundColor(Color::srgba(0.6, 0.75, 0.85, 0.12)),
+            ));
+        }
+        // Kopf
+        f.spawn((
+            Node {
+                border_radius: BorderRadius::all(Val::Percent(50.0)),
+                ..abs(0.29, 0.18, 0.42, 0.46)
+            },
+            BackgroundColor(c(&look.skin)),
+        ));
+        // Haare
+        f.spawn((
+            Node {
+                border_radius: BorderRadius::top(Val::Px(size * 0.22)),
+                ..abs(0.28, 0.15, 0.44, 0.16)
+            },
+            BackgroundColor(c(&look.hair)),
+        ));
+        // Augen
+        for x in [0.39, 0.55] {
+            f.spawn((
+                Node {
+                    border_radius: BorderRadius::all(Val::Percent(50.0)),
+                    ..abs(x, 0.38, 0.06, 0.06)
+                },
+                BackgroundColor(Color::srgb(0.08, 0.08, 0.1)),
+            ));
+        }
+    });
+}
+
+fn spawn_npc_row(p: &mut ChildSpawnerCommands, s: &SimState, n: usize) {
+    let npc = &s.data.npcs[n];
+    // Ein Spruch pro Besuch (wechselt mit jedem erledigten Auftrag).
+    let line = &npc.lines[(s.crew.missions_done as usize + n) % npc.lines.len().max(1)];
+    p.spawn(Node {
+        column_gap: Val::Px(10.0),
+        align_items: AlignItems::Center,
+        ..default()
+    })
+    .with_children(|row| {
+        spawn_portrait(row, &npc.look, 52.0);
+        row.spawn(Node {
+            flex_direction: FlexDirection::Column,
+            flex_shrink: 1.0,
+            ..default()
+        })
+        .with_children(|t| {
+            t.spawn(text(format!("{} · {}", npc.name, npc.role), 14.0, TEXT));
+            t.spawn(text(format!("„{line}“"), 12.0, MUTED));
+        });
+    });
+}
 
 /// Während einer Abstimmung: eigene Slot-Taste schaltet Ja ↔ Nein.
 #[allow(clippy::too_many_arguments)]

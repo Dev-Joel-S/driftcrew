@@ -289,6 +289,7 @@ impl SimState {
                 normal: impact_at.1,
                 strength: max_impact,
             });
+            self.count_collision(impact_at.0);
         }
         if max_impact > SAFE_IMPACT {
             let dmg = (max_impact - SAFE_IMPACT) * 3.6;
@@ -357,6 +358,7 @@ impl SimState {
                     normal: c.normal,
                     strength: impact,
                 });
+                self.count_collision(c.point);
             }
             if impact > SAFE_IMPACT {
                 let factor = (bmass / self.ship.mass * 1.5).clamp(0.15, 1.0);
@@ -487,6 +489,12 @@ impl SimState {
         }
     }
 
+    fn count_collision(&mut self, at: Vec2) {
+        if let Some(slot) = self.nearest_slot(at) {
+            self.stats.slot(slot).collisions += 1;
+        }
+    }
+
     /// Schaden an Schild/Hülle.
     pub(crate) fn ship_damage(&mut self, amount: f32, at: Vec2, show: bool) {
         if amount <= 0.0
@@ -496,6 +504,7 @@ impl SimState {
         {
             return;
         }
+        self.stats.damage += amount;
         let mut left = amount;
         if self.ship.shield > 0.0 {
             let absorbed = self.ship.shield.min(left);
@@ -558,6 +567,14 @@ impl SimState {
                 CargoKind::Capsule { mission: *mission },
                 0.8,
                 "Rettungskapsel".to_string(),
+            ),
+            BodyKind::Salvage { name, value } => (
+                CargoKind::Salvage {
+                    name: name.clone(),
+                    value: *value,
+                },
+                b.mass,
+                format!("Bauteil: {name}"),
             ),
             _ => return false,
         };

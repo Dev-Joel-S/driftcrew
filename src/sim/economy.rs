@@ -12,6 +12,28 @@ pub enum Purchase {
     Service(String),
     Upgrade(String),
     Ship(String),
+    /// Lackierung des aktuellen Schiffs ändern (`None` = zurück zum Werkslack).
+    Paint {
+        part: PaintPart,
+        choice: Option<usize>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PaintPart {
+    Hull,
+    Accent,
+    Flame,
+}
+
+impl PaintPart {
+    pub fn label(self) -> &'static str {
+        match self {
+            PaintPart::Hull => "Rumpf",
+            PaintPart::Accent => "Akzent",
+            PaintPart::Flame => "Flammen",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -118,11 +140,14 @@ impl SimState {
         };
         let factor = self.docked_owner().map_or(1.0, |o| {
             let p = self.prices_of(o);
-            if *effect == ServiceEffect::Refuel {
+            let base = if *effect == ServiceEffect::Refuel {
                 p.fuel
             } else {
                 p.service
-            }
+            };
+            // Stammkunden zahlen weniger: 5 % pro Rufstufe.
+            let rep = o.station().map_or(0, |si| self.rep_level_at(si));
+            base * (1.0 - 0.05 * rep as f32)
         });
         ((base as f32 * frac * factor).ceil() as u32).max(5)
     }
@@ -211,6 +236,43 @@ impl SimState {
                     .find(|s| &s.id == id)
                     .ok_or("Unbekannt")?;
                 (format!("Schiff: {}", def.name), def.price)
+            }
+            Purchase::Paint { part, choice } => {
+                if !st.has(Service::Upgrades) {
+                    return Err(format!("{} hat keine Lackiererei", st.name));
+                }
+                let current = self.crew.livery(&self.crew.current_ship);
+                let now = match part {
+                    PaintPart::Hull => current.hull,
+                    PaintPart::Accent => current.accent,
+                    PaintPart::Flame => current.flame,
+                };
+                if now == *choice {
+                    return Err("Ist schon so lackiert".into());
+                }
+                let name = match (part, choice) {
+                    (_, None) => "Werkslack".to_string(),
+                    (PaintPart::Flame, Some(i)) => self
+                        .data
+                        .shop
+                        .flames
+                        .get(*i)
+                        .ok_or("Unbekannt")?
+                        .name
+                        .clone(),
+                    (_, Some(i)) => self
+                        .data
+                        .shop
+                        .paints
+                        .get(*i)
+                        .ok_or("Unbekannt")?
+                        .name
+                        .clone(),
+                };
+                (
+                    format!("{}: {name}", part.label()),
+                    self.data.shop.paint_price,
+                )
             }
         };
         if price > self.crew.credits {
@@ -343,6 +405,17 @@ impl SimState {
                 self.crew.owned_ships.push(id.clone());
                 self.switch_ship(id);
             }
+            Purchase::Paint { part, choice } => {
+                let ship = self.crew.current_ship.clone();
+                let mut l = self.crew.livery(&ship);
+                match part {
+                    PaintPart::Hull => l.hull = *choice,
+                    PaintPart::Accent => l.accent = *choice,
+                    PaintPart::Flame => l.flame = *choice,
+                }
+                self.crew.liveries.retain(|(s, _)| *s != ship);
+                self.crew.liveries.push((ship, l));
+            }
         }
         self.events.push(SimEvent::Purchased {
             name: label.clone(),
@@ -418,15 +491,29 @@ impl SimState {
             sold_t += taken;
             earned += (taken * price as f32).round() as u32;
         }
+        // Bauteile aus Wracks gehen zum festen Wert weg.
+        let parts = self
+            .ship
+            .remove_cargo(|k| matches!(k, super::ship::CargoKind::Salvage { .. }));
+        for p in &parts {
+            if let super::ship::CargoKind::Salvage { value, .. } = p.kind {
+                earned += value;
+            }
+        }
         if earned == 0 {
-            self.toast("Kein verkaufbares Erz an Bord", ToastKind::Info);
+            self.toast("Nichts Verkaufbares an Bord", ToastKind::Info);
             return;
         }
         self.crew.credits += earned;
         self.crew.ore_sold += sold_t;
         self.events.push(SimEvent::Sold { credits: earned });
+        let what = match (sold_t > 0.05, parts.len()) {
+            (true, 0) => format!("{sold_t:.1} t Erz"),
+            (false, n) => format!("{n} Bauteile"),
+            (true, n) => format!("{sold_t:.1} t Erz und {n} Bauteile"),
+        };
         self.toast(
-            format!("{sold_t:.1} t Erz verkauft  +{earned} Credits"),
+            format!("{what} verkauft  +{earned} Credits"),
             ToastKind::Good,
         );
     }

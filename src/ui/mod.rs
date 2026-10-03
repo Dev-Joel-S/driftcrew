@@ -4,6 +4,7 @@ pub mod hud;
 pub mod lobby;
 pub mod map;
 pub mod pause;
+pub mod report;
 pub mod station;
 pub mod title;
 
@@ -56,6 +57,7 @@ impl Plugin for UiPlugin {
                 station::StationPlugin,
                 map::MapPlugin,
                 pause::PausePlugin,
+                report::ReportPlugin,
             ));
     }
 }
@@ -111,6 +113,8 @@ pub struct Item<A: Clone> {
     pub detail: String,
     pub enabled: bool,
     pub action: Option<A>,
+    /// Farbfeld vor dem Text (z. B. Lackiererei).
+    pub swatch: Option<Color>,
 }
 
 impl<A: Clone> Item<A> {
@@ -121,7 +125,12 @@ impl<A: Clone> Item<A> {
             detail: String::new(),
             enabled: true,
             action: Some(action),
+            swatch: None,
         }
+    }
+    pub fn swatch(mut self, c: Color) -> Self {
+        self.swatch = Some(c);
+        self
     }
     pub fn right(mut self, r: impl Into<String>) -> Self {
         self.right = r.into();
@@ -170,6 +179,20 @@ pub fn spawn_items<A: Clone>(parent: &mut ChildSpawnerCommands, menu: usize, ite
                     ..default()
                 })
                 .with_children(|row| {
+                    if let Some(c) = it.swatch {
+                        row.spawn((
+                            Node {
+                                width: Val::Px(18.0),
+                                height: Val::Px(18.0),
+                                flex_shrink: 0.0,
+                                border: UiRect::all(Val::Px(1.0)),
+                                border_radius: BorderRadius::all(Val::Px(4.0)),
+                                ..default()
+                            },
+                            BackgroundColor(c),
+                            BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.35)),
+                        ));
+                    }
                     row.spawn((
                         text(it.label.clone(), 17.0, label_color),
                         Node {

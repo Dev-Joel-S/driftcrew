@@ -109,6 +109,48 @@ größerer Architekturänderung – dort wird vorher nachgefragt.
 
 ## Protokoll
 
+### Runde 2 – Phase 4: Missionen und Fortschritt (erledigt)
+
+- **10** Auftraggeber: neue Datei `npcs.ron` (Name, Rolle, Ort, vergebene Auftragsarten,
+  Porträtfarben, Sprüche). Aufträge tragen ihren Auftraggeber (`Mission::giver`), das
+  Stationsmenü zeigt im Reiter „Aufträge“ die Personen vor Ort mit Porträt (aus UI-Formen
+  gebaut: Schultern, Kopf, Haare oder Helm) und einem Spruch.
+- **11** Neue Variante „Material verschicken“: Planeten-Außenposten mit Auftraggeber bieten
+  Erzladungen an (`Delivery { from: Owner::Planet }`), die Ladung liegt im Frachtraum und
+  verschiebt Masse und Schwerpunkt. Abbau, Lieferung, Schwerlast und Notrufe gab es schon.
+  `Mission::origin` ist dafür jetzt ein `Owner` (Station oder Planet).
+- **12** Auswertung: `sim::stats` zählt pro Slot Schubzeit, Kollisionen (dem Teil zugeordnet,
+  das dem Aufprall am nächsten war), Schüsse, abgebaute Tonnen und Kran-Griffe, dazu Dauer,
+  Strecke, Höchsttempo und Schaden. Bei Annahme wird der Stand gemerkt, beim Abschluss entsteht
+  ein `MissionReport` mit Auszeichnungen (Schubmeister, Sparfuchs, Bruchpilot, Scharfschütze,
+  Bohrkönig, Greifarm). Das Fenster (`ui/report.rs`) zeigt Slotname und Spieler-Abzeichen,
+  schließt sich nach 14 s oder per Klick (reine Anzeige, kein Befehl nötig).
+- **13** Ruf pro Station (`Crew::reputation`, im Spielstand): +1 pro Auftrag, +2 für Schwerlast
+  und Abschleppen; bei Notrufen und Außenposten-Lieferungen zählt die Zielstation. Stufen
+  Neu/Bekannt/Geschätzt/Partner (0/3/7/12 Punkte): +1 Angebot und +10 % Belohnung je Stufe,
+  größere Abbauaufträge, Schwerlast ab „Bekannt“, 5 % Service-Rabatt je Stufe. Anzeige im
+  Stationsmenü mit Sternen und Punkten bis zur nächsten Stufe.
+- **18** Fog of War: `sim::explore` – Raster mit 100-m-Zellen, alle 15 Ticks wird ein Kreis von
+  380 m um das Schiff aufgedeckt. Im Spielstand als Hex-Bitfeld. Karte: weicher, runder Nebel
+  als Textur (vierfach aufgelöst, bilinear überblendet), dazu nur entdeckte Planeten, Felder,
+  Zonen, Anomalien und Wracks. Radar und Wegmarken genauso. Stationen mit `known: true` (alle
+  außer Werft Vega) sind von Anfang an eingetragen. Aufträge und Notrufe bleiben immer sichtbar.
+- **19** Wracks: `wrecks` in `world.ron` (Schiffsfriedhof im Nordwesten plus zwei Einzelwracks).
+  Bohrer gewinnt **Schrott** (neue Erzsorte `Ore::Schrott`, am Markt handelbar). Der Kran reißt
+  bei einem Ruck (Seilimpuls über `TEAR_IMPULSE`) ein **Bauteil** ab, das sofort am Haken hängt,
+  eingeholt und am Markt zum festen Wert verkauft wird. Wracks treiben träge an ihren Platz
+  zurück; glimmende Bruchstellen zeigen, dass noch Schrott drin ist.
+- **27** Lackiererei: Reiter „Lack“ an Stationen mit Werkstatt. Rumpf und Akzent aus zehn
+  gedeckten Farben, Flammen in sechs Varianten (Standard: Slotfarben). Kauf über die
+  Abstimmung (`Purchase::Paint`), gespeichert pro Schiff. Eigene Flammenfarbe färbt nur die
+  Außenflamme; Kern, Kennringe und Slot-Leiste bleiben in Slotfarbe. Menüeinträge haben jetzt
+  optional ein Farbfeld (`Item::swatch`).
+- Vorführszene `DRIFTCREW_SCENE=progress`.
+- Tests: 50 grün (neu u. a. `station_offers_come_from_local_npcs`, `outpost_ships_ore_to_a_station`,
+  `reputation_brings_more_offers_and_discounts`, `completed_mission_has_a_report_with_awards`,
+  `collisions_are_counted_per_slot`, `wreck_gives_scrap_and_tears_parts`,
+  `paint_and_exploration_survive_saving`, `reveal_and_roundtrip`, `awards_pick_the_extremes`).
+
 ### Runde 2 – Phase 3: Systeme in der Simulation (erledigt)
 
 - **15** Schwerkraft nur an Anomalien und Schwarzen Löchern. `PlanetDef` hat kein

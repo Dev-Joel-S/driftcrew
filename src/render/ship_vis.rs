@@ -13,10 +13,29 @@ use crate::sim::geom::rot;
 use crate::sim::ship::{CraneState, Loadout, Ship, ShipStats};
 use crate::sim::world::angle_diff;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct ShipModelOpts {
     pub slot_colors: bool,
     pub derelict: bool,
+    /// Lackierung der Crew (sRGB); `None` = Werkslack bzw. Slotfarben bei den Flammen.
+    pub hull: Option<[f32; 3]>,
+    pub accent: Option<[f32; 3]>,
+    pub flame: Option<[f32; 3]>,
+}
+
+/// Lackierung der Crew für das aktuelle Schiff als Farben.
+pub fn livery_colors(
+    sim: &crate::sim::SimState,
+) -> (Option<[f32; 3]>, Option<[f32; 3]>, Option<[f32; 3]>) {
+    let l = sim.crew.livery(&sim.crew.current_ship);
+    let shop = &sim.data.shop;
+    let paint = |i: Option<usize>| i.and_then(|i| shop.paints.get(i)).map(|p| hex(&p.color));
+    let flame = l
+        .flame
+        .and_then(|i| shop.flames.get(i))
+        .and_then(|f| f.color.as_ref())
+        .map(|c| hex(c));
+    (paint(l.hull), paint(l.accent), flame)
 }
 
 #[derive(Component)]
@@ -84,6 +103,10 @@ pub struct DrillBeam(pub usize);
 #[derive(Component)]
 pub struct BlinkLight(pub f32);
 
+/// Glimmende Bruchstelle eines Wracks (erlischt, wenn der Schrott abgebaut ist).
+#[derive(Component)]
+pub struct WreckEmber(pub u32);
+
 #[derive(Component)]
 pub struct NavLight {
     pub phase: f32,
@@ -148,7 +171,10 @@ pub fn spawn_ship_model(
     let (hull_c, accent_c) = if opts.derelict {
         ([0.32, 0.33, 0.36], [0.45, 0.2, 0.18])
     } else {
-        (hex(&def.hull_color), hex(&def.accent_color))
+        (
+            opts.hull.unwrap_or_else(|| hex(&def.hull_color)),
+            opts.accent.unwrap_or_else(|| hex(&def.accent_color)),
+        )
     };
     // Lackierter Stahl statt Spielzeugplastik: etwas Metall, gedeckte Töne.
     let hull_mat = mats.add(art.panel_mat(srgb(hull_c), 0.48, 0.35));
@@ -321,9 +347,11 @@ pub fn spawn_ship_model(
                     .id(),
             );
             let flame_len = 2.3;
-            let outer = art.glow_mat(mats, col, 7.0);
+            // Eigene Flammenfarbe außen, der Kern behält die Slotfarbe.
+            let fcol = opts.flame.map(srgb).unwrap_or(col);
+            let outer = art.glow_mat(mats, fcol, 7.0);
             let flame = mats.add(StandardMaterial {
-                base_color: Color::LinearRgba(col.to_linear() * 7.0),
+                base_color: Color::LinearRgba(fcol.to_linear() * 7.0),
                 unlit: true,
                 alpha_mode: AlphaMode::Add,
                 ..default()
@@ -609,7 +637,8 @@ pub fn sync_ship(
     mut lights: Query<&mut PointLight, With<EngineLight>>,
 ) {
     let ship = &sim.0.ship;
-    let sig = ship_signature(ship);
+    let (hull, accent, flame) = livery_colors(&sim.0);
+    let sig = format!("{}|{hull:?}{accent:?}{flame:?}", ship_signature(ship));
     let existing = ship_q.iter().next().map(|(e, s, _, _)| (e, s.sig.clone()));
     if existing.as_ref().map(|(_, s)| s != &sig).unwrap_or(true) {
         if let Some((e, _)) = existing {
@@ -626,6 +655,9 @@ pub fn sync_ship(
             ShipModelOpts {
                 slot_colors: true,
                 derelict: false,
+                hull,
+                accent,
+                flame,
             },
         );
         commands.entity(e).insert(ShipVis { sig });
@@ -945,6 +977,69 @@ pub fn sync_bodies(
                     .id();
                 kids.push(holder);
             }
+            BodyKind::Wreck { idx, .. } => {
+                let w = &data.0.world.wrecks[*idx];
+                let def = data.0.ship(&w.ship).clone();
+                let ship = Ship::build(&def, &Loadout::full(&def), &ShipStats::default());
+                let model = spawn_ship_model(
+                    &mut commands,
+                    &mut art,
+                    &mut meshes,
+                    &mut mats,
+                    &ship,
+                    &def,
+                    ShipModelOpts {
+                        derelict: true,
+                        ..default()
+                    },
+                );
+                let k = crate::sim::hazards::WRECK_SCALE;
+                commands.entity(model).insert(
+                    Transform::from_translation((-ship.com * k).extend(0.0))
+                        .with_scale(Vec3::splat(k)),
+                );
+                // Glimmende Bruchstellen, solange noch Schrott drin ist.
+                let ember = mats.add(art.emissive_mat(Color::srgb(1.0, 0.45, 0.15), 3.0));
+                let crack = art.bevel_box(&mut meshes, Vec3::new(0.5, 0.12, 0.2));
+                let holder = commands
+                    .spawn((Transform::default(), Visibility::default(), BodyMesh(b.id)))
+                    .with_children(|h| {
+                        for k in 0..4 {
+                            let a = k as f32 * 1.7 + (b.seed % 7) as f32;
+                            let r = b.radius * 0.45;
+                            h.spawn((
+                                Mesh3d(crack.clone()),
+                                MeshMaterial3d(ember.clone()),
+                                Transform::from_xyz(a.cos() * r, a.sin() * r, 1.1)
+                                    .with_rotation(Quat::from_rotation_z(a * 2.3)),
+                                WreckEmber(b.id),
+                            ));
+                        }
+                    })
+                    .id();
+                commands.entity(holder).add_child(model);
+                kids.push(holder);
+            }
+            BodyKind::Salvage { .. } => {
+                let shell = mats.add(art.panel_mat(Color::srgb(0.32, 0.34, 0.37), 0.4, 0.7));
+                let band = mats.add(art.panel_mat(Color::srgb(0.85, 0.55, 0.15), 0.5, 0.3));
+                let bulb = mats.add(art.emissive_mat(Color::srgb(1.0, 0.6, 0.2), 7.0));
+                let body = art.bevel_box(&mut meshes, Vec3::new(1.2, 0.8, 0.8));
+                let ring = art.bevel_box(&mut meshes, Vec3::new(0.3, 0.84, 0.84));
+                let holder = commands
+                    .spawn((Transform::default(), Visibility::default(), BodyMesh(b.id)))
+                    .with_children(|h| {
+                        h.spawn((Mesh3d(body), MeshMaterial3d(shell)));
+                        h.spawn((Mesh3d(ring), MeshMaterial3d(band)));
+                        h.spawn((
+                            Mesh3d(art.sphere.clone()),
+                            MeshMaterial3d(bulb),
+                            Transform::from_xyz(0.5, 0.0, 0.42).with_scale(Vec3::splat(0.1)),
+                        ));
+                    })
+                    .id();
+                kids.push(holder);
+            }
             BodyKind::Derelict { .. } => {
                 let def = data.0.ship("kolibri").clone();
                 let ship = Ship::build(&def, &Loadout::full(&def), &ShipStats::default());
@@ -958,6 +1053,7 @@ pub fn sync_bodies(
                     ShipModelOpts {
                         slot_colors: false,
                         derelict: true,
+                        ..default()
                     },
                 );
                 // Modell so versetzen, dass es um den Schwerpunkt dreht.
@@ -1313,4 +1409,24 @@ pub fn sync_pod(
                 NotShadowCaster,
             ));
         });
+}
+
+/// Bruchstellen glimmen, solange das Wrack noch Schrott hergibt.
+pub fn update_wreck_embers(sim: Res<Sim>, mut q: Query<(&WreckEmber, &mut Visibility)>) {
+    for (e, mut vis) in &mut q {
+        let has_scrap = sim
+            .0
+            .bodies
+            .iter()
+            .find(|b| b.id == e.0)
+            .is_some_and(|b| matches!(b.kind, BodyKind::Wreck { scrap, .. } if scrap > 0.05));
+        let want = if has_scrap {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+    }
 }

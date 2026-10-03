@@ -2,9 +2,10 @@
 
 use bevy::math::Vec2;
 
-use super::data::{Ore, Service, ToolKind, v};
+use super::data::{MissionType, Ore, Service, ToolKind, v};
 use super::rng::hash32;
 use super::ship::{CargoKind, CraneState};
+use super::stats::{CrewStats, MissionReport};
 use super::world::Owner;
 use super::{Body, BodyKind, SimEvent, SimState, ToastKind};
 
@@ -14,8 +15,10 @@ pub const CRATE_RADIUS: f32 = 1.5;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum MissionKind {
+    /// Fracht im Frachtraum von A nach B – A kann auch ein Planeten-Außenposten sein
+    /// (Material verschicken).
     Delivery {
-        from: usize,
+        from: Owner,
         to: usize,
         cargo: String,
         mass: f32,
@@ -52,8 +55,21 @@ pub struct Mission {
     pub id: u32,
     pub kind: MissionKind,
     pub reward: u32,
-    /// Station, die den Auftrag anbietet. `None` = Notruf, überall annehmbar.
-    pub origin: Option<usize>,
+    /// Ort, der den Auftrag anbietet. `None` = Notruf, überall annehmbar.
+    pub origin: Option<Owner>,
+    /// Auftraggeber (Index in `npcs.ron`).
+    pub giver: Option<usize>,
+    /// Statistikstand bei Annahme (für die Auswertung).
+    pub start: Option<Box<CrewStats>>,
+    pub top_speed: f32,
+}
+
+/// Rufstufen: Punkte ab denen die Stufe gilt, und ihre Namen.
+pub const REP_LEVELS: [u32; 4] = [0, 3, 7, 12];
+pub const REP_NAMES: [&str; 4] = ["Neu", "Bekannt", "Geschätzt", "Partner"];
+
+pub fn rep_level(points: u32) -> u8 {
+    REP_LEVELS.iter().rposition(|&p| points >= p).unwrap_or(0) as u8
 }
 
 impl Mission {
@@ -83,7 +99,7 @@ impl Mission {
             MissionKind::Delivery { from, mass, .. } => {
                 format!(
                     "{mass:.1} t Fracht, Abholung an {}",
-                    s.world.stations[*from].name
+                    s.world.owner_name(*from)
                 )
             }
             MissionKind::Haul { from, mass, .. } => format!(
@@ -205,15 +221,51 @@ fn round5(x: f32) -> u32 {
 }
 
 impl SimState {
-    /// Angebote an Stationen und Notrufe auffüllen.
+    /// Rufstufe bei einer Station.
+    pub fn rep_level_at(&self, si: usize) -> u8 {
+        rep_level(self.crew.reputation.get(si).copied().unwrap_or(0))
+    }
+
+    /// Auftraggeber an einem Ort.
+    pub fn npcs_at(&self, owner: Owner) -> Vec<usize> {
+        let id = match owner {
+            Owner::Station(i) => &self.world.stations[i].id,
+            Owner::Planet(i) => &self.data.world.planets[i].id,
+        };
+        (0..self.data.npcs.len())
+            .filter(|&n| &self.data.npcs[n].at == id)
+            .collect()
+    }
+
+    /// Angebote an Stationen, Außenposten und Notrufe auffüllen.
     pub(crate) fn refresh_offers(&mut self) {
         let per = self.data.missions.offers_per_station as usize;
         for si in 0..self.world.stations.len() {
             if !self.world.stations[si].has(Service::Missions) {
                 continue;
             }
-            while self.offers.iter().filter(|m| m.origin == Some(si)).count() < per {
+            // Mehr Ruf = mehr Angebote.
+            let want = per + self.rep_level_at(si) as usize;
+            let here = Some(Owner::Station(si));
+            while self.offers.iter().filter(|m| m.origin == here).count() < want {
                 let m = self.generate_station_offer(si);
+                self.offers.push(m);
+            }
+        }
+        let per_outpost = self.data.missions.offers_per_outpost as usize;
+        for pi in 0..self.world.planets.len() {
+            let owner = Owner::Planet(pi);
+            if self.world.planets[pi].pad.is_none() || self.npcs_at(owner).is_empty() {
+                continue;
+            }
+            while self
+                .offers
+                .iter()
+                .filter(|m| m.origin == Some(owner))
+                .count()
+                < per_outpost
+            {
+                let m = self.generate_outpost_offer(pi);
                 self.offers.push(m);
             }
         }
@@ -229,72 +281,131 @@ impl SimState {
         let id = self.next_id();
         let md = self.data.missions.clone();
         let n_st = self.world.stations.len();
-        let ores_exist = md.mining.iter().any(|m| {
-            self.world.planets.iter().any(|p| p.ore == m.ore)
-                || self
-                    .data
-                    .world
-                    .asteroid_fields
-                    .iter()
-                    .any(|f| f.ore == m.ore)
+        let level = self.rep_level_at(si);
+        let ore_exists = |s: &SimState, ore: Ore| {
+            s.world.planets.iter().any(|p| p.ore == ore)
+                || s.data.world.asteroid_fields.iter().any(|f| f.ore == ore)
+        };
+        let ores_exist = md.mining.iter().any(|m| ore_exists(self, m.ore));
+        // Wer vergibt den Auftrag, und welche Art? Schwerlast gibt es erst ab Stufe „Bekannt“.
+        let npcs = self.npcs_at(Owner::Station(si));
+        let giver = (!npcs.is_empty()).then(|| npcs[self.rng.index(npcs.len())]);
+        let mut types: Vec<MissionType> = match giver {
+            Some(g) => self.data.npcs[g].gives.clone(),
+            None => vec![MissionType::Delivery, MissionType::Mining],
+        };
+        types.retain(|t| match t {
+            MissionType::Delivery => n_st > 1,
+            MissionType::Haul => n_st > 1 && level >= 1,
+            MissionType::Mining => ores_exist,
+            MissionType::Shipment => false,
         });
-        if (self.rng.chance(0.55) || !ores_exist) && n_st > 1 {
-            let mut to = self.rng.index(n_st - 1);
-            if to >= si {
-                to += 1;
-            }
-            let t = &md.delivery_cargo[self.rng.index(md.delivery_cargo.len())];
-            let dist = (self.world.stations[to].pos - self.world.stations[si].pos).length();
-            let kind = if t.towed {
-                MissionKind::Haul {
-                    from: si,
-                    to,
-                    cargo: t.name.clone(),
-                    mass: t.mass,
-                    body: None,
-                }
+        if types.is_empty() {
+            types.push(if n_st > 1 {
+                MissionType::Delivery
             } else {
-                MissionKind::Delivery {
-                    from: si,
-                    to,
-                    cargo: t.name.clone(),
-                    mass: t.mass,
+                MissionType::Mining
+            });
+        }
+        let ty = types[self.rng.index(types.len())];
+        let bonus = 1.0 + 0.1 * level as f32;
+        let (kind, reward) = match ty {
+            MissionType::Delivery | MissionType::Haul => {
+                let mut to = self.rng.index(n_st - 1);
+                if to >= si {
+                    to += 1;
                 }
-            };
-            Mission {
-                id,
-                kind,
-                reward: round5(t.reward as f32 + dist * md.reward_per_distance),
-                origin: Some(si),
+                let want_towed = ty == MissionType::Haul;
+                let pool: Vec<_> = md
+                    .delivery_cargo
+                    .iter()
+                    .filter(|c| c.towed == want_towed)
+                    .cloned()
+                    .collect();
+                let pool = if pool.is_empty() {
+                    md.delivery_cargo.clone()
+                } else {
+                    pool
+                };
+                let t = &pool[self.rng.index(pool.len())];
+                let dist = (self.world.stations[to].pos - self.world.stations[si].pos).length();
+                let kind = if t.towed {
+                    MissionKind::Haul {
+                        from: si,
+                        to,
+                        cargo: t.name.clone(),
+                        mass: t.mass,
+                        body: None,
+                    }
+                } else {
+                    MissionKind::Delivery {
+                        from: Owner::Station(si),
+                        to,
+                        cargo: t.name.clone(),
+                        mass: t.mass,
+                    }
+                };
+                (kind, t.reward as f32 + dist * md.reward_per_distance)
             }
-        } else {
-            // Nur Erze, die es in der Welt auch gibt.
-            let available: Vec<_> = md
-                .mining
-                .iter()
-                .filter(|m| {
-                    self.world.planets.iter().any(|p| p.ore == m.ore)
-                        || self
-                            .data
-                            .world
-                            .asteroid_fields
-                            .iter()
-                            .any(|f| f.ore == m.ore)
-                })
-                .cloned()
-                .collect();
-            let t = &available[self.rng.index(available.len())];
-            let amount = (self.rng.range(t.amount.0, t.amount.1) * 2.0).round() / 2.0;
-            Mission {
-                id,
-                kind: MissionKind::Mining {
-                    ore: t.ore,
-                    amount,
-                    to: si,
-                },
-                reward: round5(amount * t.reward_per_t),
-                origin: Some(si),
+            _ => {
+                // Nur Erze, die es in der Welt auch gibt.
+                let available: Vec<_> = md
+                    .mining
+                    .iter()
+                    .filter(|m| ore_exists(self, m.ore))
+                    .cloned()
+                    .collect();
+                let t = &available[self.rng.index(available.len())];
+                // Größere Aufträge für Crews mit gutem Ruf.
+                let scale = 1.0 + 0.15 * level as f32;
+                let amount = (self.rng.range(t.amount.0, t.amount.1) * scale * 2.0).round() / 2.0;
+                (
+                    MissionKind::Mining {
+                        ore: t.ore,
+                        amount,
+                        to: si,
+                    },
+                    amount * t.reward_per_t,
+                )
             }
+        };
+        Mission {
+            id,
+            kind,
+            reward: round5(reward * bonus),
+            origin: Some(Owner::Station(si)),
+            giver,
+            start: None,
+            top_speed: 0.0,
+        }
+    }
+
+    /// Außenposten verschicken ihr Erz als Ladung zu einer Station.
+    fn generate_outpost_offer(&mut self, pi: usize) -> Mission {
+        let id = self.next_id();
+        let md = self.data.missions.clone();
+        let npcs = self.npcs_at(Owner::Planet(pi));
+        let giver = (!npcs.is_empty()).then(|| npcs[self.rng.index(npcs.len())]);
+        let targets: Vec<usize> = (0..self.world.stations.len())
+            .filter(|&i| self.world.stations[i].has(Service::Market))
+            .collect();
+        let to = targets[self.rng.index(targets.len())];
+        let ore = self.world.planets[pi].ore;
+        let mass = (self.rng.range(3.0, 7.0) * 2.0).round() / 2.0;
+        let dist = (self.world.stations[to].pos - self.world.planets[pi].pos).length();
+        Mission {
+            id,
+            kind: MissionKind::Delivery {
+                from: Owner::Planet(pi),
+                to,
+                cargo: format!("{}-Ladung", ore.label()),
+                mass,
+            },
+            reward: round5(mass * md.shipment_per_t + dist * md.reward_per_distance),
+            origin: Some(Owner::Planet(pi)),
+            giver,
+            start: None,
+            top_speed: 0.0,
         }
     }
 
@@ -324,6 +435,9 @@ impl SimState {
                 },
                 reward: round5(self.rng.range(md.tow_reward.0, md.tow_reward.1)),
                 origin: None,
+                giver: None,
+                start: None,
+                top_speed: 0.0,
             }
         } else {
             let total = self.rng.range_u32(md.capsule_count.0, md.capsule_count.1);
@@ -337,6 +451,9 @@ impl SimState {
                 },
                 reward: round5(self.rng.range(md.capsule_reward.0, md.capsule_reward.1)),
                 origin: None,
+                giver: None,
+                start: None,
+                top_speed: 0.0,
             }
         }
     }
@@ -357,9 +474,8 @@ impl SimState {
             MissionKind::Delivery {
                 from, cargo, mass, ..
             } => {
-                let here = self.docked_station();
-                if here != Some(*from) {
-                    let name = self.world.stations[*from].name.clone();
+                if self.docked_owner() != Some(*from) {
+                    let name = self.world.owner_name(*from).to_string();
                     self.toast(
                         format!("Fracht liegt in {name} – dort andocken"),
                         ToastKind::Warn,
@@ -477,6 +593,8 @@ impl SimState {
         }
         self.offers.remove(idx);
         let title = m.title(self);
+        m.start = Some(Box::new(self.stats.clone()));
+        m.top_speed = 0.0;
         self.active.push(m);
         self.events.push(SimEvent::MissionAccepted { id });
         self.toast(format!("Auftrag angenommen: {title}"), ToastKind::Info);
@@ -537,6 +655,47 @@ impl SimState {
             format!("Auftrag erfüllt: {title}  +{} Credits", m.reward),
             ToastKind::Good,
         );
+        // Ruf: bei der Station, die den Auftrag vergeben hat – bei Notrufen und Lieferungen
+        // von Außenposten bei der Zielstation.
+        let rep_station = match (m.origin, &m.kind) {
+            (Some(Owner::Station(si)), _) => Some(si),
+            (_, MissionKind::Delivery { to, .. })
+            | (_, MissionKind::Tow { to, .. })
+            | (_, MissionKind::Capsules { to, .. }) => Some(*to),
+            _ => None,
+        };
+        let reputation = rep_station.map(|si| {
+            let gain = if matches!(m.kind, MissionKind::Haul { .. } | MissionKind::Tow { .. }) {
+                2
+            } else {
+                1
+            };
+            let before = self.rep_level_at(si);
+            if let Some(p) = self.crew.reputation.get_mut(si) {
+                *p += gain;
+            }
+            let after = self.rep_level_at(si);
+            let name = self.world.stations[si].name.clone();
+            if after > before {
+                self.toast(
+                    format!(
+                        "Ruf bei {name}: {} – mehr und besser bezahlte Aufträge",
+                        REP_NAMES[after as usize]
+                    ),
+                    ToastKind::Good,
+                );
+            }
+            (name, after, gain)
+        });
+        let start = m.start.as_deref().cloned().unwrap_or_default();
+        self.report = Some(MissionReport {
+            mission: m.id,
+            title,
+            reward: m.reward,
+            reputation,
+            stats: self.stats.since(&start, m.top_speed),
+            thruster_slots: self.ship.thrusters.iter().map(|t| t.slot).collect(),
+        });
         self.cleanup_mission(&m);
     }
 
@@ -577,6 +736,7 @@ impl SimState {
     /// Beim Andocken: Lieferungen abschließen.
     pub(crate) fn on_docked(&mut self, owner: Owner) {
         let Owner::Station(si) = owner else {
+            self.refresh_offers();
             return;
         };
         let mut i = 0;
@@ -627,7 +787,7 @@ impl SimState {
     }
 
     pub fn offers_here(&self) -> Vec<&Mission> {
-        let here = self.docked_station();
+        let here = self.docked_owner();
         self.offers
             .iter()
             .filter(|m| m.origin.is_none() || m.origin == here)
@@ -658,7 +818,9 @@ mod tests {
         let m = s
             .offers
             .iter()
-            .find(|m| matches!(m.kind, MissionKind::Delivery { from, .. } if from == here))
+            .find(|m| {
+                matches!(m.kind, MissionKind::Delivery { from, .. } if from == Owner::Station(here))
+            })
             .cloned();
         let Some(m) = m else { return };
         s.step(&TickInput {

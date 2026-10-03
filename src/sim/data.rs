@@ -262,16 +262,25 @@ pub enum Ore {
     Kobalt,
     Solarit,
     Ionit,
+    /// Altmetall aus Wracks (wird wie Erz gehandelt).
+    Schrott,
 }
 
 impl Ore {
-    pub const ALL: [Ore; 4] = [Ore::Ferrit, Ore::Kobalt, Ore::Solarit, Ore::Ionit];
+    pub const ALL: [Ore; 5] = [
+        Ore::Ferrit,
+        Ore::Kobalt,
+        Ore::Solarit,
+        Ore::Ionit,
+        Ore::Schrott,
+    ];
     pub fn label(self) -> &'static str {
         match self {
             Ore::Ferrit => "Ferrit",
             Ore::Kobalt => "Kobalt",
             Ore::Solarit => "Solarit",
             Ore::Ionit => "Ionit",
+            Ore::Schrott => "Schrott",
         }
     }
     /// Leuchtfarbe des Erzes (sRGB).
@@ -281,6 +290,7 @@ impl Ore {
             Ore::Kobalt => [0.25, 0.55, 1.0],
             Ore::Solarit => [1.0, 0.85, 0.15],
             Ore::Ionit => [0.2, 1.0, 0.85],
+            Ore::Schrott => [0.72, 0.66, 0.58],
         }
     }
 }
@@ -366,6 +376,9 @@ pub struct StationDef {
     /// Schiffe, die diese Werft verkauft (Kennungen aus `ships.ron`).
     #[serde(default)]
     pub ships_for_sale: Vec<String>,
+    /// Von Anfang an auf der Karte (sonst erst, wenn die Gegend erkundet ist).
+    #[serde(default = "default_true")]
+    pub known: bool,
 }
 
 fn default_true() -> bool {
@@ -374,8 +387,7 @@ fn default_true() -> bool {
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct PlanetDef {
-    /// Kennung für Verweise aus anderen Daten (z. B. künftige Missionen).
-    #[allow(dead_code)]
+    /// Kennung für Verweise aus anderen Daten (z. B. Auftraggeber in `npcs.ron`).
     pub id: String,
     pub name: String,
     pub pos: P,
@@ -453,6 +465,21 @@ pub struct AnomalyDef {
     pub strength: f32,
 }
 
+/// Ein Wrack zum Ausschlachten: Bohrer gewinnt Schrott, der Kran reißt Bauteile ab.
+#[derive(Deserialize, Clone, Debug)]
+pub struct WreckDef {
+    pub name: String,
+    /// Schiffsmodell, nach dem das Wrack aussieht.
+    pub ship: String,
+    pub pos: P,
+    #[serde(default)]
+    pub angle: f32,
+    /// Schrott in Tonnen, den der Bohrer herausholen kann.
+    pub scrap: f32,
+    /// Bauteile, die der Kran abreißen kann.
+    pub parts: u32,
+}
+
 #[derive(Deserialize, Clone, Debug)]
 pub struct RegionDef {
     pub name: String,
@@ -485,6 +512,8 @@ pub struct WorldDef {
     pub regions: Vec<RegionDef>,
     pub backdrop: Vec<BackdropDef>,
     pub distress_sites: Vec<P>,
+    #[serde(default)]
+    pub wrecks: Vec<WreckDef>,
 }
 
 // ---------------------------------------------------------------------------
@@ -536,6 +565,20 @@ pub struct UpgradeDef {
 }
 
 #[derive(Deserialize, Clone, Debug)]
+pub struct PaintDef {
+    pub name: String,
+    pub color: String,
+}
+
+/// Flammenfarbe: `None` = Slotfarben (zeigt, wer schiebt).
+#[derive(Deserialize, Clone, Debug)]
+pub struct FlameDef {
+    pub name: String,
+    #[serde(default)]
+    pub color: Option<String>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
 pub struct ShopDef {
     pub start_credits: u32,
     /// Bergungskosten nach Zerstörung: fester Betrag + Anteil der Kasse (höchstens die Kasse).
@@ -545,6 +588,18 @@ pub struct ShopDef {
     pub services: Vec<ServiceItem>,
     pub upgrades: Vec<UpgradeDef>,
     pub ore_prices: Vec<(Ore, u32)>,
+    /// Lackiererei: Farben für Rumpf und Akzent, Flammenfarben, Preis pro Änderung.
+    #[serde(default)]
+    pub paints: Vec<PaintDef>,
+    #[serde(default)]
+    pub flames: Vec<FlameDef>,
+    #[serde(default)]
+    pub paint_price: u32,
+    /// Namen für Bauteile aus Wracks und ihr Wert (Spanne).
+    #[serde(default)]
+    pub salvage_names: Vec<String>,
+    #[serde(default)]
+    pub salvage_value: (u32, u32),
 }
 
 impl ShopDef {
@@ -581,6 +636,12 @@ pub struct MiningTemplate {
 #[derive(Deserialize, Clone, Debug)]
 pub struct MissionsDef {
     pub offers_per_station: u32,
+    /// Angebote an Planeten-Außenposten (Material verschicken).
+    #[serde(default)]
+    pub offers_per_outpost: u32,
+    /// Belohnung pro Tonne für Lieferungen von Außenposten.
+    #[serde(default)]
+    pub shipment_per_t: f32,
     pub distress_offers: u32,
     pub delivery_cargo: Vec<CargoTemplate>,
     pub reward_per_distance: f32,
@@ -592,8 +653,51 @@ pub struct MissionsDef {
 }
 
 // ---------------------------------------------------------------------------
+// Auftraggeber
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MissionType {
+    Delivery,
+    Haul,
+    Mining,
+    /// Material von einem Planeten-Außenposten zu einer Station verschicken.
+    Shipment,
+}
+
+/// Aussehen des Porträts (wird im Menü aus einfachen Formen gebaut).
+#[derive(Deserialize, Clone, Debug)]
+pub struct Look {
+    pub skin: String,
+    pub hair: String,
+    pub suit: String,
+    #[serde(default)]
+    pub helmet: bool,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct NpcDef {
+    pub id: String,
+    pub name: String,
+    pub role: String,
+    /// Station- oder Planeten-Kennung.
+    pub at: String,
+    pub gives: Vec<MissionType>,
+    pub look: Look,
+    pub lines: Vec<String>,
+}
+
+// ---------------------------------------------------------------------------
 // Spielstand der Crew
 // ---------------------------------------------------------------------------
+
+/// Lackierung eines Schiffs (Indizes in `shop.ron`; `None` = Werkslack).
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct Livery {
+    pub hull: Option<usize>,
+    pub accent: Option<usize>,
+    pub flame: Option<usize>,
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct CrewSave {
@@ -605,6 +709,15 @@ pub struct CrewSave {
     pub home_station: String,
     pub missions_done: u32,
     pub ore_sold: f32,
+    /// Ruf pro Station (Kennung, Punkte).
+    #[serde(default)]
+    pub reputation: Vec<(String, u32)>,
+    /// Erkundete Gebiete als Hex-Bitfeld.
+    #[serde(default)]
+    pub explored: String,
+    /// Lackierung pro Schiff.
+    #[serde(default)]
+    pub liveries: Vec<(String, Livery)>,
 }
 
 impl CrewSave {
@@ -618,6 +731,9 @@ impl CrewSave {
             home_station: data.world.start_station.clone(),
             missions_done: 0,
             ore_sold: 0.0,
+            reputation: Vec::new(),
+            explored: String::new(),
+            liveries: Vec::new(),
         }
     }
 }
@@ -632,12 +748,14 @@ pub struct GameData {
     pub world: WorldDef,
     pub shop: ShopDef,
     pub missions: MissionsDef,
+    pub npcs: Vec<NpcDef>,
 }
 
 const SHIPS_RON: &str = include_str!("../../assets/data/ships.ron");
 const WORLD_RON: &str = include_str!("../../assets/data/world.ron");
 const SHOP_RON: &str = include_str!("../../assets/data/shop.ron");
 const MISSIONS_RON: &str = include_str!("../../assets/data/missions.ron");
+const NPCS_RON: &str = include_str!("../../assets/data/npcs.ron");
 
 fn read_or(name: &str, embedded: &str) -> String {
     let path = std::path::Path::new("assets/data").join(name);
@@ -656,6 +774,7 @@ impl GameData {
             world: parse("world.ron", &read_or("world.ron", WORLD_RON))?,
             shop: parse("shop.ron", &read_or("shop.ron", SHOP_RON))?,
             missions: parse("missions.ron", &read_or("missions.ron", MISSIONS_RON))?,
+            npcs: parse("npcs.ron", &read_or("npcs.ron", NPCS_RON))?,
         };
         data.validate()?;
         Ok(data)
@@ -669,6 +788,7 @@ impl GameData {
             world: parse("world.ron", WORLD_RON)?,
             shop: parse("shop.ron", SHOP_RON)?,
             missions: parse("missions.ron", MISSIONS_RON)?,
+            npcs: parse("npcs.ron", NPCS_RON)?,
         };
         data.validate()?;
         Ok(data)
@@ -697,6 +817,24 @@ impl GameData {
                 if !self.ships.iter().any(|s| &s.id == id) {
                     return Err(format!("Station {}: unbekanntes Schiff {id}", st.id));
                 }
+            }
+        }
+        for n in &self.npcs {
+            let known = self.station_index(&n.at).is_some()
+                || self.world.planets.iter().any(|p| p.id == n.at);
+            if !known {
+                return Err(format!(
+                    "npcs.ron: {} steht an unbekanntem Ort {}",
+                    n.id, n.at
+                ));
+            }
+        }
+        for w in &self.world.wrecks {
+            if !self.ships.iter().any(|s| s.id == w.ship) {
+                return Err(format!(
+                    "world.ron: Wrack {} mit unbekanntem Schiff",
+                    w.name
+                ));
             }
         }
         if self.station_index(&self.world.start_station).is_none() {

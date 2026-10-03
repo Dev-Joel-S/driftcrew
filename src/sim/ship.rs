@@ -143,8 +143,18 @@ pub struct CargoPod {
 #[derive(Clone, Debug, PartialEq)]
 pub enum CargoKind {
     Ore(Ore),
-    Container { mission: u32, name: String },
-    Capsule { mission: u32 },
+    Container {
+        mission: u32,
+        name: String,
+    },
+    Capsule {
+        mission: u32,
+    },
+    /// Bauteil aus einem Wrack, wird am Markt zum festen Wert verkauft.
+    Salvage {
+        name: String,
+        value: u32,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]

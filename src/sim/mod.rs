@@ -12,12 +12,16 @@ pub mod autopilot;
 pub mod data;
 pub mod dock;
 pub mod economy;
+pub mod explore;
 pub mod geom;
 pub mod hazards;
 pub mod missions;
 pub mod physics;
+#[cfg(test)]
+mod progress_tests;
 pub mod rng;
 pub mod ship;
+pub mod stats;
 #[cfg(test)]
 mod systems_tests;
 pub mod tools;
@@ -27,7 +31,7 @@ use std::sync::Arc;
 
 use bevy::math::Vec2;
 
-use data::{CrewSave, GameData, Ore};
+use data::{CrewSave, GameData, Livery, Ore};
 use economy::{Purchase, Vote};
 use missions::Mission;
 use rng::Rng;
@@ -182,6 +186,18 @@ pub enum BodyKind {
         mission: u32,
         name: String,
     },
+    /// Wrack zum Ausschlachten (Index in `world.wrecks`).
+    Wreck {
+        idx: usize,
+        scrap: f32,
+        parts: u32,
+        home: Vec2,
+    },
+    /// Abgerissenes Bauteil – klein genug zum Verstauen, wird am Markt verkauft.
+    Salvage {
+        name: String,
+        value: u32,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -212,7 +228,7 @@ impl Body {
     pub fn stowable(&self) -> bool {
         matches!(
             self.kind,
-            BodyKind::OreChunk { .. } | BodyKind::Capsule { .. }
+            BodyKind::OreChunk { .. } | BodyKind::Capsule { .. } | BodyKind::Salvage { .. }
         )
     }
 }
@@ -248,6 +264,20 @@ pub struct Crew {
     pub home_station: usize,
     pub missions_done: u32,
     pub ore_sold: f32,
+    /// Rufpunkte pro Station (Index wie `world.stations`).
+    pub reputation: Vec<u32>,
+    /// Lackierung pro Schiff.
+    pub liveries: Vec<(String, Livery)>,
+}
+
+impl Crew {
+    pub fn livery(&self, ship: &str) -> Livery {
+        self.liveries
+            .iter()
+            .find(|(s, _)| s == ship)
+            .map(|(_, l)| l.clone())
+            .unwrap_or_default()
+    }
 }
 
 #[derive(Clone)]
@@ -278,6 +308,11 @@ pub struct SimState {
     pub salvage_fee: u32,
     /// Index der Anomalie, in deren Sog das Schiff zuletzt gewarnt wurde.
     pub pull_warned: Option<usize>,
+    /// Fog of War.
+    pub explored: explore::Exploration,
+    /// Spaßstatistik (laufend) und die Auswertung des zuletzt erledigten Auftrags.
+    pub stats: stats::CrewStats,
+    pub report: Option<stats::MissionReport>,
 }
 
 impl SimState {
@@ -285,6 +320,24 @@ impl SimState {
         let mut rng = Rng::new(data.world.seed);
         let world = World::build(&data, &mut rng);
         let home = data.station_index(&save.home_station).unwrap_or(0);
+        let reputation = world
+            .stations
+            .iter()
+            .map(|st| {
+                save.reputation
+                    .iter()
+                    .find(|(id, _)| *id == st.id)
+                    .map_or(0, |(_, p)| *p)
+            })
+            .collect();
+        let mut explored = explore::Exploration::new(world.radius);
+        explored.load_hex(&save.explored);
+        // Bekannte Stationen sind von Anfang an aufgedeckt.
+        for (st, sd) in world.stations.iter().zip(&data.world.stations) {
+            if sd.known {
+                explored.reveal(st.pos, 260.0);
+            }
+        }
         let crew = Crew {
             size: crew_size.max(1),
             credits: save.credits,
@@ -294,6 +347,8 @@ impl SimState {
             home_station: home,
             missions_done: save.missions_done,
             ore_sold: save.ore_sold,
+            reputation,
+            liveries: save.liveries.clone(),
         };
         let stats = economy::stats_for(&data, &crew.upgrades);
         let ship = Ship::build(data.ship(&crew.current_ship), &loadout, &stats);
@@ -323,8 +378,12 @@ impl SimState {
             escape: None,
             salvage_fee: 0,
             pull_warned: None,
+            explored,
+            stats: stats::CrewStats::default(),
+            report: None,
         };
         s.populate_fields();
+        s.populate_wrecks();
         s.refresh_offers();
         s.dock_at_station(home);
         s.events.clear();
@@ -396,6 +455,16 @@ impl SimState {
             home_station: self.world.stations[self.crew.home_station].id.clone(),
             missions_done: self.crew.missions_done,
             ore_sold: self.crew.ore_sold,
+            reputation: self
+                .world
+                .stations
+                .iter()
+                .zip(&self.crew.reputation)
+                .filter(|(_, p)| **p > 0)
+                .map(|(st, p)| (st.id.clone(), *p))
+                .collect(),
+            explored: self.explored.to_hex(),
+            liveries: self.crew.liveries.clone(),
         }
     }
 
@@ -436,10 +505,65 @@ impl SimState {
         }
         self.update_hazards();
         self.update_missions();
+        self.update_tracking();
         self.check_ship_health();
 
         self.bodies.retain(|b| b.alive);
         self.projectiles.retain(|p| p.life > 0.0);
+    }
+}
+
+impl SimState {
+    /// Erkundung und Statistik nachführen (läuft jeden Tick, deckt alle 15 Ticks auf).
+    fn update_tracking(&mut self) {
+        if self.ship.destroyed {
+            return;
+        }
+        if self.tick.is_multiple_of(15) {
+            self.explored.reveal(self.ship.pos, explore::SIGHT);
+        }
+        let speed = self.ship.vel.length();
+        self.stats.time += DT;
+        if self.ship.docked.is_none() {
+            self.stats.distance += speed * DT;
+            self.stats.top_speed = self.stats.top_speed.max(speed);
+            for t in &self.ship.thrusters {
+                if t.firing {
+                    self.stats.slots[t.slot as usize].thrust_time += DT;
+                }
+            }
+        }
+        for m in &mut self.active {
+            m.top_speed = m.top_speed.max(speed);
+        }
+    }
+
+    /// Ist dieser Ort schon entdeckt (Fog of War)?
+    pub fn discovered(&self, p: Vec2) -> bool {
+        self.explored.is_explored(p)
+    }
+
+    /// Station auf Karte und Radar zeigen? Bekannte Stationen von Anfang an, andere erst,
+    /// wenn die Gegend erkundet ist.
+    pub fn station_known(&self, si: usize) -> bool {
+        self.data.world.stations[si].known || self.discovered(self.world.stations[si].pos)
+    }
+
+    /// Slot, dessen Teil einem Punkt am nächsten liegt (für die Kollisionsstatistik).
+    pub(crate) fn nearest_slot(&self, p: Vec2) -> Option<u8> {
+        let th = self
+            .ship
+            .thrusters
+            .iter()
+            .map(|t| (t.slot, self.ship.to_world(t.pos)));
+        let tl = self
+            .ship
+            .tools
+            .iter()
+            .map(|t| (t.slot, self.ship.to_world(t.pos)));
+        th.chain(tl)
+            .min_by(|a, b| (a.1 - p).length().total_cmp(&(b.1 - p).length()))
+            .map(|(s, _)| s)
     }
 }
 

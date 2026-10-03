@@ -303,10 +303,7 @@ pub fn spawn_world(
                 &mut mats,
                 &ship,
                 def,
-                ShipModelOpts {
-                    slot_colors: false,
-                    derelict: false,
-                },
+                ShipModelOpts::default(),
             );
             commands
                 .entity(e)

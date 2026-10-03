@@ -1,6 +1,6 @@
 //! Automatischer Vorführmodus für Screenshots und Rauchtests:
 //! `DRIFTCREW_DEMO=<ordner>` fliegt ein Skript ab, speichert Bildschirmfotos und
-//! beendet sich danach. `DRIFTCREW_SCENE=tour|ui|systems` wählt das Skript.
+//! beendet sich danach. `DRIFTCREW_SCENE=tour|ui|systems|progress` wählt das Skript.
 
 use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
@@ -321,6 +321,101 @@ fn systems_scene() -> Vec<(f32, Act)> {
     ]
 }
 
+/// Phase-4-Fortschritt: Auftraggeber, Lack, Auswertung, Wracks, Kartennebel, Außenposten.
+fn progress_scene() -> Vec<(f32, Act)> {
+    vec![
+        (0.5, |c| {
+            keyboard_crew(c, false);
+            c.next.set(AppState::Playing);
+        }),
+        // Nova-Hub: Reiter Service, Upgrades, Lack, Aufträge, Markt.
+        (2.5, |c| c.menu.right = true),
+        (2.9, |c| c.menu.right = true),
+        (3.3, |c| c.menu.right = true),
+        (4.8, |c| shot(c, "auftraggeber")),
+        (6.5, |c| {
+            for (part, choice) in [
+                (crate::sim::economy::PaintPart::Hull, Some(4)),
+                (crate::sim::economy::PaintPart::Accent, Some(7)),
+                (crate::sim::economy::PaintPart::Flame, Some(2)),
+            ] {
+                c.pending.0.push(Command::Buy {
+                    purchase: Purchase::Paint { part, choice },
+                    voter: 0,
+                });
+            }
+            c.menu.left = true;
+        }),
+        (8.2, |c| shot(c, "lackiererei")),
+        (9.8, |c| {
+            let s = &mut c.sim.0;
+            let nova = s.data.station_index("nova").unwrap_or(0);
+            let m = s.offers.iter().find(|m| {
+                matches!(m.kind, crate::sim::missions::MissionKind::Delivery { from, .. }
+                    if from == crate::sim::world::Owner::Station(nova))
+            });
+            if let Some(m) = m {
+                c.pending.0.push(Command::AcceptMission { id: m.id });
+            }
+            c.slots.0 = 0b10011;
+        }),
+        (11.0, |c| c.slots.0 = 0b00001),
+        (11.6, |c| {
+            c.slots.0 = 0;
+            let s = &mut c.sim.0;
+            let to = s.active.iter().find_map(|m| match m.kind {
+                crate::sim::missions::MissionKind::Delivery { to, .. } => Some(to),
+                _ => None,
+            });
+            if let Some(to) = to {
+                s.ship.docked = None;
+                s.dock_at_station(to);
+                s.on_docked(crate::sim::world::Owner::Station(to));
+            }
+        }),
+        (13.5, |c| shot(c, "auswertung")),
+        (15.5, |c| {
+            teleport(c, Vec2::new(-1240.0, 1560.0), 16.0, 0.3);
+            c.sim.0.ship.angle = 1.9;
+        }),
+        (17.5, |c| shot(c, "wracks")),
+        (19.5, |c| {
+            let s = &mut c.sim.0;
+            let ci = s
+                .ship
+                .tools
+                .iter()
+                .position(|t| t.kind == crate::sim::data::ToolKind::Crane);
+            let w = s
+                .bodies
+                .iter()
+                .filter(|b| matches!(b.kind, crate::sim::BodyKind::Wreck { .. }))
+                .min_by(|a, b| {
+                    (a.pos - s.ship.pos)
+                        .length()
+                        .total_cmp(&(b.pos - s.ship.pos).length())
+                })
+                .map(|b| (b.id, b.pos));
+            if let (Some(ci), Some((id, wpos))) = (ci, w) {
+                let mount = s.ship.tool_world_pos(ci);
+                let rope = (wpos - mount).length();
+                s.ship.tools[ci].crane = crate::sim::ship::CraneState::Attached { body: id, rope };
+                s.ship.vel = (mount - wpos).normalize() * 5.0;
+            }
+        }),
+        (20.6, |c| shot(c, "bauteil")),
+        (22.6, |c| c.menu.tab = true),
+        (24.4, |c| shot(c, "karte_nebel")),
+        (25.0, |c| c.menu.tab = true),
+        (26.0, |c| {
+            let pad = c.sim.0.world.planets[0].pad.unwrap_or(0);
+            land_on(c, pad);
+        }),
+        (29.0, |c| shot(c, "aussenposten")),
+        (31.0, |_| {}),
+    ]
+}
+
 fn ui_scene() -> Vec<(f32, Act)> {
     vec![
         (2.5, |c| shot(c, "titel")),
@@ -382,6 +477,7 @@ fn demo_script(
     let script = match demo.cfg.scene.as_str() {
         "ui" => ui_scene(),
         "systems" => systems_scene(),
+        "progress" => progress_scene(),
         _ => tour(),
     };
     let mut pad = pads.iter().next();

@@ -120,6 +120,8 @@
             // Nahe Azura: Ionit billig, Ferrit und Kobalt werden gesucht.
             prices: (ore: [(Ionit, 0.85), (Ferrit, 1.4), (Kobalt, 1.2)], fuel: 1.1, service: 1.0),
             ships_for_sale: ["driftkutter", "hornisse", "pelikan"],
+            // Erst auf der Karte, wenn jemand hingeflogen ist.
+            known: false,
             layout: [
                 "..........XLX..........",
                 "..........#W#..........",
@@ -212,11 +214,21 @@
         (name: "Azurgrenze",   center: (1900.0, 1000.0), radius: 800.0,  colors: ("#6a5cff", "#4fd8ff")),
         (name: "Vega-Rand",    center: (2100.0, 100.0),  radius: 600.0,  colors: ("#e0a526", "#4fd8ff")),
         (name: "Schlund",      center: (-1850.0, -1000.0), radius: 520.0, colors: ("#7c4dff", "#ff4a2a")),
+        (name: "Schiffsfriedhof", center: (-1250.0, 1550.0), radius: 420.0, colors: ("#8a8f99", "#ff8a3d")),
     ],
     backdrop: [
         (pos: (420.0, -380.0),   depth: 700.0, radius: 230.0, colors: ["#2a0f3d", "#7c4dff", "#ff4fa3", "#ffb21f"], rings: true),
         (pos: (-1500.0, 1300.0), depth: 900.0, radius: 360.0, colors: ["#04202a", "#0f8a8a", "#3fe0d0", "#d0fff4"]),
         (pos: (1900.0, -1500.0), depth: 800.0, radius: 280.0, colors: ["#2a0808", "#a02a1a", "#ff8a3d", "#ffe0a0"]),
+    ],
+    // Wracks: Bohrer gewinnt Schrott, der Kran reißt Bauteile ab (Kran straff ziehen = Ruck).
+    wrecks: [
+        (name: "Frachter Kassiopeia", ship: "lastesel", pos: (-1240.0, 1560.0), angle: 35.0,  scrap: 26.0, parts: 3),
+        (name: "Kutter Möwe",         ship: "driftkutter", pos: (-1320.0, 1480.0), angle: 160.0, scrap: 14.0, parts: 2),
+        (name: "Jäger Rabe",          ship: "hornisse", pos: (-1150.0, 1470.0), angle: 250.0, scrap: 12.0, parts: 2),
+        (name: "Schlepper Albatros",  ship: "pelikan", pos: (-1200.0, 1640.0), angle: 300.0, scrap: 20.0, parts: 3),
+        (name: "Sonde Ikarus",        ship: "kolibri", pos: (1480.0, 1620.0), angle: 90.0,  scrap: 8.0,  parts: 2),
+        (name: "Frachter Nadir",      ship: "lastesel", pos: (640.0, -1720.0), angle: 200.0, scrap: 24.0, parts: 3),
     ],
     distress_sites: [
         (-220.0, 640.0), (880.0, 260.0), (-920.0, -260.0), (1620.0, -480.0),

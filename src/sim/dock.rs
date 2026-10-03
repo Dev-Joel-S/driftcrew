@@ -268,7 +268,7 @@ impl SimState {
                 CargoKind::Container { mission, .. } => {
                     self.fail_mission(mission, "Fracht zerstört")
                 }
-                CargoKind::Ore(_) => {}
+                CargoKind::Ore(_) | CargoKind::Salvage { .. } => {}
             }
         }
         let fee = self.salvage_fee_now();

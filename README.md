@@ -19,6 +19,8 @@ eigener Name, eigener Look, alle Grafiken und Klänge werden beim Start prozedur
 | ![Abstimmung](docs/screenshots/abstimmung.jpg) | ![Sektorkarte](docs/screenshots/karte.jpg) |
 | ![Schwarzes Loch](docs/screenshots/schwarzes_loch.jpg) | ![Rettungskapsel](docs/screenshots/rettungskapsel.jpg) |
 | ![Landezone auf Viridia](docs/screenshots/landezone.jpg) | ![Schwerlast am Kran](docs/screenshots/schwerlast.jpg) |
+| ![Auftraggeber im Stationsmenü](docs/screenshots/auftraggeber.jpg) | ![Auswertung nach dem Auftrag](docs/screenshots/auswertung.jpg) |
+| ![Wrack ausschlachten](docs/screenshots/wrack.jpg) | ![Karte mit Fog of War](docs/screenshots/karte_nebel.jpg) |
 
 *(Screenshots aus dem automatischen Vorführmodus, gerendert mit Software-Vulkan.)*
 
@@ -130,13 +132,37 @@ Tanken), Upgrades, Aufträge, Markt (Erz verkaufen, Preistafel mit dem besten Or
 Werften der Schiffshandel. **Jeder Ort hat eigene Preise**, jede Werft ihr **eigenes Angebot**.
 Planeten-Außenposten nehmen Erz an.
 
+**Lackiererei:** An Stationen mit Werkstatt lassen sich Rumpf, Akzent und Flammen umlackieren
+(abgestimmt wie jeder Kauf). Eigene Flammenfarben färben die Außenflamme – Kern, Kennringe und
+Slot-Leiste bleiben in Slotfarbe, damit man weiter sieht, wer schiebt.
+
+**Wracks ausschlachten:** Im Schiffsfriedhof (und vereinzelt anderswo) treiben Wracks. Der Bohrer
+holt **Schrott** heraus (wird wie Erz verkauft), der Kran reißt mit einem kräftigen Ruck
+**Bauteile** ab, die man einholt und am Markt verkauft.
+
+**Fog of War:** Karte und Radar zeigen nur, was die Crew schon gesehen hat. Bekannte Stationen
+sind von Anfang an eingetragen, Planeten, Felder, Wracks und manche Stationen (Werft Vega) muss
+man erst finden. Die erkundeten Gebiete stehen im Spielstand.
+
 **Landen auf Planeten:** Neben den Außenposten haben die Mini-Planeten freie **Landezonen** mit
 einem Erzvorkommen direkt daneben. Gelandet wird wie beim Andocken; dort bleiben die Werkzeuge
 aktiv – das Schiff steht still, während der Bohrer arbeitet.
 
 ### Missionen
 
+Aufträge kommen von **Auftraggebern** mit Namen, Rolle und Porträt (Frachtmeisterin,
+Bergbauingenieur, Außenpostenleiter …). Nach jedem erledigten Auftrag gibt es eine **Auswertung**:
+Belohnung, Ruf, Dauer, Strecke, Schaden – und kleine Auszeichnungen pro Slot
+(*Schubmeister*, *Sparfuchs*, *Bruchpilot*, *Scharfschütze*, *Bohrkönig*, *Greifarm*), bei mehreren
+Spielern mit Spieler-Abzeichen.
+
+**Ruf** gibt es pro Station (Neu → Bekannt → Geschätzt → Partner). Höhere Stufen bringen mehr und
+besser bezahlte Aufträge, größere Abbauaufträge, Schwerlast-Aufträge (ab „Bekannt“) und Rabatt im
+Service.
+
 - **Liefern** – Container an Station A abholen (landet im Frachtraum), zu Station B bringen.
+- **Material verschicken** – an einem Planeten-Außenposten eine Erzladung aufnehmen und zu einer
+  Station bringen. Die Ladung verschiebt Masse und Schwerpunkt.
 - **Schwerlast** – eine Kiste, die in keinen Frachtraum passt, am Kran zu Station B schleppen.
 - **Abbauen** – bestimmtes Erz abbauen und an der Station abliefern.
 - **Notrufe** – überall annehmbar (Karte mit **Tab**): treibendes Wrack mit dem Kran zur Station
@@ -201,11 +227,13 @@ in die Binärdatei eingebettet; liegt `assets/data/` im Arbeitsverzeichnis (z. B
   (`auto_chamfer: false` schaltet das ab). `prices` setzt Preisfaktoren je Ort (Erz je Sorte,
   Treibstoff, Service), `ships_for_sale` das Angebot einer Werft. Planeten haben
   `landing_zones` (Winkel in Grad; daneben liegt jeweils ein Erzvorkommen). Anomalien mit
-  `kind: BlackHole` sind Schwarze Löcher (`core_radius` = Ereignishorizont). Dazu
-  Asteroidenfelder, Meteoritenzonen, Rotoren, Nebelregionen und Notruf-Orte.
-- `shop.ron` – Services (inkl. Tanken und Triebwerksreparatur), Upgrades, Grundpreise für Erz,
-  Startkapital, Bergungsgebühr.
+  `kind: BlackHole` sind Schwarze Löcher (`core_radius` = Ereignishorizont). `known: false`
+  versteckt eine Station, bis sie entdeckt ist. `wrecks` legt Wracks fest (Modell, Schrott,
+  Bauteile). Dazu Asteroidenfelder, Meteoritenzonen, Rotoren, Nebelregionen und Notruf-Orte.
+- `shop.ron` – Services (inkl. Tanken und Triebwerksreparatur), Upgrades, Grundpreise für Erz und
+  Schrott, Startkapital, Bergungsgebühr, Lackfarben, Flammenfarben, Bauteile aus Wracks.
 - `missions.ron` – Vorlagen für Aufträge und Notrufe; Fracht mit `towed: true` ist Schwerlast.
+- `npcs.ron` – Auftraggeber: Name, Rolle, Ort, welche Aufträge sie vergeben, Porträtfarben, Sprüche.
 
 ---
 
@@ -221,8 +249,10 @@ src/
     tools.rs    Triebwerke (Stottern, Treibstoff), Kanone, Kran (Seil als harte Grenze), Bohrer
     dock.rs     Andocken und Landen, Zerstörung, Rettungskapsel, Bergung
     hazards.rs  Asteroidenfelder, Meteoriten, Geschosse
-    missions.rs Aufträge und Notrufe
-    economy.rs  Kasse, Käufe, Abstimmung, Upgrades, Ortspreise, Werftangebot
+    missions.rs Aufträge, Auftraggeber, Notrufe, Ruf
+    economy.rs  Kasse, Käufe, Abstimmung, Upgrades, Lack, Ortspreise, Werftangebot
+    explore.rs  Fog of War (Raster, im Spielstand als Hex-Bitfeld)
+    stats.rs    Spaßstatistik pro Slot, Auswertung mit Auszeichnungen
     world.rs    Stationen aus Rastern, Planeten, Plattformen, Landezonen, Anomalien
     rng.rs      PCG32 – kein Zufall ohne Seed
   input.rs    Geräte → Slots, reservierte Tasten, Zielen
@@ -250,7 +280,7 @@ Skript ab, speichert Screenshots und beendet sich.
 - Online-Koop mit Rollback-Netcode (z. B. `ggrs` / `bevy_ggrs`)
 - Simulation auf Fixed-Point umstellen, damit nur Eingaben übers Netz gehen
 - Spielstand online beim Host
-- Schiffseditor, Abstimmung auch für Missionen
+- Schiffseditor und Modulbau (geplant, siehe WORKLOG), Abstimmung auch für Missionen
 - mehr Sektoren, Stationen und Missionstypen
 
 ---

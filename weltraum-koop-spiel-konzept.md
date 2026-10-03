@@ -59,6 +59,9 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - Kaufen geht nur an Stationen und Werften
 - **Andocken** ist die zentrale Fähigkeit: niedrige Geschwindigkeit, richtige Ausrichtung
 - Gefahren: Meteoriten, Asteroidenfelder, Anomalien, Schwarze Löcher
+- **Wracks** zum Ausschlachten: Bohrer gewinnt Schrott, Kran reißt Bauteile ab
+- **Fog of War:** Karte und Radar zeigen nur Erkundetes, gespeichert im Spielstand
+- **Lackiererei:** Rumpf-, Akzent- und Flammenfarben; Slotfarben bleiben an Kern, Ringen und HUD erkennbar
 
 ## Wirtschaft
 
@@ -81,6 +84,10 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - **Abbauen** auf Mini-Planeten und Material an Stationen abgeben
 - **Notrufe / Hilfe**, z. B. treibendes Schiff abschleppen oder Kapseln einsammeln
 - **Schwerlast:** Fracht, die in keinen Frachtraum passt, wird als Kiste am Kran geschleppt. Das Kranseil ist eine harte Längenbegrenzung (schlaff/straff), die Last pendelt und zerrt am Schiff
+- **Material verschicken:** Erzladungen von Planeten-Außenposten zu Stationen
+- Aufträge kommen von **Auftraggebern** (Name, Rolle, Porträt, Sprüche; Daten in `npcs.ron`)
+- **Ruf pro Station:** mehr und besser bezahlte Aufträge, Schwerlast ab Stufe 1, Rabatt im Service
+- **Auswertung** nach jedem Auftrag mit Spaßstatistik pro Slot (meiste Schubzeit, meiste Kollisionen …)
 - Weitere Typen später erweiterbar
 
 ## Grafikstil

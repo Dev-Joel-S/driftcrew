@@ -1,6 +1,9 @@
 // Missionsvorlagen. Konkrete Aufträge werden daraus mit festem Seed erzeugt.
 (
-    offers_per_station: 4,
+    offers_per_station: 3,
+    // Planeten-Außenposten verschicken Material an Stationen (Belohnung pro Tonne + Strecke).
+    offers_per_outpost: 2,
+    shipment_per_t: 22.0,
     distress_offers: 2,
     delivery_cargo: [
         (name: "Medizinische Vorräte", mass: 2.0, reward: 110),

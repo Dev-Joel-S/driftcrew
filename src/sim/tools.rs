@@ -6,7 +6,7 @@ use super::data::ToolKind;
 use super::geom::{cross, ray_circle, ray_poly, rot};
 use super::ship::{CargoKind, CraneState, DrillHit};
 use super::world::{Shape, angle_diff};
-use super::{BodyKind, DT, Projectile, SimEvent, SimState, TickInput, ToastKind};
+use super::{Body, BodyKind, DT, Projectile, SimEvent, SimState, TickInput, ToastKind};
 
 const SHOT_SPEED: f32 = 75.0;
 const SHOT_RECOIL: f32 = 2.2;
@@ -15,6 +15,8 @@ const CRANE_SPEED: f32 = 55.0;
 pub const TOW_ROPE: f32 = 8.0;
 /// Größter Seilimpuls pro Tick, bevor das Seil reißt.
 const ROPE_BREAK_IMPULSE: f32 = 70.0;
+/// Ab diesem Seilimpuls reißt ein Bauteil aus einem Wrack (ein Ruck, kein ruhiges Ziehen).
+pub const TEAR_IMPULSE: f32 = 12.0;
 const DRILL_RANGE: f32 = 5.5;
 /// Schubanteil, wenn der Tank leer ist – damit niemand im reibungsfreien All festsitzt.
 pub const EMERGENCY_THRUST: f32 = 0.25;
@@ -150,6 +152,8 @@ impl SimState {
         });
         self.ship.apply_impulse(-dir * SHOT_RECOIL, mount);
         self.ship.ammo -= 1;
+        let slot = self.ship.tools[i].slot;
+        self.stats.slot(slot).shots += 1;
         self.ship.tools[i].cooldown = 0.22;
         self.events.push(SimEvent::Shot { pos: mount, dir });
         if self.ship.ammo == 0 {
@@ -193,11 +197,25 @@ impl SimState {
                     }
                     let tip = mount + dir * len;
                     if let Some((_, bi)) = best {
+                        let slot = self.ship.tools[i].slot;
+                        self.stats.slot(slot).grabs += 1;
                         let b = &self.bodies[bi];
                         let rope = (b.pos - mount).length().max(b.radius + 1.5);
                         self.events.push(SimEvent::CraneAttach { pos: b.pos });
-                        if let BodyKind::Derelict { name, .. } = &b.kind {
-                            let msg = format!("{name} am Haken – zur Zielstation schleppen");
+                        let msg = match &b.kind {
+                            BodyKind::Wreck { parts, .. } if *parts > 0 => Some(
+                                "Wrack am Haken – mit einem Ruck reißt der Kran ein Bauteil ab"
+                                    .to_string(),
+                            ),
+                            BodyKind::Wreck { .. } => {
+                                Some("Wrack am Haken – hier ist nichts mehr zu holen".to_string())
+                            }
+                            BodyKind::Derelict { name, .. } => {
+                                Some(format!("{name} am Haken – zur Zielstation schleppen"))
+                            }
+                            _ => None,
+                        };
+                        if let Some(msg) = msg {
                             self.toast(msg, ToastKind::Info);
                         }
                         CraneState::Attached {
@@ -246,10 +264,26 @@ impl SimState {
                         self.ship.tools[i].crane = CraneState::Idle;
                         return;
                     }
-                    if dist > rope * 1.8 + 6.0 || !self.rope_constraint(bi, mount, rope) {
+                    let pull = if dist > rope * 1.8 + 6.0 {
+                        None
+                    } else {
+                        self.rope_constraint(bi, mount, rope)
+                    };
+                    let Some(pull) = pull else {
                         self.toast("Kranseil gerissen – zu harter Ruck!", ToastKind::Bad);
                         self.events.push(SimEvent::CraneRelease);
                         self.ship.tools[i].crane = CraneState::Idle;
+                        return;
+                    };
+                    // Am Wrack: ein kräftiger Ruck reißt ein Bauteil ab, das dann am Haken hängt.
+                    if pull > TEAR_IMPULSE
+                        && let Some(piece) = self.tear_part(bi, mount)
+                    {
+                        let d = (self.bodies[piece].pos - mount).length();
+                        self.ship.tools[i].crane = CraneState::Attached {
+                            body: self.bodies[piece].id,
+                            rope: d,
+                        };
                         return;
                     }
                     CraneState::Attached { body, rope }
@@ -262,11 +296,11 @@ impl SimState {
     /// Seil als harte Längenbeschränkung: schlaff, solange die Last näher ist als die
     /// Seillänge; straff zieht es nur (nie drücken). Ein zu harter Ruck reißt das Seil
     /// (Rückgabe `false`). Aus dem Wechsel von straff und schlaff entsteht das Pendeln.
-    fn rope_constraint(&mut self, bi: usize, mount: Vec2, rope: f32) -> bool {
+    fn rope_constraint(&mut self, bi: usize, mount: Vec2, rope: f32) -> Option<f32> {
         let d = self.bodies[bi].pos - mount;
         let dist = d.length();
         if dist <= rope || dist < 1e-4 {
-            return true;
+            return Some(0.0);
         }
         let n = d / dist;
         let bm = self.bodies[bi].mass;
@@ -283,16 +317,75 @@ impl SimState {
         let bias = ((dist - rope) * 0.2 / DT).min(8.0);
         let lambda = (vrel + bias) / k;
         if lambda <= 0.0 {
-            return true;
+            return Some(0.0);
         }
-        if lambda > ROPE_BREAK_IMPULSE {
-            return false;
+        // Wracks sind verankert genug, dass vorher Bauteile nachgeben (siehe `tear_part`).
+        let tearable = matches!(self.bodies[bi].kind, BodyKind::Wreck { parts, .. } if parts > 0);
+        if lambda > ROPE_BREAK_IMPULSE && !tearable {
+            return None;
         }
+        let lambda = lambda.min(ROPE_BREAK_IMPULSE);
         self.bodies[bi].vel -= n * (lambda / bm);
         if !anchored {
             self.ship.apply_impulse(n * lambda, mount);
         }
-        true
+        Some(lambda)
+    }
+
+    /// Reißt ein Bauteil aus einem Wrack. Gibt den Index des neuen Körpers zurück.
+    fn tear_part(&mut self, bi: usize, mount: Vec2) -> Option<usize> {
+        let BodyKind::Wreck { parts, .. } = &mut self.bodies[bi].kind else {
+            return None;
+        };
+        if *parts == 0 {
+            return None;
+        }
+        *parts -= 1;
+        let (wpos, wr, wvel) = (
+            self.bodies[bi].pos,
+            self.bodies[bi].radius,
+            self.bodies[bi].vel,
+        );
+        let toward = (mount - wpos).normalize_or_zero();
+        let shop = self.data.shop.clone();
+        let name = if shop.salvage_names.is_empty() {
+            "Bauteil".to_string()
+        } else {
+            shop.salvage_names[self.rng.index(shop.salvage_names.len())].clone()
+        };
+        let (lo, hi) = shop.salvage_value;
+        let value = self.rng.range_u32(lo.min(hi), hi.max(lo).max(1));
+        let id = self.next_id();
+        // Das Teil löst sich an der Oberfläche des Wracks.
+        let pos = wpos + toward * (wr * 0.9 + 0.8);
+        self.bodies.push(Body {
+            id,
+            kind: BodyKind::Salvage {
+                name: name.clone(),
+                value,
+            },
+            pos,
+            vel: wvel + toward * 3.0,
+            angle: 0.0,
+            ang_vel: self.rng.range(-2.0, 2.0),
+            radius: 0.8,
+            mass: 1.5,
+            prev_pos: pos,
+            prev_angle: 0.0,
+            alive: true,
+            seed: super::rng::hash32(id),
+            age: 0.0,
+        });
+        self.events.push(SimEvent::Explosion {
+            pos,
+            size: 1.6,
+            color: [1.0, 0.7, 0.35],
+        });
+        self.toast(
+            format!("Bauteil abgerissen: {name} (~{value} Cr)"),
+            ToastKind::Good,
+        );
+        Some(self.bodies.len() - 1)
     }
 
     /// Angedockt: Seil hält die Last, ohne das Schiff zu bewegen; reißt nur bei Überdehnung.
@@ -306,7 +399,7 @@ impl SimState {
         };
         let mount = self.ship.tool_world_pos(i);
         let dist = (self.bodies[bi].pos - mount).length();
-        if dist > rope * 1.8 + 6.0 || !self.rope_constraint(bi, mount, rope) {
+        if dist > rope * 1.8 + 6.0 || self.rope_constraint(bi, mount, rope).is_none() {
             self.toast("Kranseil gerissen!", ToastKind::Bad);
             self.events.push(SimEvent::CraneRelease);
             self.ship.tools[i].crane = CraneState::Idle;
@@ -358,6 +451,7 @@ impl SimState {
         let rate = self.ship.drill_rate * DT;
         let free = (self.ship.cargo_capacity() - self.ship.cargo_mass()).max(0.0);
         let mut mined_ore = None;
+        let mut mined_amt = 0.0;
         let mut full = false;
         match target {
             Target::Planet(pi) => {
@@ -377,13 +471,25 @@ impl SimState {
                         self.world.planets[pi].deposits[di].amount -= amount;
                         self.ship.store(CargoKind::Ore(ore), amount);
                         mined_ore = Some(ore);
+                        mined_amt += amount;
                     } else if free <= 0.0 {
                         full = true;
                     }
                 }
             }
             Target::Body(bi) => {
-                if let BodyKind::Asteroid {
+                if let BodyKind::Wreck { scrap, .. } = &mut self.bodies[bi].kind {
+                    let amount = (rate * 0.8).min(*scrap).min(free);
+                    if amount > 0.0 {
+                        *scrap -= amount;
+                        self.ship
+                            .store(CargoKind::Ore(super::data::Ore::Schrott), amount);
+                        mined_ore = Some(super::data::Ore::Schrott);
+                        mined_amt += amount;
+                    } else if free <= 0.0 {
+                        full = true;
+                    }
+                } else if let BodyKind::Asteroid {
                     ore, ore_left, hp, ..
                 } = &mut self.bodies[bi].kind
                 {
@@ -394,6 +500,7 @@ impl SimState {
                             *ore_left -= amount;
                             self.ship.store(CargoKind::Ore(o), amount);
                             mined_ore = Some(o);
+                            mined_amt += amount;
                         } else if free <= 0.0 {
                             full = true;
                         }
@@ -404,6 +511,10 @@ impl SimState {
         }
         if full {
             self.cargo_full_warning();
+        }
+        if mined_amt > 0.0 {
+            let slot = self.ship.tools[i].slot;
+            self.stats.slot(slot).drilled += mined_amt;
         }
         self.ship.tools[i].drill = Some(DrillHit {
             point,

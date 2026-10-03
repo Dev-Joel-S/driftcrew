@@ -8,6 +8,9 @@ use super::rng::hash32;
 use super::world::Shape;
 use super::{Body, BodyKind, DT, SimEvent, SimState};
 
+/// Wracks werden etwas größer dargestellt als das Schiff, nach dem sie aussehen.
+pub const WRECK_SCALE: f32 = 1.3;
+
 pub fn asteroid_hp(r: f32) -> f32 {
     18.0 * r
 }
@@ -24,6 +27,45 @@ impl SimState {
                 let pos = self.random_in_field(fi, None);
                 self.spawn_asteroid(fi, pos, None);
             }
+        }
+    }
+
+    /// Wracks aus den Daten an ihren Platz legen.
+    pub(crate) fn populate_wrecks(&mut self) {
+        let wrecks = self.data.world.wrecks.clone();
+        for (idx, w) in wrecks.iter().enumerate() {
+            let id = self.next_id();
+            let pos = Vec2::new(w.pos.0, w.pos.1);
+            let def = self.data.ship(&w.ship);
+            // Grobe Größe aus dem Schiff: Abstand der äußersten Teile.
+            let r = def
+                .parts
+                .iter()
+                .map(|p| Vec2::new(p.pos.0, p.pos.1).length() + 0.5 * p.size.0.max(p.size.1))
+                .fold(1.0f32, f32::max)
+                * WRECK_SCALE
+                * 0.8;
+            let angle = w.angle.to_radians();
+            self.bodies.push(Body {
+                id,
+                kind: BodyKind::Wreck {
+                    idx,
+                    scrap: w.scrap,
+                    parts: w.parts,
+                    home: pos,
+                },
+                pos,
+                vel: Vec2::ZERO,
+                angle,
+                ang_vel: self.rng.range(-0.04, 0.04),
+                radius: r,
+                mass: 40.0 + w.scrap,
+                prev_pos: pos,
+                prev_angle: angle,
+                alive: true,
+                seed: hash32(id),
+                age: 0.0,
+            });
         }
     }
 
@@ -174,10 +216,21 @@ impl SimState {
                 // Etwas Reibung, damit Felder über lange Zeit ruhig bleiben.
                 b.vel *= 1.0 - 0.02 * DT;
             }
-            if let BodyKind::OreChunk { .. } | BodyKind::Capsule { .. } | BodyKind::Crate { .. } =
-                b.kind
+            if let BodyKind::OreChunk { .. }
+            | BodyKind::Capsule { .. }
+            | BodyKind::Crate { .. }
+            | BodyKind::Salvage { .. } = b.kind
             {
                 b.vel *= 1.0 - 0.05 * DT;
+            }
+            // Wracks treiben träge zurück an ihren Platz, außer jemand schleppt sie weit weg.
+            if let BodyKind::Wreck { home, .. } = b.kind {
+                let d = home - b.pos;
+                if d.length() < 150.0 {
+                    b.vel += d * 0.004 * DT;
+                }
+                b.vel *= 1.0 - 0.15 * DT;
+                b.ang_vel *= 1.0 - 0.05 * DT;
             }
         }
         for bi in to_break {
@@ -318,6 +371,7 @@ impl SimState {
                 b.vel += vel * (0.6 / b.mass);
                 match &mut b.kind {
                     BodyKind::Asteroid { hp, .. } => *hp -= 25.0,
+                    BodyKind::Wreck { scrap, .. } => *scrap = (*scrap - 0.3).max(0.0),
                     BodyKind::Meteor => {
                         b.alive = false;
                         let (pos, r) = (b.pos, b.radius);

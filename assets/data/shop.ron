@@ -31,5 +31,32 @@
         (Kobalt, 16),
         (Solarit, 22),
         (Ionit, 30),
+        (Schrott, 6),
     ],
+    // Lackiererei (an Stationen mit Upgrade-Werkstatt). Jede Änderung kostet paint_price.
+    paint_price: 80,
+    paints: [
+        (name: "Graphit",     color: "#3a3f47"),
+        (name: "Stahlgrau",   color: "#9aa1a8"),
+        (name: "Sand",        color: "#cbbf9f"),
+        (name: "Rostorange",  color: "#c4602c"),
+        (name: "Tannengrün",  color: "#3e5a43"),
+        (name: "Tiefblau",    color: "#2b4a6f"),
+        (name: "Signalrot",   color: "#a8322a"),
+        (name: "Messing",     color: "#b8962e"),
+        (name: "Elfenbein",   color: "#e4dfd2"),
+        (name: "Violett",     color: "#5a4a7a"),
+    ],
+    // Flammen: ohne Farbe = Slotfarben (so sieht man, wer gerade schiebt).
+    flames: [
+        (name: "Slotfarben"),
+        (name: "Plasmablau",  color: Some("#5fb4ff")),
+        (name: "Glut",        color: Some("#ff8a3d")),
+        (name: "Ionengrün",   color: Some("#4dffb0")),
+        (name: "Violett",     color: Some("#b07cff")),
+        (name: "Weißglut",    color: Some("#fff1d6")),
+    ],
+    // Bauteile, die der Kran aus Wracks reißt (Wert in Credits).
+    salvage_names: ["Steuerdüse", "Navigationsrechner", "Reaktorspule", "Funkmodul", "Lebenserhaltung", "Gyroskop", "Schildemitter"],
+    salvage_value: (40, 120),
 )

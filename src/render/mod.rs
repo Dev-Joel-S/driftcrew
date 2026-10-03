@@ -54,6 +54,7 @@ impl Plugin for RenderPlugin {
                     ship_vis::sync_projectiles,
                     ship_vis::sync_tools,
                     ship_vis::sync_pod,
+                    ship_vis::update_wreck_embers,
                     ship_vis::blink_nav_lights,
                     world_vis::update_pad_lights,
                 )

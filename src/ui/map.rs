@@ -16,7 +16,8 @@ pub struct MapPlugin;
 
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnExit(AppState::Playing), close_map)
+        app.init_resource::<FogTex>()
+            .add_systems(OnExit(AppState::Playing), close_map)
             .add_systems(
                 Update,
                 (toggle_map, draw_map, map_input)
@@ -37,6 +38,61 @@ enum MapAct {
 }
 
 const MAP: f32 = 620.0;
+
+/// Nebeltextur der Karte (eine Zelle des Erkundungsrasters = ein Pixel).
+#[derive(Resource, Default)]
+struct FogTex {
+    handle: Option<Handle<Image>>,
+    version: Option<u32>,
+}
+
+/// Nebeltextur: vierfach aufgelöst, zwischen den Zellen weich überblendet und außerhalb
+/// des Weltkreises durchsichtig (die Karte ist rund).
+fn fog_image(e: &crate::sim::explore::Exploration, world_radius: f32) -> Image {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+    const K: usize = 4;
+    let n = e.n;
+    let size = n * K;
+    let cell = |x: i32, y: i32| -> f32 {
+        let x = x.clamp(0, n as i32 - 1) as usize;
+        let y = y.clamp(0, n as i32 - 1) as usize;
+        if e.get(x, y) { 0.0 } else { 1.0 }
+    };
+    let mut data = Vec::with_capacity(size * size * 4);
+    for row in 0..size {
+        // Bildzeile 0 = oben = größtes y.
+        let gy = (size - 1 - row) as f32 / K as f32 - 0.5;
+        for col in 0..size {
+            let gx = col as f32 / K as f32 - 0.5;
+            let (x0, y0) = (gx.floor(), gy.floor());
+            let (fx, fy) = (gx - x0, gy - y0);
+            let (x0, y0) = (x0 as i32, y0 as i32);
+            let a = cell(x0, y0) * (1.0 - fx) * (1.0 - fy)
+                + cell(x0 + 1, y0) * fx * (1.0 - fy)
+                + cell(x0, y0 + 1) * (1.0 - fx) * fy
+                + cell(x0 + 1, y0 + 1) * fx * fy;
+            // Weltposition dieses Pixels für die runde Maske.
+            let wx = -e.half + (gx + 0.5) * crate::sim::explore::CELL;
+            let wy = -e.half + (gy + 0.5) * crate::sim::explore::CELL;
+            let r = (wx * wx + wy * wy).sqrt();
+            let mask = ((world_radius + 60.0 - r) / 60.0).clamp(0.0, 1.0);
+            let alpha = (a * mask * 238.0) as u8;
+            data.extend_from_slice(&[5, 7, 14, alpha]);
+        }
+    }
+    Image::new(
+        Extent3d {
+            width: size as u32,
+            height: size as u32,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    )
+}
 
 fn toggle_map(
     mut commands: Commands,
@@ -149,10 +205,25 @@ fn draw_map(
     open: Res<MapOpen>,
     time: Res<Time>,
     mut root: Query<(Entity, &mut Signature), With<MapRoot>>,
+    mut fog: ResMut<FogTex>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     if !open.0 {
         return;
     }
+    // Nebeltextur nur neu bauen, wenn sich die Erkundung geändert hat.
+    let ex = &sim.0.explored;
+    if fog.version != Some(ex.version) || fog.handle.is_none() {
+        let img = fog_image(ex, sim.0.world.radius);
+        match &fog.handle {
+            Some(h) => {
+                let _ = images.insert(h, img);
+            }
+            None => fog.handle = Some(images.add(img)),
+        }
+        fog.version = Some(ex.version);
+    }
+    let fog_handle = fog.handle.clone().unwrap();
     let Ok((root, mut sig)) = root.single_mut() else {
         warn!("Kartenwurzel fehlt");
         return;
@@ -161,12 +232,13 @@ fn draw_map(
     let its = items(s);
     let blink = (time.elapsed_secs() * 2.0) as u32 % 2;
     let key = format!(
-        "{:.0}|{:.0}|{}|{:?}|{}",
+        "{:.0}|{:.0}|{}|{:?}|{}|{}",
         s.ship.pos.x / 8.0,
         s.ship.pos.y / 8.0,
         blink,
         its.iter().map(|i| i.label.clone()).collect::<Vec<_>>(),
-        s.crew.credits
+        s.crew.credits,
+        s.explored.version
     );
     let h = super::sig_of(&key);
     if sig.0 == h {
@@ -228,7 +300,27 @@ fn draw_map(
                 let at = to_map(Vec2::new(reg.center.0, reg.center.1));
                 dot(m, at, reg.radius * scale * 2.0, c, true);
             }
-            for f in &s.data.world.asteroid_fields {
+            // Nebel über allem, was noch niemand gesehen hat.
+            let span = s.explored.half * scale;
+            m.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(MAP * 0.5 - span),
+                    top: Val::Px(MAP * 0.5 - span),
+                    width: Val::Px(span * 2.0),
+                    height: Val::Px(span * 2.0),
+                    ..default()
+                },
+                ImageNode::new(fog_handle.clone()),
+            ));
+            let seen = |p: Vec2| s.discovered(p);
+            for f in s
+                .data
+                .world
+                .asteroid_fields
+                .iter()
+                .filter(|f| seen(Vec2::new(f.center.0, f.center.1)))
+            {
                 let at = to_map(Vec2::new(f.center.0, f.center.1));
                 dot(
                     m,
@@ -239,7 +331,13 @@ fn draw_map(
                 );
                 label(m, at, f.name.clone(), MUTED);
             }
-            for z in &s.data.world.meteor_zones {
+            for z in s
+                .data
+                .world
+                .meteor_zones
+                .iter()
+                .filter(|z| seen(Vec2::new(z.center.0, z.center.1)))
+            {
                 let at = to_map(Vec2::new(z.center.0, z.center.1));
                 dot(
                     m,
@@ -251,12 +349,15 @@ fn draw_map(
                 label(m, at, format!("⚠ {}", z.name), Color::srgb(1.0, 0.55, 0.3));
             }
             for (i, p) in s.world.planets.iter().enumerate() {
+                if !seen(p.pos) {
+                    continue;
+                }
                 let at = to_map(p.pos);
                 let c = srgb(hex(&s.data.world.planets[i].atmosphere));
                 dot(m, at, (p.radius * scale * 2.0).max(12.0), c, true);
                 label(m, at, format!("{} · {}", p.name, p.ore.label()), c);
             }
-            for an in &s.world.anomalies {
+            for an in s.world.anomalies.iter().filter(|a| seen(a.pos)) {
                 let at = to_map(an.pos);
                 let (area, core, name) = if an.is_black_hole() {
                     (
@@ -275,7 +376,26 @@ fn draw_map(
                 dot(m, at, 6.0, core, true);
                 label(m, at, name, core);
             }
-            for st in &s.world.stations {
+            for w in s
+                .data
+                .world
+                .wrecks
+                .iter()
+                .filter(|w| seen(Vec2::new(w.pos.0, w.pos.1)))
+            {
+                let at = to_map(Vec2::new(w.pos.0, w.pos.1));
+                dot(m, at, 6.0, Color::srgb(0.7, 0.66, 0.6), false);
+            }
+            if let Some(w) = s.data.world.wrecks.first()
+                && seen(Vec2::new(w.pos.0, w.pos.1))
+            {
+                let at = to_map(Vec2::new(w.pos.0, w.pos.1));
+                label(m, at, "Wracks".into(), Color::srgb(0.75, 0.7, 0.62));
+            }
+            for (si, st) in s.world.stations.iter().enumerate() {
+                if !s.station_known(si) {
+                    continue;
+                }
                 let at = to_map(st.pos);
                 let c = match st.kind {
                     StationKind::Shipyard => Color::srgb(1.0, 0.55, 0.15),
@@ -312,9 +432,10 @@ fn draw_map(
             p.spawn(text("SEKTORKARTE", 22.0, TEXT));
             p.spawn(text(
                 format!(
-                    "Kasse {} Credits · {} Aufträge erledigt",
+                    "Kasse {} Credits · {} Aufträge erledigt · {:.0} % erkundet",
                     fmt_num(s.crew.credits),
-                    s.crew.missions_done
+                    s.crew.missions_done,
+                    s.explored.fraction() * 100.0
                 ),
                 14.0,
                 ACCENT,

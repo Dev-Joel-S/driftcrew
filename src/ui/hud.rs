@@ -645,7 +645,10 @@ struct Poi {
 
 fn pois(sim: &SimState) -> Vec<Poi> {
     let mut v = Vec::new();
-    for st in &sim.world.stations {
+    for (si, st) in sim.world.stations.iter().enumerate() {
+        if !sim.station_known(si) {
+            continue;
+        }
         let color = match st.kind {
             StationKind::Shipyard => Color::srgb(1.0, 0.55, 0.15),
             StationKind::Outpost => Color::srgb(0.3, 1.0, 0.85),
@@ -659,6 +662,9 @@ fn pois(sim: &SimState) -> Vec<Poi> {
         });
     }
     for (i, p) in sim.world.planets.iter().enumerate() {
+        if !sim.discovered(p.pos) {
+            continue;
+        }
         let c = sim.data.world.planets[i].atmosphere.clone();
         v.push(Poi {
             pos: p.pos,
@@ -667,7 +673,7 @@ fn pois(sim: &SimState) -> Vec<Poi> {
             round: true,
         });
     }
-    for an in &sim.world.anomalies {
+    for an in sim.world.anomalies.iter().filter(|a| sim.discovered(a.pos)) {
         v.push(Poi {
             pos: an.pos,
             color: if an.is_black_hole() {
@@ -876,12 +882,12 @@ fn update_markers(
                 c.entity(layer).add_child(e);
             }
         };
-    for st in &s.world.stations {
+    for (si, st) in s.world.stations.iter().enumerate() {
         let c = match st.kind {
             StationKind::Shipyard => Color::srgb(1.0, 0.6, 0.2),
             _ => TEAL,
         };
-        if st.bounds.expand(20.0).contains(s.ship.pos) {
+        if st.bounds.expand(20.0).contains(s.ship.pos) || !s.station_known(si) {
             continue;
         }
         let anchor = st.pos + Vec2::Y * ((st.bounds.max.y - st.bounds.min.y) * 0.5 + 6.0);

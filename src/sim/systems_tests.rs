@@ -295,7 +295,10 @@ fn heavy_haul_is_towed_and_completes_at_target() {
             body: None,
         },
         reward: 300,
-        origin: Some(nova),
+        origin: Some(Owner::Station(nova)),
+        giver: None,
+        start: None,
+        top_speed: 0.0,
     });
     s.step(&TickInput {
         commands: vec![Command::AcceptMission { id }],
