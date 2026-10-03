@@ -6,7 +6,7 @@ use super::data::Ore;
 use super::geom::{ray_circle, ray_quad, rot};
 use super::rng::hash32;
 use super::world::Shape;
-use super::{Body, BodyKind, SimEvent, SimState, DT};
+use super::{Body, BodyKind, DT, SimEvent, SimState};
 
 pub fn asteroid_hp(r: f32) -> f32 {
     18.0 * r
@@ -48,9 +48,13 @@ impl SimState {
         let f = self.data.world.asteroid_fields[field].clone();
         let r = radius.unwrap_or_else(|| {
             let t = self.rng.f32();
-            f.min_radius + (f.max_radius - f.min_radius) * t * t
+            f.min_radius + (f.max_radius - f.min_radius) * t.powf(1.4)
         });
-        let ore = if self.rng.chance(f.ore_chance) { Some(f.ore) } else { None };
+        let ore = if self.rng.chance(f.ore_chance) {
+            Some(f.ore)
+        } else {
+            None
+        };
         let id = self.next_id();
         let vel = Vec2::new(self.rng.range(-1.0, 1.0), self.rng.range(-1.0, 1.0)) * 1.2;
         let ang_vel = self.rng.range(-0.6, 0.6);
@@ -177,7 +181,7 @@ impl SimState {
         for bi in to_break {
             self.break_asteroid(bi);
         }
-        for fi in 0..fields.len() {
+        for (fi, field_def) in fields.iter().enumerate() {
             self.field_respawn[fi] -= DT;
             if self.field_respawn[fi] > 0.0 {
                 continue;
@@ -186,9 +190,11 @@ impl SimState {
             let count = self
                 .bodies
                 .iter()
-                .filter(|b| b.alive && matches!(b.kind, BodyKind::Asteroid { field, .. } if field == fi))
+                .filter(|b| {
+                    b.alive && matches!(b.kind, BodyKind::Asteroid { field, .. } if field == fi)
+                })
                 .count() as u32;
-            if count < fields[fi].count {
+            if count < field_def.count {
                 let pos = self.random_in_field(fi, Some(self.ship.pos));
                 self.spawn_asteroid(fi, pos, None);
             }
@@ -205,7 +211,13 @@ impl SimState {
     fn break_asteroid(&mut self, bi: usize) {
         let b = self.bodies[bi].clone();
         self.bodies[bi].alive = false;
-        let BodyKind::Asteroid { ore, ore_left, field, .. } = b.kind else {
+        let BodyKind::Asteroid {
+            ore,
+            ore_left,
+            field,
+            ..
+        } = b.kind
+        else {
             return;
         };
         let color = ore.map(|o| o.color()).unwrap_or([0.85, 0.6, 0.45]);
@@ -221,7 +233,12 @@ impl SimState {
                 let idx = self.spawn_asteroid(field, b.pos + side * s * r * 1.05, Some(r));
                 let nb = &mut self.bodies[idx];
                 nb.vel = b.vel + side * s * 2.5;
-                if let BodyKind::Asteroid { ore: o, ore_left: ol, .. } = &mut nb.kind {
+                if let BodyKind::Asteroid {
+                    ore: o,
+                    ore_left: ol,
+                    ..
+                } = &mut nb.kind
+                {
                     *o = ore;
                     *ol = ore_left * 0.4;
                 }
@@ -255,10 +272,10 @@ impl SimState {
                 if !b.alive {
                     continue;
                 }
-                if let Some(t) = ray_circle(from, dir, len, b.pos, b.radius) {
-                    if hit.is_none_or(|(ht, _)| t < ht) {
-                        hit = Some((t, Some(bi)));
-                    }
+                if let Some(t) = ray_circle(from, dir, len, b.pos, b.radius)
+                    && hit.is_none_or(|(ht, _)| t < ht)
+                {
+                    hit = Some((t, Some(bi)));
                 }
             }
             for col in &self.world.colliders {
@@ -269,10 +286,10 @@ impl SimState {
                     Shape::Quad(q) => ray_quad(from, dir, len, &q),
                     Shape::Circle { c, r } => ray_circle(from, dir, len, c, r),
                 };
-                if let Some(t) = t {
-                    if hit.is_none_or(|(ht, _)| t < ht) {
-                        hit = Some((t, None));
-                    }
+                if let Some(t) = t
+                    && hit.is_none_or(|(ht, _)| t < ht)
+                {
+                    hit = Some((t, None));
                 }
             }
             for sp in &self.world.spinners {
@@ -280,10 +297,10 @@ impl SimState {
                     continue;
                 }
                 for q in sp.quads() {
-                    if let Some(t) = ray_quad(from, dir, len, &q) {
-                        if hit.is_none_or(|(ht, _)| t < ht) {
-                            hit = Some((t, None));
-                        }
+                    if let Some(t) = ray_quad(from, dir, len, &q)
+                        && hit.is_none_or(|(ht, _)| t < ht)
+                    {
+                        hit = Some((t, None));
                     }
                 }
             }
@@ -318,9 +335,9 @@ impl SimState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sim::TickInput;
     use crate::sim::data::{CrewSave, GameData};
     use crate::sim::ship::Loadout;
-    use crate::sim::TickInput;
     use std::sync::Arc;
 
     #[test]
@@ -337,8 +354,15 @@ mod tests {
         let inside = s
             .bodies
             .iter()
-            .filter(|b| matches!(b.kind, BodyKind::Asteroid { field: 0, .. }) && (b.pos - c).length() < f.radius * 1.2)
+            .filter(|b| {
+                matches!(b.kind, BodyKind::Asteroid { field: 0, .. })
+                    && (b.pos - c).length() < f.radius * 1.2
+            })
             .count();
-        assert!(inside as u32 > f.count * 3 / 4, "nur {inside} von {} Asteroiden im Feld", f.count);
+        assert!(
+            inside as u32 > f.count * 3 / 4,
+            "nur {inside} von {} Asteroiden im Feld",
+            f.count
+        );
     }
 }

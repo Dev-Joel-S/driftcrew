@@ -4,13 +4,13 @@
 
 use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
-use bevy::render::view::screenshot::{save_to_disk, Screenshot};
+use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 
 use crate::game::{AppState, LobbyMode, PendingCommands, Sim};
 use crate::input::{ActiveBindings, Binding, Btn, ClaimTarget, Crew, Device, MenuInput, Player};
+use crate::sim::Command;
 use crate::sim::economy::Purchase;
 use crate::sim::geom::rot;
-use crate::sim::Command;
 
 #[derive(Clone, Debug)]
 pub struct DemoConfig {
@@ -32,7 +32,11 @@ pub trait Resolution {
 
 impl Resolution for Option<DemoConfig> {
     fn resolution(&self) -> (u32, u32) {
-        if self.is_some() { (1280, 720) } else { (1600, 900) }
+        if self.is_some() {
+            (1280, 720)
+        } else {
+            (1600, 900)
+        }
     }
 }
 
@@ -59,7 +63,12 @@ impl Plugin for DemoPlugin {
             shots: 0,
         })
         .init_resource::<ScriptedSlots>()
-        .add_systems(PreUpdate, demo_script.after(bevy::input::InputSystems).after(crate::input::read_menu_input));
+        .add_systems(
+            PreUpdate,
+            demo_script
+                .after(bevy::input::InputSystems)
+                .after(crate::input::read_menu_input),
+        );
     }
 }
 
@@ -83,11 +92,22 @@ fn shot(c: &mut Ctx, name: &str) {
     let path = format!("{}/{:02}_{}.png", c.demo.cfg.dir, c.demo.shots, name);
     c.demo.shots += 1;
     info!("Screenshot: {path}");
-    c.commands.spawn(Screenshot::primary_window()).observe(save_to_disk(path));
+    c.commands
+        .spawn(Screenshot::primary_window())
+        .observe(save_to_disk(path));
 }
 
 fn keyboard_crew(c: &mut Ctx, with_pad: bool) {
-    let keys = [KeyCode::KeyA, KeyCode::KeyD, KeyCode::KeyS, KeyCode::KeyQ, KeyCode::KeyE, KeyCode::Space, KeyCode::KeyF, KeyCode::KeyG];
+    let keys = [
+        KeyCode::KeyA,
+        KeyCode::KeyD,
+        KeyCode::KeyS,
+        KeyCode::KeyQ,
+        KeyCode::KeyE,
+        KeyCode::Space,
+        KeyCode::KeyF,
+        KeyCode::KeyG,
+    ];
     c.crew.players = vec![Player {
         device: Device::Keyboard,
         label: "Tastatur".into(),
@@ -97,19 +117,33 @@ fn keyboard_crew(c: &mut Ctx, with_pad: bool) {
         if with_pad && (i == 1 || i == 4 || i == 6) {
             continue;
         }
-        let target = if i < 5 { ClaimTarget::Thruster(i) } else { ClaimTarget::Tool(i - 5) };
-        c.crew.bindings.push(Binding { btn: Btn::Key(*k), player: 0, target });
+        let target = if i < 5 {
+            ClaimTarget::Thruster(i)
+        } else {
+            ClaimTarget::Tool(i - 5)
+        };
+        c.crew.bindings.push(Binding {
+            btn: Btn::Key(*k),
+            player: 0,
+            target,
+        });
     }
-    if with_pad {
-        if let Some(pad) = c.pad {
-            c.crew.players.push(Player {
-                device: Device::Pad(pad),
-                label: "Joy-Con (R)".into(),
+    if with_pad && let Some(pad) = c.pad {
+        c.crew.players.push(Player {
+            device: Device::Pad(pad),
+            label: "Joy-Con (R)".into(),
+        });
+        use bevy::input::gamepad::GamepadButton as G;
+        for (b, t) in [
+            (G::South, ClaimTarget::Thruster(1)),
+            (G::East, ClaimTarget::Thruster(4)),
+            (G::RightTrigger, ClaimTarget::Tool(1)),
+        ] {
+            c.crew.bindings.push(Binding {
+                btn: Btn::Pad(pad, b),
+                player: 1,
+                target: t,
             });
-            use bevy::input::gamepad::GamepadButton as G;
-            for (b, t) in [(G::South, ClaimTarget::Thruster(1)), (G::East, ClaimTarget::Thruster(4)), (G::RightTrigger, ClaimTarget::Tool(1))] {
-                c.crew.bindings.push(Binding { btn: Btn::Pad(pad, b), player: 1, target: t });
-            }
         }
     }
     let def = c.sim.0.data.ship(&c.sim.0.crew.current_ship).clone();
@@ -139,25 +173,25 @@ fn tour() -> Vec<(f32, Act)> {
             c.next.set(AppState::Playing);
         }),
         (3.0, |c| shot(c, "angedockt")),
-        (3.2, |c| c.slots.0 = 0b11111),
-        (4.6, |c| shot(c, "abheben")),
-        (5.4, |c| c.slots.0 = 0b00011),
-        (6.4, |c| c.slots.0 = 0b01000),
-        (6.9, |c| shot(c, "drehen")),
-        (7.0, |c| c.slots.0 = 0),
-        (7.2, |c| teleport(c, Vec2::new(640.0, 700.0), 75.0, 0.6)),
-        (8.8, |c| shot(c, "planet")),
-        (9.0, |c| teleport(c, Vec2::new(260.0, 1380.0), 60.0, 1.0)),
-        (10.6, |c| shot(c, "asteroiden")),
-        (10.8, |c| teleport(c, Vec2::new(-1170.0, 368.0), 0.0, 0.0)),
-        (12.4, |c| shot(c, "werft")),
-        (12.6, |c| teleport(c, Vec2::new(980.0, -1150.0), 45.0, 2.4)),
-        (14.0, |c| shot(c, "anomalie")),
-        (14.2, |c| teleport(c, Vec2::new(-380.0, -520.0), 0.0, 0.0)),
-        (16.5, |c| shot(c, "meteore")),
-        (16.7, |c| teleport(c, Vec2::new(1250.0, -230.0), 30.0, 3.0)),
-        (18.2, |c| shot(c, "kepler")),
-        (19.5, |_| {}),
+        (3.8, |c| c.slots.0 = 0b11111),
+        (5.0, |c| shot(c, "abheben")),
+        (5.8, |c| c.slots.0 = 0b00011),
+        (6.8, |c| c.slots.0 = 0b01000),
+        (7.3, |c| shot(c, "drehen")),
+        (7.4, |c| c.slots.0 = 0),
+        (8.2, |c| teleport(c, Vec2::new(640.0, 700.0), 75.0, 0.6)),
+        (10.0, |c| shot(c, "planet")),
+        (10.8, |c| teleport(c, Vec2::new(260.0, 1380.0), 40.0, 1.0)),
+        (12.6, |c| shot(c, "asteroiden")),
+        (13.4, |c| teleport(c, Vec2::new(-1170.0, 368.0), 0.0, 0.0)),
+        (15.2, |c| shot(c, "werft")),
+        (16.0, |c| teleport(c, Vec2::new(980.0, -1150.0), 45.0, 2.4)),
+        (17.4, |c| shot(c, "anomalie")),
+        (18.2, |c| teleport(c, Vec2::new(-380.0, -520.0), 0.0, 0.0)),
+        (20.5, |c| shot(c, "meteore")),
+        (21.3, |c| teleport(c, Vec2::new(1250.0, -230.0), 30.0, 3.0)),
+        (23.0, |c| shot(c, "kepler")),
+        (24.5, |_| {}),
     ]
 }
 
@@ -182,7 +216,12 @@ fn ui_scene() -> Vec<(f32, Act)> {
             })
         }),
         (9.8, |c| shot(c, "abstimmung")),
-        (10.0, |c| c.pending.0.push(Command::Vote { voter: 1, yes: true })),
+        (10.0, |c| {
+            c.pending.0.push(Command::Vote {
+                voter: 1,
+                yes: true,
+            })
+        }),
         (10.4, |c| c.menu.tab = true),
         (11.6, |c| shot(c, "karte")),
         (11.8, |c| c.menu.tab = true),
@@ -214,11 +253,19 @@ fn demo_script(
 ) {
     demo.t += time.delta_secs();
     let t = demo.t;
-    let script = if demo.cfg.scene == "ui" { ui_scene() } else { tour() };
+    let script = if demo.cfg.scene == "ui" {
+        ui_scene()
+    } else {
+        tour()
+    };
     let mut pad = pads.iter().next();
     if pad.is_none() && demo.cfg.scene == "ui" {
         // Ein Gamepad vortäuschen, damit die Lobby zwei Crewmitglieder zeigt.
-        pad = Some(commands.spawn((Gamepad::default(), Name::new("Joy-Con (R)"))).id());
+        pad = Some(
+            commands
+                .spawn((Gamepad::default(), Name::new("Joy-Con (R)")))
+                .id(),
+        );
     }
     while demo.step < script.len() && t >= script[demo.step].0 {
         let f = script[demo.step].1;

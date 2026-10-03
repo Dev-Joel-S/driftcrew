@@ -2,8 +2,8 @@
 
 use bevy::math::Vec2;
 
-use super::data::{v, Ore, PartKind, ShipDef, ToolKind};
-use super::geom::{forward, rot, Quad};
+use super::data::{Ore, PartKind, ShipDef, ToolKind, v};
+use super::geom::{Quad, rot};
 
 /// Was die Lobby belegt hat: Anzahl Triebwerke und welche Werkzeuge (Index in `tool_parts`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -130,7 +130,6 @@ pub struct CargoItem {
 #[derive(Clone, Debug)]
 pub struct Ship {
     pub def_id: String,
-    pub name: String,
     pub parts: Vec<ShipPart>,
     pub thrusters: Vec<Thruster>,
     pub tools: Vec<Tool>,
@@ -158,7 +157,6 @@ pub struct Ship {
     pub ammo: u32,
     pub max_ammo: u32,
     pub ang_damp: f32,
-    pub thrust_mul: f32,
     pub crane_range: f32,
     pub drill_rate: f32,
 
@@ -176,7 +174,10 @@ impl Ship {
         let mut pods = Vec::new();
 
         // Triebwerke: die ersten n in Belegungsreihenfolge, symmetrisch neu angeordnet.
-        let n = loadout.thrusters.clamp(def.min_thrusters.min(def.max_thrusters()), def.max_thrusters());
+        let n = loadout.thrusters.clamp(
+            def.min_thrusters.min(def.max_thrusters()),
+            def.max_thrusters(),
+        );
         let mut claimed: Vec<(f32, f32, f32, f32, Vec2, f32)> = def
             .thruster_parts()
             .take(n as usize)
@@ -260,7 +261,6 @@ impl Ship {
         let max_ammo = def.max_ammo + stats.ammo_bonus;
         let mut ship = Ship {
             def_id: def.id.clone(),
-            name: def.name.clone(),
             parts,
             thrusters,
             tools,
@@ -283,7 +283,6 @@ impl Ship {
             ammo: max_ammo,
             max_ammo,
             ang_damp: def.angular_damping + stats.gyro,
-            thrust_mul: stats.thrust_mul,
             crane_range: 20.0 * stats.crane_mul,
             drill_rate: 1.6 * stats.drill_mul,
             docked: None,
@@ -316,12 +315,14 @@ impl Ship {
         let mut inertia = 0.0;
         for p in &self.parts {
             let size = p.half * 2.0;
-            inertia += p.mass * (size.x * size.x + size.y * size.y) / 12.0 + p.mass * (p.pos - com).length_squared();
+            inertia += p.mass * (size.x * size.x + size.y * size.y) / 12.0
+                + p.mass * (p.pos - com).length_squared();
         }
         for c in &self.cargo {
             let pod = &self.pods[c.pod.min(self.pods.len().saturating_sub(1))];
             let size = pod.half * 2.0;
-            inertia += c.mass * (size.x * size.x + size.y * size.y) / 12.0 + c.mass * (pod.pos - com).length_squared();
+            inertia += c.mass * (size.x * size.x + size.y * size.y) / 12.0
+                + c.mass * (pod.pos - com).length_squared();
         }
         self.mass = m.max(0.1);
         self.inertia = inertia.max(0.1);
@@ -337,10 +338,6 @@ impl Ship {
 
     pub fn origin(&self) -> Vec2 {
         self.to_world(Vec2::ZERO)
-    }
-
-    pub fn forward(&self) -> Vec2 {
-        forward(self.angle)
     }
 
     pub fn point_velocity(&self, world: Vec2) -> Vec2 {
@@ -385,7 +382,11 @@ impl Ship {
     }
 
     pub fn pod_load(&self, pod: usize) -> f32 {
-        self.cargo.iter().filter(|c| c.pod == pod).map(|c| c.mass).sum()
+        self.cargo
+            .iter()
+            .filter(|c| c.pod == pod)
+            .map(|c| c.mass)
+            .sum()
     }
 
     pub fn ore_amount(&self, ore: Ore) -> f32 {
@@ -412,18 +413,31 @@ impl Ship {
             }
         }
         let divisible = matches!(kind, CargoKind::Ore(_));
-        let stored = if divisible { mass.min(best_free) } else if best_free >= mass { mass } else { 0.0 };
+        let stored = if divisible {
+            mass.min(best_free)
+        } else if best_free >= mass {
+            mass
+        } else {
+            0.0
+        };
         if stored <= 1e-5 {
             return 0.0;
         }
-        if divisible {
-            if let Some(item) = self.cargo.iter_mut().find(|c| c.kind == kind && c.pod == best) {
-                item.mass += stored;
-                self.recompute_mass();
-                return stored;
-            }
+        if divisible
+            && let Some(item) = self
+                .cargo
+                .iter_mut()
+                .find(|c| c.kind == kind && c.pod == best)
+        {
+            item.mass += stored;
+            self.recompute_mass();
+            return stored;
         }
-        self.cargo.push(CargoItem { kind, mass: stored, pod: best });
+        self.cargo.push(CargoItem {
+            kind,
+            mass: stored,
+            pod: best,
+        });
         self.recompute_mass();
         stored
     }
@@ -474,7 +488,10 @@ mod tests {
         let ship = Ship::build(def, &Loadout::full(def), &ShipStats::default());
         assert_eq!(ship.thrusters.len(), 5);
         assert_eq!(ship.tools.len(), 3);
-        assert!(ship.com.x.abs() < 1e-4, "symmetrisches Schiff, Schwerpunkt mittig");
+        assert!(
+            ship.com.x.abs() < 1e-4,
+            "symmetrisches Schiff, Schwerpunkt mittig"
+        );
         assert!(ship.mass > 10.0);
         // Slots: Triebwerke von links nach rechts.
         let xs: Vec<f32> = ship.thrusters.iter().map(|t| t.pos.x).collect();
@@ -485,7 +502,14 @@ mod tests {
     fn two_thrusters_are_symmetric() {
         let data = GameData::embedded().unwrap();
         let def = data.ship("driftkutter");
-        let ship = Ship::build(def, &Loadout { thrusters: 2, tools: vec![] }, &ShipStats::default());
+        let ship = Ship::build(
+            def,
+            &Loadout {
+                thrusters: 2,
+                tools: vec![],
+            },
+            &ShipStats::default(),
+        );
         assert_eq!(ship.thrusters.len(), 2);
         assert!((ship.thrusters[0].pos.x + ship.thrusters[1].pos.x).abs() < 1e-5);
         assert_eq!(ship.slot_count, 2);
@@ -497,7 +521,13 @@ mod tests {
         let def = data.ship("driftkutter");
         let mut ship = Ship::build(def, &Loadout::full(def), &ShipStats::default());
         let before = ship.origin();
-        ship.store(CargoKind::Container { mission: 1, name: "Test".into() }, 5.0);
+        ship.store(
+            CargoKind::Container {
+                mission: 1,
+                name: "Test".into(),
+            },
+            5.0,
+        );
         assert!(ship.com.x.abs() > 0.1, "Container liegt seitlich");
         // Das Schiff springt nicht, wenn sich der Schwerpunkt verschiebt.
         assert!((ship.origin() - before).length() < 1e-4);

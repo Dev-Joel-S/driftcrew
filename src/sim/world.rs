@@ -2,8 +2,8 @@
 
 use bevy::math::Vec2;
 
-use super::data::{v, GameData, Ore, Service, StationKind};
-use super::geom::{rot, Aabb, Quad};
+use super::data::{GameData, Ore, Service, StationKind, v};
+use super::geom::{Aabb, Quad};
 use super::rng::Rng;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -100,7 +100,6 @@ pub struct Deposit {
 
 #[derive(Clone, Debug)]
 pub struct Planet {
-    pub id: String,
     pub name: String,
     pub pos: Vec2,
     pub radius: f32,
@@ -145,7 +144,11 @@ impl Spinner {
         (0..self.arms)
             .map(|i| {
                 let a = self.angle + std::f32::consts::PI * i as f32 / self.arms as f32;
-                Quad::obb(self.pos, Vec2::new(self.arm_length, self.arm_width * 0.5), a)
+                Quad::obb(
+                    self.pos,
+                    Vec2::new(self.arm_length, self.arm_width * 0.5),
+                    a,
+                )
             })
             .collect()
     }
@@ -336,7 +339,6 @@ impl World {
         for (pi, pd) in wd.planets.iter().enumerate() {
             let pos = v(pd.pos);
             let mut planet = Planet {
-                id: pd.id.clone(),
                 name: pd.name.clone(),
                 pos,
                 radius: pd.radius,
@@ -347,7 +349,10 @@ impl World {
                 pad: None,
             };
             w.colliders.push(StaticCollider {
-                shape: Shape::Circle { c: pos, r: pd.radius },
+                shape: Shape::Circle {
+                    c: pos,
+                    r: pd.radius,
+                },
                 aabb: Aabb::around(pos, pd.radius),
                 surface: Surface::Planet(pi),
             });
@@ -366,7 +371,11 @@ impl World {
                 let angle = f32::atan2(-n.x, n.y);
                 // Plattform + zwei Stützblöcke links/rechts.
                 w.push_quad(
-                    Quad::obb(pos + n * (pd.radius + PAD_THICKNESS * 0.5 - 0.3), Vec2::new(3.0, PAD_THICKNESS * 0.5 + 0.3), angle),
+                    Quad::obb(
+                        pos + n * (pd.radius + PAD_THICKNESS * 0.5 - 0.3),
+                        Vec2::new(3.0, PAD_THICKNESS * 0.5 + 0.3),
+                        angle,
+                    ),
                     Surface::Pad(pad_idx),
                 );
                 for side in [-1.0f32, 1.0] {
@@ -379,7 +388,8 @@ impl World {
             let count = pd.deposits.max(1);
             let base = rng.range(0.0, std::f32::consts::TAU);
             for i in 0..count {
-                let mut a = base + std::f32::consts::TAU * i as f32 / count as f32 + rng.range(-0.2, 0.2);
+                let mut a =
+                    base + std::f32::consts::TAU * i as f32 / count as f32 + rng.range(-0.2, 0.2);
                 if let Some(o) = outpost {
                     let diff = angle_diff(a, o);
                     if diff.abs() < 0.35 {
@@ -461,11 +471,6 @@ pub fn angle_diff(a: f32, b: f32) -> f32 {
     d
 }
 
-/// Punkt auf einem Planetenrand.
-pub fn rim_point(p: &Planet, angle: f32, extra: f32) -> Vec2 {
-    p.pos + rot(Vec2::X, angle) * (p.radius + extra)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -481,7 +486,11 @@ mod tests {
                 .flat_map(|r| r.chars())
                 .filter(|c| matches!(c, '#' | 'X' | 'W'))
                 .count();
-            let cells = st.cells.iter().filter(|c| c.kind != CellKind::Light).count();
+            let cells = st
+                .cells
+                .iter()
+                .filter(|c| c.kind != CellKind::Light)
+                .count();
             assert_eq!(solid, cells, "Station {}", st.id);
         }
     }

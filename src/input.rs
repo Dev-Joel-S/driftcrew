@@ -12,7 +12,7 @@ use bevy::window::PrimaryWindow;
 use crate::game::{AppState, GameCamera, Sim};
 use crate::sim::data::ShipDef;
 use crate::sim::ship::Loadout;
-use crate::sim::{TickInput, MAX_SLOTS};
+use crate::sim::{MAX_SLOTS, TickInput};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Device {
@@ -171,7 +171,11 @@ pub struct ActiveBinding {
 pub struct ActiveBindings(pub Vec<ActiveBinding>);
 
 impl Crew {
-    pub fn player_for(&mut self, device: Device, gamepads: &Query<(Entity, &Gamepad, Option<&Name>)>) -> usize {
+    pub fn player_for(
+        &mut self,
+        device: Device,
+        gamepads: &Query<(Entity, &Gamepad, Option<&Name>)>,
+    ) -> usize {
         if let Some(i) = self.players.iter().position(|p| p.device == device) {
             return i;
         }
@@ -296,7 +300,12 @@ pub struct MenuInput {
     pub backspace: bool,
 }
 
-pub fn btn_pressed(btn: &Btn, keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<MouseButton>, pads: &Query<(Entity, &Gamepad, Option<&Name>)>) -> bool {
+pub fn btn_pressed(
+    btn: &Btn,
+    keys: &ButtonInput<KeyCode>,
+    mouse: &ButtonInput<MouseButton>,
+    pads: &Query<(Entity, &Gamepad, Option<&Name>)>,
+) -> bool {
     match btn {
         Btn::Key(k) => keys.pressed(*k),
         Btn::Mouse(m) => mouse.pressed(*m),
@@ -304,16 +313,28 @@ pub fn btn_pressed(btn: &Btn, keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<M
     }
 }
 
-pub fn btn_just_pressed(btn: &Btn, keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<MouseButton>, pads: &Query<(Entity, &Gamepad, Option<&Name>)>) -> bool {
+pub fn btn_just_pressed(
+    btn: &Btn,
+    keys: &ButtonInput<KeyCode>,
+    mouse: &ButtonInput<MouseButton>,
+    pads: &Query<(Entity, &Gamepad, Option<&Name>)>,
+) -> bool {
     match btn {
         Btn::Key(k) => keys.just_pressed(*k),
         Btn::Mouse(m) => mouse.just_pressed(*m),
-        Btn::Pad(e, b) => pads.get(*e).map(|(_, g, _)| g.just_pressed(*b)).unwrap_or(false),
+        Btn::Pad(e, b) => pads
+            .get(*e)
+            .map(|(_, g, _)| g.just_pressed(*b))
+            .unwrap_or(false),
     }
 }
 
 /// Alle frisch gedrückten, belegbaren Tasten dieses Frames.
-pub fn fresh_claimable(keys: &ButtonInput<KeyCode>, mouse: &ButtonInput<MouseButton>, pads: &Query<(Entity, &Gamepad, Option<&Name>)>) -> Vec<Btn> {
+pub fn fresh_claimable(
+    keys: &ButtonInput<KeyCode>,
+    mouse: &ButtonInput<MouseButton>,
+    pads: &Query<(Entity, &Gamepad, Option<&Name>)>,
+) -> Vec<Btn> {
     let mut out: Vec<Btn> = keys
         .get_just_pressed()
         .filter(|k| !reserved_key(**k))
@@ -346,7 +367,10 @@ impl Plugin for InputPlugin {
             .init_resource::<Aims>()
             .init_resource::<CursorWorld>()
             .init_resource::<MenuInput>()
-            .add_systems(PreUpdate, (read_menu_input, latch_slots).after(bevy::input::InputSystems))
+            .add_systems(
+                PreUpdate,
+                (read_menu_input, latch_slots).after(bevy::input::InputSystems),
+            )
             .add_systems(Update, update_aims.run_if(in_state(AppState::Playing)));
     }
 }
@@ -377,7 +401,9 @@ pub fn read_menu_input(
         m.device = Some(Device::Keyboard);
     }
     for (e, g, _) in &pads {
-        if g.just_pressed(GamepadButton::Start) || (g.just_pressed(GamepadButton::South) && !bound(e, GamepadButton::South)) {
+        if g.just_pressed(GamepadButton::Start)
+            || (g.just_pressed(GamepadButton::South) && !bound(e, GamepadButton::South))
+        {
             m.device = Some(Device::Pad(e));
         }
         m.up |= g.just_pressed(GamepadButton::DPadUp);
@@ -445,14 +471,12 @@ fn update_aims(
     mut aims: ResMut<Aims>,
 ) {
     cursor_world.0 = None;
-    if let (Ok(win), Ok((cam, cam_t))) = (window.single(), camera.single()) {
-        if let Some(cursor) = win.cursor_position() {
-            if let Ok(ray) = cam.viewport_to_world(cam_t, cursor) {
-                if let Some(t) = ray.intersect_plane(Vec3::ZERO, InfinitePlane3d::new(Vec3::Z)) {
-                    cursor_world.0 = Some(ray.get_point(t).truncate());
-                }
-            }
-        }
+    if let (Ok(win), Ok((cam, cam_t))) = (window.single(), camera.single())
+        && let Some(cursor) = win.cursor_position()
+        && let Ok(ray) = cam.viewport_to_world(cam_t, cursor)
+        && let Some(t) = ray.intersect_plane(Vec3::ZERO, InfinitePlane3d::new(Vec3::Z))
+    {
+        cursor_world.0 = Some(ray.get_point(t).truncate());
     }
     let ship = &sim.0.ship;
     for tool_i in 0..ship.tools.len() {
@@ -460,7 +484,11 @@ fn update_aims(
         let Some(b) = bindings.0.iter().find(|b| b.slot as usize == slot) else {
             continue;
         };
-        let device = crew.players.get(b.player).map(|p| p.device).unwrap_or(Device::Keyboard);
+        let device = crew
+            .players
+            .get(b.player)
+            .map(|p| p.device)
+            .unwrap_or(Device::Keyboard);
         let mount = ship.tool_world_pos(tool_i);
         let aim = match device {
             Device::Keyboard => cursor_world.0.map(|c| (c - mount).to_angle()),
@@ -471,10 +499,10 @@ fn update_aims(
                 (s.length() > 0.35).then(|| s.to_angle())
             }),
         };
-        if let Some(a) = aim {
-            if slot < aims.0.len() {
-                aims.0[slot] = a;
-            }
+        if let Some(a) = aim
+            && slot < aims.0.len()
+        {
+            aims.0[slot] = a;
         }
     }
 }

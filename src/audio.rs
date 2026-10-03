@@ -7,8 +7,8 @@ use bevy::audio::{AudioSinkPlayback, PlaybackMode, Volume};
 use bevy::prelude::*;
 
 use crate::game::{AppState, Paused, Sim, SimMsg};
-use crate::sim::rng::Rng;
 use crate::sim::SimEvent;
+use crate::sim::rng::Rng;
 
 const RATE: u32 = 44_100;
 
@@ -17,7 +17,10 @@ pub struct SoundPlugin;
 impl Plugin for SoundPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_sounds)
-            .add_systems(Update, (play_event_sounds, update_loops).run_if(in_state(AppState::Playing)))
+            .add_systems(
+                Update,
+                (play_event_sounds, update_loops).run_if(in_state(AppState::Playing)),
+            )
             .add_systems(OnExit(AppState::Playing), mute_loops);
     }
 }
@@ -61,7 +64,9 @@ fn wav(samples: &[f32]) -> AudioSource {
         let v = (s.clamp(-1.0, 1.0) * 32000.0) as i16;
         b.extend_from_slice(&v.to_le_bytes());
     }
-    AudioSource { bytes: Arc::from(b) }
+    AudioSource {
+        bytes: Arc::from(b),
+    }
 }
 
 fn len(sec: f32) -> usize {
@@ -169,7 +174,9 @@ fn tones(notes: &[(f32, f32, f32)], total: f32) -> Vec<f32> {
                         0.0
                     } else {
                         let tt = t - start;
-                        ((TAU * f * tt).sin() + 0.3 * (TAU * f * 2.0 * tt).sin()) * env(tt, 0.004, *dec) * 0.35
+                        ((TAU * f * tt).sin() + 0.3 * (TAU * f * 2.0 * tt).sin())
+                            * env(tt, 0.004, *dec)
+                            * 0.35
                     }
                 })
                 .sum()
@@ -190,7 +197,10 @@ fn synth_crane() -> Vec<f32> {
 }
 
 fn synth_clank() -> Vec<f32> {
-    tones(&[(0.0, 523.0, 0.08), (0.0, 1307.0, 0.05), (0.0, 2091.0, 0.04)], 0.3)
+    tones(
+        &[(0.0, 523.0, 0.08), (0.0, 1307.0, 0.05), (0.0, 2091.0, 0.04)],
+        0.3,
+    )
 }
 
 fn synth_alarm() -> Vec<f32> {
@@ -217,11 +227,21 @@ fn setup_sounds(mut commands: Commands, mut sources: ResMut<Assets<AudioSource>>
         explosion: sources.add(wav(&synth_explosion(&mut rng))),
         impact: sources.add(wav(&synth_impact(&mut rng))),
         dock: sources.add(wav(&tones(&[(0.0, 660.0, 0.25), (0.14, 990.0, 0.35)], 0.8))),
-        coin: sources.add(wav(&tones(&[(0.0, 880.0, 0.08), (0.07, 1320.0, 0.08), (0.14, 1760.0, 0.18)], 0.5))),
+        coin: sources.add(wav(&tones(
+            &[
+                (0.0, 880.0, 0.08),
+                (0.07, 1320.0, 0.08),
+                (0.14, 1760.0, 0.18),
+            ],
+            0.5,
+        ))),
         crane: sources.add(wav(&synth_crane())),
         clank: sources.add(wav(&synth_clank())),
         alarm: sources.add(wav(&synth_alarm())),
-        blip: sources.add(wav(&tones(&[(0.0, 1200.0, 0.05), (0.08, 1600.0, 0.06)], 0.25))),
+        blip: sources.add(wav(&tones(
+            &[(0.0, 1200.0, 0.05), (0.08, 1600.0, 0.06)],
+            0.25,
+        ))),
         click: sources.add(wav(&tones(&[(0.0, 300.0, 0.02)], 0.08))),
     };
     commands.insert_resource(s);
@@ -258,7 +278,12 @@ fn one_shot(commands: &mut Commands, h: &Handle<AudioSource>, vol: f32) {
     ));
 }
 
-fn play_event_sounds(mut commands: Commands, mut events: MessageReader<SimMsg>, sounds: Option<Res<Sounds>>, sim: Res<Sim>) {
+fn play_event_sounds(
+    mut commands: Commands,
+    mut events: MessageReader<SimMsg>,
+    sounds: Option<Res<Sounds>>,
+    sim: Res<Sim>,
+) {
     let Some(s) = sounds else { return };
     let me = sim.0.ship.pos;
     let by_dist = |p: Vec2| (1.0 - (p - me).length() / 160.0).clamp(0.0, 1.0);
@@ -267,18 +292,37 @@ fn play_event_sounds(mut commands: Commands, mut events: MessageReader<SimMsg>, 
         match e {
             SimEvent::Shot { .. } => one_shot(&mut commands, &s.shot, 0.5),
             SimEvent::EmptyGun => one_shot(&mut commands, &s.click, 0.6),
-            SimEvent::Explosion { pos, size, .. } => one_shot(&mut commands, &s.explosion, by_dist(*pos) * (0.3 + size * 0.08).min(0.9)),
+            SimEvent::Explosion { pos, size, .. } => one_shot(
+                &mut commands,
+                &s.explosion,
+                by_dist(*pos) * (0.3 + size * 0.08).min(0.9),
+            ),
             SimEvent::Impact { pos, strength, .. } if impacts < 2 => {
                 impacts += 1;
-                one_shot(&mut commands, &s.impact, by_dist(*pos) * (strength / 10.0).min(0.9));
+                one_shot(
+                    &mut commands,
+                    &s.impact,
+                    by_dist(*pos) * (strength / 10.0).min(0.9),
+                );
             }
-            SimEvent::ProjectileHit { pos } => one_shot(&mut commands, &s.impact, by_dist(*pos) * 0.3),
+            SimEvent::ProjectileHit { pos } => {
+                one_shot(&mut commands, &s.impact, by_dist(*pos) * 0.3)
+            }
             SimEvent::Docked { .. } => one_shot(&mut commands, &s.dock, 0.5),
-            SimEvent::Purchased { .. } | SimEvent::MissionCompleted { .. } | SimEvent::Sold { .. } => one_shot(&mut commands, &s.coin, 0.5),
+            SimEvent::Purchased { .. }
+            | SimEvent::MissionCompleted { .. }
+            | SimEvent::Sold { .. } => one_shot(&mut commands, &s.coin, 0.5),
             SimEvent::CraneFire => one_shot(&mut commands, &s.crane, 0.35),
-            SimEvent::CraneAttach { .. } | SimEvent::Stowed { .. } => one_shot(&mut commands, &s.clank, 0.5),
-            SimEvent::VoteStarted | SimEvent::MissionAccepted { .. } => one_shot(&mut commands, &s.blip, 0.4),
-            SimEvent::Toast { kind: crate::sim::ToastKind::Bad, .. } => one_shot(&mut commands, &s.alarm, 0.4),
+            SimEvent::CraneAttach { .. } | SimEvent::Stowed { .. } => {
+                one_shot(&mut commands, &s.clank, 0.5)
+            }
+            SimEvent::VoteStarted | SimEvent::MissionAccepted { .. } => {
+                one_shot(&mut commands, &s.blip, 0.4)
+            }
+            SimEvent::Toast {
+                kind: crate::sim::ToastKind::Bad,
+                ..
+            } => one_shot(&mut commands, &s.alarm, 0.4),
             _ => {}
         }
     }
@@ -292,13 +336,21 @@ fn update_loops(
 ) {
     let ship = &sim.0.ship;
     let level: f32 = ship.thrusters.iter().map(|t| t.level).sum();
-    let tv = if paused.0 || ship.destroyed { 0.0 } else { (level * 0.22).min(0.8) };
+    let tv = if paused.0 || ship.destroyed {
+        0.0
+    } else {
+        (level * 0.22).min(0.8)
+    };
     for mut s in &mut thrust {
         s.set_volume(Volume::Linear(tv));
     }
     let drilling = ship.tools.iter().any(|t| t.drill.is_some());
     for mut s in &mut drill {
-        s.set_volume(Volume::Linear(if drilling && !paused.0 { 0.3 } else { 0.0 }));
+        s.set_volume(Volume::Linear(if drilling && !paused.0 {
+            0.3
+        } else {
+            0.0
+        }));
     }
 }
 

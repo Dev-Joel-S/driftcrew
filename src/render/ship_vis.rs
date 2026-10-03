@@ -5,13 +5,13 @@ use std::collections::HashMap;
 use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 
-use super::{ship_pose, slot_color, srgb, Art};
+use super::{Art, ship_pose, slot_color, srgb};
 use crate::game::{Data, Sim};
-use crate::sim::data::{hex, PartKind, ShipDef, ToolKind};
+use crate::sim::BodyKind;
+use crate::sim::data::{PartKind, ShipDef, ToolKind, hex};
 use crate::sim::geom::rot;
 use crate::sim::ship::{CraneState, Loadout, Ship, ShipStats};
 use crate::sim::world::angle_diff;
-use crate::sim::BodyKind;
 
 #[derive(Clone, Copy)]
 pub struct ShipModelOpts {
@@ -58,6 +58,28 @@ pub struct DrillBeam(pub usize);
 
 #[derive(Component)]
 pub struct BlinkLight(pub f32);
+
+#[derive(Component)]
+pub struct NavLight {
+    pub phase: f32,
+    pub strobe: bool,
+}
+
+pub fn blink_nav_lights(time: Res<Time>, mut q: Query<(&NavLight, &mut Visibility)>) {
+    let t = time.elapsed_secs();
+    for (n, mut v) in &mut q {
+        let on = if n.strobe {
+            ((t + n.phase) * 1.1).fract() < 0.08
+        } else {
+            ((t + n.phase) * 0.9).fract() < 0.6
+        };
+        *v = if on {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+    }
+}
 
 #[derive(Resource, Default)]
 pub struct VisMaps {
@@ -108,16 +130,25 @@ pub fn spawn_ship_model(
     let dark_mat = mats.add(art.panel_mat(srgb([0.16, 0.17, 0.2]), 0.35, 0.6));
     let glass_mat = mats.add(StandardMaterial {
         base_color: Color::srgb(0.03, 0.12, 0.16),
-        emissive: if opts.derelict { LinearRgba::BLACK } else { LinearRgba::rgb(0.12, 0.9, 1.1) },
+        emissive: if opts.derelict {
+            LinearRgba::BLACK
+        } else {
+            LinearRgba::rgb(0.12, 0.9, 1.1)
+        },
         perceptual_roughness: 0.06,
         metallic: 0.7,
         reflectance: 0.9,
         ..default()
     });
-    let stripe_mat = mats.add(art.emissive_mat(srgb(accent_c), if opts.derelict { 0.0 } else { 1.6 }));
+    let stripe_mat =
+        mats.add(art.emissive_mat(srgb(accent_c), if opts.derelict { 0.0 } else { 1.6 }));
 
     let root = commands
-        .spawn((Transform::default(), Visibility::default(), Name::new(def.name.clone())))
+        .spawn((
+            Transform::default(),
+            Visibility::default(),
+            Name::new(def.name.clone()),
+        ))
         .id();
     let mut children = Vec::new();
 
@@ -135,7 +166,11 @@ pub fn spawn_ship_model(
         };
         children.push(
             commands
-                .spawn((Mesh3d(mesh), MeshMaterial3d(mat), Transform::from_xyz(p.pos.x, p.pos.y, z)))
+                .spawn((
+                    Mesh3d(mesh),
+                    MeshMaterial3d(mat),
+                    Transform::from_xyz(p.pos.x, p.pos.y, z),
+                ))
                 .id(),
         );
         match &p.kind {
@@ -147,7 +182,11 @@ pub fn spawn_ship_model(
                         .spawn((
                             Mesh3d(stripe),
                             MeshMaterial3d(stripe_mat.clone()),
-                            Transform::from_xyz(p.pos.x, p.pos.y + p.half.y * 0.55, depth * 0.5 + 0.02),
+                            Transform::from_xyz(
+                                p.pos.x,
+                                p.pos.y + p.half.y * 0.55,
+                                depth * 0.5 + 0.02,
+                            ),
                         ))
                         .id(),
                 );
@@ -159,7 +198,11 @@ pub fn spawn_ship_model(
                             .spawn((
                                 Mesh3d(vent.clone()),
                                 MeshMaterial3d(dark_mat.clone()),
-                                Transform::from_xyz(x, p.pos.y - p.half.y * 0.25, depth * 0.5 + 0.02),
+                                Transform::from_xyz(
+                                    x,
+                                    p.pos.y - p.half.y * 0.25,
+                                    depth * 0.5 + 0.02,
+                                ),
                             ))
                             .id(),
                     );
@@ -171,8 +214,16 @@ pub fn spawn_ship_model(
                         .spawn((
                             Mesh3d(art.sphere.clone()),
                             MeshMaterial3d(glass_mat.clone()),
-                            Transform::from_xyz(p.pos.x, p.pos.y + p.half.y * 0.15, depth * 0.5 + 0.05)
-                                .with_scale(Vec3::new(p.half.x * 0.75, p.half.y * 0.8, 0.35)),
+                            Transform::from_xyz(
+                                p.pos.x,
+                                p.pos.y + p.half.y * 0.15,
+                                depth * 0.5 + 0.05,
+                            )
+                            .with_scale(Vec3::new(
+                                p.half.x * 0.75,
+                                p.half.y * 0.8,
+                                0.35,
+                            )),
                         ))
                         .id(),
                 );
@@ -203,14 +254,22 @@ pub fn spawn_ship_model(
             .find(|p| matches!(p.kind, PartKind::Thruster(_)) && (p.pos - t.pos).length() < 1e-3)
             .map(|p| p.half)
             .unwrap_or(Vec2::splat(0.22));
-        let col = if opts.slot_colors { slot_color(t.slot) } else { srgb([0.6, 0.65, 0.7]) };
+        let col = if opts.slot_colors {
+            slot_color(t.slot)
+        } else {
+            srgb([0.6, 0.65, 0.7])
+        };
         let base = t.pos - Vec2::Y * (half.y + 0.18);
         children.push(
             commands
                 .spawn((
                     Mesh3d(art.frustum.clone()),
                     MeshMaterial3d(dark_mat.clone()),
-                    Transform::from_xyz(base.x, base.y, -0.1).with_scale(Vec3::new(half.x * 0.85, 0.42, half.x * 0.85)),
+                    Transform::from_xyz(base.x, base.y, -0.1).with_scale(Vec3::new(
+                        half.x * 0.85,
+                        0.42,
+                        half.x * 0.85,
+                    )),
                 ))
                 .id(),
         );
@@ -235,13 +294,16 @@ pub fn spawn_ship_model(
                 ..default()
             });
             let core = mats.add(StandardMaterial {
-                base_color: Color::LinearRgba(LinearRgba::rgb(6.0, 6.0, 6.0) + col.to_linear() * 3.0),
+                base_color: Color::LinearRgba(
+                    LinearRgba::rgb(6.0, 6.0, 6.0) + col.to_linear() * 3.0,
+                ),
                 unlit: true,
                 alpha_mode: AlphaMode::Add,
                 ..default()
             });
             let tip = base - Vec2::Y * 0.25;
-            for (mat, core_flag, r) in [(flame, false, half.x * 0.85), (core, true, half.x * 0.42)] {
+            for (mat, core_flag, r) in [(flame, false, half.x * 0.85), (core, true, half.x * 0.42)]
+            {
                 children.push(
                     commands
                         .spawn((
@@ -283,7 +345,11 @@ pub fn spawn_ship_model(
 
     // Werkzeuge: drehbare Köpfe.
     for (i, t) in ship.tools.iter().enumerate() {
-        let col = if opts.slot_colors { slot_color(t.slot) } else { srgb([0.5, 0.5, 0.55]) };
+        let col = if opts.slot_colors {
+            slot_color(t.slot)
+        } else {
+            srgb([0.5, 0.5, 0.55])
+        };
         let ring_mat = mats.add(art.emissive_mat(col, if opts.slot_colors { 3.0 } else { 0.0 }));
         let head = commands
             .spawn((
@@ -292,26 +358,61 @@ pub fn spawn_ship_model(
                 ToolHead(i),
             ))
             .id();
-        let mut parts = vec![commands
-            .spawn((
-                Mesh3d(art.cylinder.clone()),
-                MeshMaterial3d(ring_mat),
-                Transform::from_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)).with_scale(Vec3::new(0.3, 0.12, 0.3)),
-            ))
-            .id()];
+        let mut parts = vec![
+            commands
+                .spawn((
+                    Mesh3d(art.cylinder.clone()),
+                    MeshMaterial3d(ring_mat),
+                    Transform::from_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
+                        .with_scale(Vec3::new(0.3, 0.12, 0.3)),
+                ))
+                .id(),
+        ];
         match t.kind {
             ToolKind::Cannon => {
                 let barrel = art.bevel_box(meshes, Vec3::new(0.18, 1.0, 0.18));
-                parts.push(commands.spawn((Mesh3d(barrel), MeshMaterial3d(dark_mat.clone()), Transform::from_xyz(0.0, 0.5, 0.1))).id());
+                parts.push(
+                    commands
+                        .spawn((
+                            Mesh3d(barrel),
+                            MeshMaterial3d(dark_mat.clone()),
+                            Transform::from_xyz(0.0, 0.5, 0.1),
+                        ))
+                        .id(),
+                );
                 let body = art.bevel_box(meshes, Vec3::new(0.42, 0.42, 0.3));
-                parts.push(commands.spawn((Mesh3d(body), MeshMaterial3d(hull_mat.clone()), Transform::from_xyz(0.0, 0.0, 0.1))).id());
+                parts.push(
+                    commands
+                        .spawn((
+                            Mesh3d(body),
+                            MeshMaterial3d(hull_mat.clone()),
+                            Transform::from_xyz(0.0, 0.0, 0.1),
+                        ))
+                        .id(),
+                );
             }
             ToolKind::Crane => {
                 let arm = art.bevel_box(meshes, Vec3::new(0.16, 0.8, 0.16));
-                parts.push(commands.spawn((Mesh3d(arm), MeshMaterial3d(accent_mat.clone()), Transform::from_xyz(0.0, 0.4, 0.1))).id());
+                parts.push(
+                    commands
+                        .spawn((
+                            Mesh3d(arm),
+                            MeshMaterial3d(accent_mat.clone()),
+                            Transform::from_xyz(0.0, 0.4, 0.1),
+                        ))
+                        .id(),
+                );
                 let jaw = art.bevel_box(meshes, Vec3::new(0.1, 0.3, 0.12));
                 for x in [-0.14f32, 0.14] {
-                    parts.push(commands.spawn((Mesh3d(jaw.clone()), MeshMaterial3d(dark_mat.clone()), Transform::from_xyz(x, 0.85, 0.1))).id());
+                    parts.push(
+                        commands
+                            .spawn((
+                                Mesh3d(jaw.clone()),
+                                MeshMaterial3d(dark_mat.clone()),
+                                Transform::from_xyz(x, 0.85, 0.1),
+                            ))
+                            .id(),
+                    );
                 }
             }
             ToolKind::Drill => {
@@ -320,16 +421,73 @@ pub fn spawn_ship_model(
                         .spawn((
                             Mesh3d(art.cone.clone()),
                             MeshMaterial3d(accent_mat.clone()),
-                            Transform::from_xyz(0.0, 0.45, 0.1).with_scale(Vec3::new(0.2, 0.7, 0.2)),
+                            Transform::from_xyz(0.0, 0.45, 0.1)
+                                .with_scale(Vec3::new(0.2, 0.7, 0.2)),
                         ))
                         .id(),
                 );
                 let body = art.bevel_box(meshes, Vec3::new(0.36, 0.3, 0.3));
-                parts.push(commands.spawn((Mesh3d(body), MeshMaterial3d(hull_mat.clone()), Transform::from_xyz(0.0, 0.0, 0.1))).id());
+                parts.push(
+                    commands
+                        .spawn((
+                            Mesh3d(body),
+                            MeshMaterial3d(hull_mat.clone()),
+                            Transform::from_xyz(0.0, 0.0, 0.1),
+                        ))
+                        .id(),
+                );
             }
         }
         commands.entity(head).add_children(&parts);
         children.push(head);
+    }
+
+    // Positionslichter: rot links, grün rechts, weißer Blitz oben.
+    if !opts.derelict {
+        let (minx, maxx, maxy) =
+            ship.parts
+                .iter()
+                .fold((0.0f32, 0.0f32, 0.0f32), |(a, b, c), p| {
+                    (
+                        a.min(p.pos.x - p.half.x),
+                        b.max(p.pos.x + p.half.x),
+                        c.max(p.pos.y + p.half.y),
+                    )
+                });
+        for (x, col, phase) in [
+            (minx, [1.0, 0.1, 0.1], 0.0f32),
+            (maxx, [0.1, 1.0, 0.3], 0.0),
+            (0.0, [1.0, 1.0, 1.0], 0.5),
+        ] {
+            let y = if x == 0.0 { maxy + 0.1 } else { 0.4 };
+            let bulb = mats.add(art.emissive_mat(srgb(col), 12.0));
+            let halo = art.glow_mat(mats, srgb(col), 2.0);
+            children.push(
+                commands
+                    .spawn((
+                        Transform::from_xyz(x, y, 0.75),
+                        Visibility::default(),
+                        NavLight {
+                            phase,
+                            strobe: x == 0.0,
+                        },
+                    ))
+                    .with_children(|c| {
+                        c.spawn((
+                            Mesh3d(art.sphere.clone()),
+                            MeshMaterial3d(bulb),
+                            Transform::from_scale(Vec3::splat(0.09)),
+                        ));
+                        c.spawn((
+                            Mesh3d(art.quad.clone()),
+                            MeshMaterial3d(halo),
+                            Transform::from_xyz(0.0, 0.0, 0.1).with_scale(Vec3::splat(1.1)),
+                            NotShadowCaster,
+                        ));
+                    })
+                    .id(),
+            );
+        }
     }
 
     if opts.slot_colors {
@@ -361,7 +519,8 @@ pub fn spawn_ship_model(
                 .spawn((
                     Mesh3d(art.quad.clone()),
                     MeshMaterial3d(shield_mat),
-                    Transform::from_xyz(ship.com.x, ship.com.y, 1.2).with_scale(Vec3::splat(r * 2.0)),
+                    Transform::from_xyz(ship.com.x, ship.com.y, 1.2)
+                        .with_scale(Vec3::splat(r * 2.0)),
                     ShieldVis,
                     NotShadowCaster,
                 ))
@@ -441,20 +600,31 @@ pub fn sync_ship(
     for (_, _, mut t, mut vis) in &mut ship_q {
         t.translation = origin.extend(0.0);
         t.rotation = Quat::from_rotation_z(angle);
-        *vis = if ship.destroyed { Visibility::Hidden } else { Visibility::Inherited };
+        *vis = if ship.destroyed {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        };
     }
     let tsec = time.elapsed_secs();
     let mut total = 0.0;
     for (f, mut t) in &mut flames {
-        let Some(th) = ship.thrusters.get(f.thruster) else { continue };
-        let flicker = 0.85 + 0.15 * ((tsec * 37.0 + f.thruster as f32 * 1.7).sin() * (tsec * 23.0).cos());
+        let Some(th) = ship.thrusters.get(f.thruster) else {
+            continue;
+        };
+        let flicker =
+            0.85 + 0.15 * ((tsec * 37.0 + f.thruster as f32 * 1.7).sin() * (tsec * 23.0).cos());
         let lvl = th.level;
         if f.len < 0.0 {
             t.scale = Vec3::splat((f.radius * lvl * flicker).max(0.001));
         } else {
             let len = (f.len * lvl * flicker).max(0.001);
             // Kegel: Basis an der Düse, Spitze nach hinten.
-            t.scale = Vec3::new(f.radius * (0.6 + 0.4 * lvl), len, f.radius * (0.6 + 0.4 * lvl));
+            t.scale = Vec3::new(
+                f.radius * (0.6 + 0.4 * lvl),
+                len,
+                f.radius * (0.6 + 0.4 * lvl),
+            );
             let base_y = t.translation.y;
             let _ = base_y;
         }
@@ -467,7 +637,9 @@ pub fn sync_ship(
         if f.len < 0.0 {
             continue;
         }
-        let Some(th) = ship.thrusters.get(f.thruster) else { continue };
+        let Some(th) = ship.thrusters.get(f.thruster) else {
+            continue;
+        };
         let half = ship
             .parts
             .iter()
@@ -512,7 +684,13 @@ pub fn sync_bodies(
 ) {
     let alpha = fixed.overstep_fraction();
     // Entfernen, was es nicht mehr gibt.
-    let alive: std::collections::HashSet<u32> = sim.0.bodies.iter().filter(|b| b.alive).map(|b| b.id).collect();
+    let alive: std::collections::HashSet<u32> = sim
+        .0
+        .bodies
+        .iter()
+        .filter(|b| b.alive)
+        .map(|b| b.id)
+        .collect();
     maps.bodies.retain(|id, e| {
         if alive.contains(id) {
             true
@@ -526,7 +704,11 @@ pub fn sync_bodies(
             continue;
         }
         let root = commands
-            .spawn((Transform::from_translation(b.pos.extend(0.0)), Visibility::default(), BodyVis(b.id)))
+            .spawn((
+                Transform::from_translation(b.pos.extend(0.0)),
+                Visibility::default(),
+                BodyVis(b.id),
+            ))
             .id();
         let mut kids: Vec<Entity> = Vec::new();
         match &b.kind {
@@ -539,6 +721,7 @@ pub fn sync_bodies(
                     let mut m = StandardMaterial {
                         base_color: srgb(hex(&f.color)),
                         base_color_texture: Some(art.rock.clone()),
+                        normal_map_texture: Some(art.rock_n.clone()),
                         perceptual_roughness: 0.92,
                         ..default()
                     };
@@ -552,7 +735,16 @@ pub fn sync_bodies(
                     h
                 };
                 let mesh = art.asteroids[(b.seed as usize) % art.asteroids.len()].clone();
-                kids.push(commands.spawn((Mesh3d(mesh), MeshMaterial3d(mat), Transform::from_scale(Vec3::splat(b.radius)), BodyMesh(b.id))).id());
+                kids.push(
+                    commands
+                        .spawn((
+                            Mesh3d(mesh),
+                            MeshMaterial3d(mat),
+                            Transform::from_scale(Vec3::splat(b.radius)),
+                            BodyMesh(b.id),
+                        ))
+                        .id(),
+                );
             }
             BodyKind::Meteor => {
                 let mat = mats.add(StandardMaterial {
@@ -564,10 +756,25 @@ pub fn sync_bodies(
                 });
                 let glow = art.glow_mat(&mut mats, Color::srgb(1.0, 0.45, 0.12), 2.5);
                 let mesh = art.asteroids[(b.seed as usize) % art.asteroids.len()].clone();
-                kids.push(commands.spawn((Mesh3d(mesh), MeshMaterial3d(mat), Transform::from_scale(Vec3::splat(b.radius)), BodyMesh(b.id))).id());
                 kids.push(
                     commands
-                        .spawn((Mesh3d(art.quad.clone()), MeshMaterial3d(glow), Transform::from_xyz(0.0, 0.0, 1.0).with_scale(Vec3::splat(b.radius * 4.5)), NotShadowCaster))
+                        .spawn((
+                            Mesh3d(mesh),
+                            MeshMaterial3d(mat),
+                            Transform::from_scale(Vec3::splat(b.radius)),
+                            BodyMesh(b.id),
+                        ))
+                        .id(),
+                );
+                kids.push(
+                    commands
+                        .spawn((
+                            Mesh3d(art.quad.clone()),
+                            MeshMaterial3d(glow),
+                            Transform::from_xyz(0.0, 0.0, 1.0)
+                                .with_scale(Vec3::splat(b.radius * 4.5)),
+                            NotShadowCaster,
+                        ))
                         .id(),
                 );
             }
@@ -580,10 +787,25 @@ pub fn sync_bodies(
                     ..default()
                 });
                 let glow = art.glow_mat(&mut mats, c, 1.5);
-                kids.push(commands.spawn((Mesh3d(art.crystal.clone()), MeshMaterial3d(mat), Transform::from_scale(Vec3::splat(b.radius * 1.6)), BodyMesh(b.id))).id());
                 kids.push(
                     commands
-                        .spawn((Mesh3d(art.quad.clone()), MeshMaterial3d(glow), Transform::from_xyz(0.0, 0.0, 0.8).with_scale(Vec3::splat(b.radius * 4.0)), NotShadowCaster))
+                        .spawn((
+                            Mesh3d(art.crystal.clone()),
+                            MeshMaterial3d(mat),
+                            Transform::from_scale(Vec3::splat(b.radius * 1.6)),
+                            BodyMesh(b.id),
+                        ))
+                        .id(),
+                );
+                kids.push(
+                    commands
+                        .spawn((
+                            Mesh3d(art.quad.clone()),
+                            MeshMaterial3d(glow),
+                            Transform::from_xyz(0.0, 0.0, 0.8)
+                                .with_scale(Vec3::splat(b.radius * 4.0)),
+                            NotShadowCaster,
+                        ))
                         .id(),
                 );
             }
@@ -591,11 +813,34 @@ pub fn sync_bodies(
                 let shell = mats.add(art.panel_mat(Color::srgb(0.95, 0.95, 0.98), 0.35, 0.2));
                 let bulb = mats.add(art.emissive_mat(Color::srgb(1.0, 0.2, 0.15), 9.0));
                 let glow = art.glow_mat(&mut mats, Color::srgb(1.0, 0.25, 0.2), 2.0);
-                kids.push(commands.spawn((Mesh3d(art.capsule.clone()), MeshMaterial3d(shell), Transform::from_scale(Vec3::splat(b.radius)), BodyMesh(b.id))).id());
-                kids.push(commands.spawn((Mesh3d(art.sphere.clone()), MeshMaterial3d(bulb), Transform::from_xyz(0.0, 0.0, b.radius * 0.6).with_scale(Vec3::splat(0.18)))).id());
                 kids.push(
                     commands
-                        .spawn((Mesh3d(art.quad.clone()), MeshMaterial3d(glow), Transform::from_xyz(0.0, 0.0, 0.9).with_scale(Vec3::splat(3.0)), NotShadowCaster))
+                        .spawn((
+                            Mesh3d(art.capsule.clone()),
+                            MeshMaterial3d(shell),
+                            Transform::from_scale(Vec3::splat(b.radius)),
+                            BodyMesh(b.id),
+                        ))
+                        .id(),
+                );
+                kids.push(
+                    commands
+                        .spawn((
+                            Mesh3d(art.sphere.clone()),
+                            MeshMaterial3d(bulb),
+                            Transform::from_xyz(0.0, 0.0, b.radius * 0.6)
+                                .with_scale(Vec3::splat(0.18)),
+                        ))
+                        .id(),
+                );
+                kids.push(
+                    commands
+                        .spawn((
+                            Mesh3d(art.quad.clone()),
+                            MeshMaterial3d(glow),
+                            Transform::from_xyz(0.0, 0.0, 0.9).with_scale(Vec3::splat(3.0)),
+                            NotShadowCaster,
+                        ))
                         .id(),
                 );
             }
@@ -615,8 +860,13 @@ pub fn sync_bodies(
                     },
                 );
                 // Modell so versetzen, dass es um den Schwerpunkt dreht.
-                commands.entity(model).insert(Transform::from_translation((-ship.com * 1.3).extend(0.0)).with_scale(Vec3::splat(1.3)));
-                let holder = commands.spawn((Transform::default(), Visibility::default(), BodyMesh(b.id))).id();
+                commands.entity(model).insert(
+                    Transform::from_translation((-ship.com * 1.3).extend(0.0))
+                        .with_scale(Vec3::splat(1.3)),
+                );
+                let holder = commands
+                    .spawn((Transform::default(), Visibility::default(), BodyMesh(b.id)))
+                    .id();
                 commands.entity(holder).add_child(model);
                 kids.push(holder);
             }
@@ -633,10 +883,12 @@ pub fn sync_bodies(
     for (bm, mut t) in &mut inner {
         let Some(b) = by_id.get(&bm.0) else { continue };
         let a = b.prev_angle + angle_diff(b.angle, b.prev_angle) * alpha;
-        let tilt = (b.seed % 1000) as f32 / 1000.0 * 6.28;
+        let tilt = (b.seed % 1000) as f32 / 1000.0 * std::f32::consts::TAU;
         t.rotation = match b.kind {
             BodyKind::Asteroid { .. } | BodyKind::Meteor => {
-                Quat::from_rotation_z(a) * Quat::from_rotation_x(tilt + a * 0.6) * Quat::from_rotation_y(tilt * 0.5)
+                Quat::from_rotation_z(a)
+                    * Quat::from_rotation_x(tilt + a * 0.6)
+                    * Quat::from_rotation_y(tilt * 0.5)
             }
             BodyKind::OreChunk { .. } => Quat::from_rotation_z(a) * Quat::from_rotation_y(a * 1.3),
             _ => Quat::from_rotation_z(a),
@@ -644,7 +896,11 @@ pub fn sync_bodies(
     }
     let tsec = time.elapsed_secs();
     for (b, mut l) in &mut blinks {
-        l.intensity = if (tsec * 2.0).fract() < 0.35 { b.0 } else { 0.0 };
+        l.intensity = if (tsec * 2.0).fract() < 0.35 {
+            b.0
+        } else {
+            0.0
+        };
     }
 }
 
@@ -658,7 +914,13 @@ pub fn sync_projectiles(
     mut q: Query<(&ProjVis, &mut Transform)>,
 ) {
     let alpha = fixed.overstep_fraction();
-    let alive: std::collections::HashSet<u32> = sim.0.projectiles.iter().filter(|p| p.life > 0.0).map(|p| p.id).collect();
+    let alive: std::collections::HashSet<u32> = sim
+        .0
+        .projectiles
+        .iter()
+        .filter(|p| p.life > 0.0)
+        .map(|p| p.id)
+        .collect();
     maps.projectiles.retain(|id, e| {
         if alive.contains(id) {
             true
@@ -686,12 +948,18 @@ pub fn sync_projectiles(
                 NotShadowCaster,
             ))
             .with_children(|c| {
-                c.spawn((Mesh3d(art.quad.clone()), MeshMaterial3d(glow), Transform::from_xyz(0.0, 0.0, 0.3).with_scale(Vec3::new(10.0, 2.5, 1.0)), NotShadowCaster));
+                c.spawn((
+                    Mesh3d(art.quad.clone()),
+                    MeshMaterial3d(glow),
+                    Transform::from_xyz(0.0, 0.0, 0.3).with_scale(Vec3::new(10.0, 2.5, 1.0)),
+                    NotShadowCaster,
+                ));
             })
             .id();
         maps.projectiles.insert(p.id, e);
     }
-    let by_id: HashMap<u32, &crate::sim::Projectile> = sim.0.projectiles.iter().map(|p| (p.id, p)).collect();
+    let by_id: HashMap<u32, &crate::sim::Projectile> =
+        sim.0.projectiles.iter().map(|p| (p.id, p)).collect();
     for (pv, mut t) in &mut q {
         let Some(p) = by_id.get(&pv.0) else { continue };
         let pos = p.prev_pos.lerp(p.pos, alpha);
@@ -707,12 +975,24 @@ pub fn sync_tools(
     mut commands: Commands,
     fixed: Res<Time<Fixed>>,
     sim: Res<Sim>,
-    mut art: ResMut<Art>,
+    art: ResMut<Art>,
     mut mats: ResMut<Assets<StandardMaterial>>,
-    mut heads: Query<(&ToolHead, &mut Transform), (Without<RopeVis>, Without<ClawVis>, Without<DrillBeam>)>,
-    mut ropes: Query<(Entity, &RopeVis, &mut Transform, &mut Visibility), (Without<ToolHead>, Without<ClawVis>, Without<DrillBeam>)>,
-    mut claws: Query<(Entity, &ClawVis, &mut Transform, &mut Visibility), (Without<ToolHead>, Without<RopeVis>, Without<DrillBeam>)>,
-    mut beams: Query<(Entity, &DrillBeam, &mut Transform, &mut Visibility), (Without<ToolHead>, Without<RopeVis>, Without<ClawVis>)>,
+    mut heads: Query<
+        (&ToolHead, &mut Transform),
+        (Without<RopeVis>, Without<ClawVis>, Without<DrillBeam>),
+    >,
+    mut ropes: Query<
+        (Entity, &RopeVis, &mut Transform, &mut Visibility),
+        (Without<ToolHead>, Without<ClawVis>, Without<DrillBeam>),
+    >,
+    mut claws: Query<
+        (Entity, &ClawVis, &mut Transform, &mut Visibility),
+        (Without<ToolHead>, Without<RopeVis>, Without<DrillBeam>),
+    >,
+    mut beams: Query<
+        (Entity, &DrillBeam, &mut Transform, &mut Visibility),
+        (Without<ToolHead>, Without<RopeVis>, Without<ClawVis>),
+    >,
 ) {
     let ship = &sim.0.ship;
     let alpha = fixed.overstep_fraction();
@@ -724,17 +1004,30 @@ pub fn sync_tools(
     }
     let n = ship.tools.len();
     // Fehlende Effekt-Objekte anlegen.
-    let have_rope: Vec<usize> = ropes.iter().map(|r| r.1 .0).collect();
+    let have_rope: Vec<usize> = ropes.iter().map(|r| r.1.0).collect();
     for i in 0..n {
         if ship.tools[i].kind == ToolKind::Crane && !have_rope.contains(&i) {
             let col = slot_color(ship.tools[i].slot);
             let rope_mat = mats.add(art.emissive_mat(col, 2.5));
-            commands.spawn((Mesh3d(art.cylinder.clone()), MeshMaterial3d(rope_mat.clone()), Transform::default(), Visibility::Hidden, RopeVis(i), NotShadowCaster));
+            commands.spawn((
+                Mesh3d(art.cylinder.clone()),
+                MeshMaterial3d(rope_mat.clone()),
+                Transform::default(),
+                Visibility::Hidden,
+                RopeVis(i),
+                NotShadowCaster,
+            ));
             let claw = mats.add(art.panel_mat(Color::srgb(0.2, 0.2, 0.24), 0.3, 0.6));
-            commands.spawn((Mesh3d(art.cube.clone()), MeshMaterial3d(claw), Transform::default(), Visibility::Hidden, ClawVis(i)));
+            commands.spawn((
+                Mesh3d(art.cube.clone()),
+                MeshMaterial3d(claw),
+                Transform::default(),
+                Visibility::Hidden,
+                ClawVis(i),
+            ));
         }
     }
-    let have_beam: Vec<usize> = beams.iter().map(|b| b.1 .0).collect();
+    let have_beam: Vec<usize> = beams.iter().map(|b| b.1.0).collect();
     for i in 0..n {
         if ship.tools[i].kind == ToolKind::Drill && !have_beam.contains(&i) {
             let beam_mat = mats.add(StandardMaterial {
@@ -743,7 +1036,14 @@ pub fn sync_tools(
                 alpha_mode: AlphaMode::Add,
                 ..default()
             });
-            commands.spawn((Mesh3d(art.cylinder.clone()), MeshMaterial3d(beam_mat), Transform::default(), Visibility::Hidden, DrillBeam(i), NotShadowCaster));
+            commands.spawn((
+                Mesh3d(art.cylinder.clone()),
+                MeshMaterial3d(beam_mat),
+                Transform::default(),
+                Visibility::Hidden,
+                DrillBeam(i),
+                NotShadowCaster,
+            ));
         }
     }
     let mount_world = |i: usize| origin + rot(ship.tools[i].pos, angle);
@@ -762,8 +1062,15 @@ pub fn sync_tools(
         let mount = mount_world(r.0);
         let tip = match &tool.crane {
             CraneState::Idle => None,
-            CraneState::Extending { len, dir } | CraneState::Retracting { len, dir } => Some(mount + *dir * *len),
-            CraneState::Attached { body, .. } => sim.0.bodies.iter().find(|b| b.id == *body).map(|b| b.prev_pos.lerp(b.pos, alpha)),
+            CraneState::Extending { len, dir } | CraneState::Retracting { len, dir } => {
+                Some(mount + *dir * *len)
+            }
+            CraneState::Attached { body, .. } => sim
+                .0
+                .bodies
+                .iter()
+                .find(|b| b.id == *body)
+                .map(|b| b.prev_pos.lerp(b.pos, alpha)),
         };
         match tip {
             Some(tip) if !ship.destroyed => {
@@ -780,7 +1087,9 @@ pub fn sync_tools(
         };
         let mount = mount_world(c.0);
         let tip = match &tool.crane {
-            CraneState::Extending { len, dir } | CraneState::Retracting { len, dir } => Some((mount + *dir * *len, *dir)),
+            CraneState::Extending { len, dir } | CraneState::Retracting { len, dir } => {
+                Some((mount + *dir * *len, *dir))
+            }
             _ => None,
         };
         match tip {
@@ -803,7 +1112,11 @@ pub fn sync_tools(
             continue;
         }
         let mount = mount_world(b.0);
-        let end = tool.drill.as_ref().map(|d| d.point).unwrap_or(mount + tool.aim_dir() * 5.5);
+        let end = tool
+            .drill
+            .as_ref()
+            .map(|d| d.point)
+            .unwrap_or(mount + tool.aim_dir() * 5.5);
         *t = segment(mount, end, 0.06, 0.8);
         *vis = Visibility::Visible;
     }

@@ -4,12 +4,15 @@ use std::sync::Arc;
 
 use bevy::prelude::*;
 
-use super::{mouse_pick, navigate, panel, spawn_items, text, Item, ItemButton, MenuFocus, ACCENT, MENU_TITLE, MUTED, TEAL, TEXT};
-use crate::game::{write_save, AppState, Data, HasSave, LobbyMode, Sim};
+use super::{
+    ACCENT, Item, ItemButton, MENU_TITLE, MUTED, MenuFocus, TEAL, TEXT, mouse_pick, navigate,
+    panel, spawn_items, text,
+};
+use crate::game::{AppState, Data, HasSave, LobbyMode, Sim, write_save};
 use crate::input::{ActiveBindings, Crew, MenuInput};
+use crate::sim::SimState;
 use crate::sim::data::CrewSave;
 use crate::sim::ship::Loadout;
-use crate::sim::SimState;
 
 pub struct TitlePlugin;
 
@@ -43,18 +46,22 @@ fn items(has_save: bool, sim: &SimState) -> Vec<Item<TitleAction>> {
     let mut v = Vec::new();
     if has_save {
         let ship = sim.data.ship(&sim.crew.current_ship).name.clone();
-        v.push(Item::new("Weiterspielen", TitleAction::Continue).detail(format!(
-            "{} Credits · {} · {} Aufträge erledigt",
-            super::fmt_num(sim.crew.credits),
-            ship,
-            sim.crew.missions_done
-        )));
+        v.push(
+            Item::new("Weiterspielen", TitleAction::Continue).detail(format!(
+                "{} Credits · {} · {} Aufträge erledigt",
+                super::fmt_num(sim.crew.credits),
+                ship,
+                sim.crew.missions_done
+            )),
+        );
     }
-    v.push(Item::new("Neues Spiel", TitleAction::NewGame).detail(if has_save {
-        "Überschreibt den Spielstand der Crew"
-    } else {
-        "Eine neue Crew, ein Driftkutter, 300 Credits"
-    }));
+    v.push(
+        Item::new("Neues Spiel", TitleAction::NewGame).detail(if has_save {
+            "Überschreibt den Spielstand der Crew"
+        } else {
+            "Eine neue Crew, ein Driftkutter, 300 Credits"
+        }),
+    );
     v.push(Item::new("Steuerung & Spielprinzip", TitleAction::Help));
     v.push(Item::new("Beenden", TitleAction::Quit));
     v
@@ -85,7 +92,12 @@ pub const HELP_TEXT: &[&str] = &[
     "Enter / Start: Bestätigen   ·   Mausrad: Zoom",
 ];
 
-fn spawn_title(mut commands: Commands, has_save: Res<HasSave>, sim: Res<Sim>, mut focus: ResMut<MenuFocus>) {
+fn spawn_title(
+    mut commands: Commands,
+    has_save: Res<HasSave>,
+    sim: Res<Sim>,
+    mut focus: ResMut<MenuFocus>,
+) {
     focus.0[MENU_TITLE] = 0;
     let its = items(has_save.0, &sim.0);
     commands
@@ -161,14 +173,23 @@ fn spawn_help(commands: &mut Commands) {
             p.spawn(panel(Val::Percent(100.0))).with_children(|p| {
                 for line in HELP_TEXT {
                     let is_head = !line.is_empty() && line.chars().all(|c| !c.is_lowercase());
-                    p.spawn(text(*line, if is_head { 17.0 } else { 15.0 }, if is_head { ACCENT } else { TEXT }));
+                    p.spawn(text(
+                        *line,
+                        if is_head { 17.0 } else { 15.0 },
+                        if is_head { ACCENT } else { TEXT },
+                    ));
                 }
                 p.spawn(text("Esc / Enter: schließen", 13.0, MUTED));
             });
         });
 }
 
-fn despawn_title(mut commands: Commands, q: Query<Entity, With<TitleRoot>>, help: Query<Entity, With<HelpPanel>>, mut open: ResMut<HelpOpen>) {
+fn despawn_title(
+    mut commands: Commands,
+    q: Query<Entity, With<TitleRoot>>,
+    help: Query<Entity, With<HelpPanel>>,
+    mut open: ResMut<HelpOpen>,
+) {
     for e in q.iter().chain(help.iter()) {
         commands.entity(e).despawn();
     }
@@ -203,13 +224,19 @@ fn title_input(
     }
     let its = items(has_save.0, &sim.0);
     let mut f = focus.0[MENU_TITLE];
-    let mut activate = if navigate(&mut f, its.len(), &input) { Some(f) } else { None };
+    let mut activate = if navigate(&mut f, its.len(), &input) {
+        Some(f)
+    } else {
+        None
+    };
     if let Some(i) = mouse_pick(MENU_TITLE, &mut f, &buttons) {
         activate = Some(i);
     }
     focus.0[MENU_TITLE] = f;
     let Some(i) = activate else { return };
-    let Some(action) = its.get(i).and_then(|it| it.action.clone()) else { return };
+    let Some(action) = its.get(i).and_then(|it| it.action.clone()) else {
+        return;
+    };
     match action {
         TitleAction::Continue => {
             *mode = LobbyMode::Initial;

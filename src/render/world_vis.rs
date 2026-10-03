@@ -4,9 +4,9 @@ use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 
 use super::textures::{self, Rgb};
-use super::{meshes, srgb, Art, ShipModelOpts};
+use super::{Art, ShipModelOpts, meshes, srgb};
 use crate::game::{Data, GameCamera, Sim};
-use crate::sim::data::{hex, v, Ore};
+use crate::sim::data::{Ore, hex, v};
 use crate::sim::rng::Rng;
 use crate::sim::ship::{Loadout, Ship, ShipStats};
 use crate::sim::world::{CellKind, Shape, Surface};
@@ -82,7 +82,11 @@ pub fn spawn_world(
         });
         let block = art.block.clone();
         let root = commands
-            .spawn((Transform::default(), Visibility::default(), Name::new(st.name.clone())))
+            .spawn((
+                Transform::default(),
+                Visibility::default(),
+                Name::new(st.name.clone()),
+            ))
             .id();
         let mut rng = Rng::new(si as u64 * 977 + 13);
         for cell in &st.cells {
@@ -95,18 +99,124 @@ pub fn spawn_world(
                         _ => variants[rng.index(variants.len())].clone(),
                     };
                     let e = commands
-                        .spawn((Mesh3d(block.clone()), MeshMaterial3d(mat), Transform::from_translation(pos)))
+                        .spawn((
+                            Mesh3d(block.clone()),
+                            MeshMaterial3d(mat),
+                            Transform::from_translation(pos),
+                        ))
                         .id();
                     commands.entity(root).add_child(e);
                 }
                 CellKind::Light => {
-                    spawn_beacon(&mut commands, &mut art, &mut mats, pos, srgb(accent), rng.range(0.0, 6.0), Some(root));
+                    spawn_beacon(
+                        &mut commands,
+                        &mut art,
+                        &mut mats,
+                        pos,
+                        srgb(accent),
+                        rng.range(0.0, 6.0),
+                        Some(root),
+                    );
+                }
+            }
+        }
+        // Kleine Aufbauten (Antennen, Lüfter, Schüsseln, Rohre) auf freien Oberseiten.
+        {
+            let sd = &data.0.world.stations[si];
+            let grid: Vec<Vec<char>> = sd.layout.iter().map(|r| r.chars().collect()).collect();
+            let at = |c: i32, r: i32| -> char {
+                if r < 0 || c < 0 || r as usize >= grid.len() || c as usize >= grid[0].len() {
+                    '.'
+                } else {
+                    grid[r as usize][c as usize]
+                }
+            };
+            let metal = mats.add(art.panel_mat(srgb([0.32, 0.34, 0.4]), 0.35, 0.7));
+            let light = mats.add(art.panel_mat(srgb([0.85, 0.87, 0.9]), 0.4, 0.3));
+            let tip = mats.add(art.emissive_mat(srgb([1.0, 0.25, 0.2]), 10.0));
+            let vent = art.bevel_box(&mut meshes, Vec3::new(1.5, 0.4, 1.8));
+            for cell in &st.cells {
+                if !matches!(cell.kind, CellKind::Block | CellKind::Accent) {
+                    continue;
+                }
+                for (dir, dr) in [(1.0f32, -1), (-1.0f32, 1)] {
+                    if at(cell.col, cell.row + dr) != '.' || !rng.chance(0.22) {
+                        continue;
+                    }
+                    let top = cell.center + Vec2::Y * dir * st.cell * 0.5;
+                    let x = rng.range(-1.0, 1.0);
+                    let rot =
+                        Quat::from_rotation_z(if dir > 0.0 { 0.0 } else { std::f32::consts::PI });
+                    let mut parts: Vec<(Handle<Mesh>, Handle<StandardMaterial>, Transform)> =
+                        Vec::new();
+                    match rng.index(4) {
+                        0 => {
+                            let h = rng.range(1.0, 1.8);
+                            parts.push((
+                                art.cylinder.clone(),
+                                metal.clone(),
+                                Transform::from_xyz(x, h * 0.5, -1.2)
+                                    .with_scale(Vec3::new(0.07, h, 0.07)),
+                            ));
+                            parts.push((
+                                art.sphere.clone(),
+                                tip.clone(),
+                                Transform::from_xyz(x, h, -1.2).with_scale(Vec3::splat(0.16)),
+                            ));
+                        }
+                        1 => parts.push((
+                            vent.clone(),
+                            metal.clone(),
+                            Transform::from_xyz(x * 0.6, 0.2, -1.0),
+                        )),
+                        2 => {
+                            parts.push((
+                                art.cylinder.clone(),
+                                metal.clone(),
+                                Transform::from_xyz(x, 0.3, -1.2)
+                                    .with_scale(Vec3::new(0.09, 0.6, 0.09)),
+                            ));
+                            parts.push((
+                                art.sphere.clone(),
+                                light.clone(),
+                                Transform::from_xyz(x, 0.75, -1.2)
+                                    .with_rotation(Quat::from_rotation_z(0.5))
+                                    .with_scale(Vec3::new(0.75, 0.22, 0.75)),
+                            ));
+                        }
+                        _ => parts.push((
+                            art.cylinder.clone(),
+                            light.clone(),
+                            Transform::from_xyz(0.0, 0.22, -1.1)
+                                .with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2))
+                                .with_scale(Vec3::new(0.2, st.cell * 0.95, 0.2)),
+                        )),
+                    }
+                    let holder = commands
+                        .spawn((
+                            Transform::from_translation(top.extend(0.0)).with_rotation(rot),
+                            Visibility::default(),
+                        ))
+                        .id();
+                    for (m, mat, t) in parts {
+                        let e = commands.spawn((Mesh3d(m), MeshMaterial3d(mat), t)).id();
+                        commands.entity(holder).add_child(e);
+                    }
+                    commands.entity(root).add_child(holder);
                 }
             }
         }
         // Landeplattformen dieser Station
         for &pad in &st.pads {
-            spawn_pad(&mut commands, &mut art, &mut meshes, &mut mats, &sim.0, pad, srgb(accent));
+            spawn_pad(
+                &mut commands,
+                &mut art,
+                &mut meshes,
+                &mut mats,
+                &sim.0,
+                pad,
+                srgb(accent),
+            );
         }
         // Ausgestellte Schiffe in der Werft (hinter der Spielebene, ohne Kollision).
         let sd = &data.0.world.stations[si];
@@ -131,7 +241,10 @@ pub fn spawn_world(
                 &mut mats,
                 &ship,
                 def,
-                ShipModelOpts { slot_colors: false, derelict: false },
+                ShipModelOpts {
+                    slot_colors: false,
+                    derelict: false,
+                },
             );
             commands
                 .entity(e)
@@ -212,8 +325,9 @@ pub fn spawn_world(
             let base = p.pos + dir * (p.radius - 0.4);
             let root = commands
                 .spawn((
-                    Transform::from_xyz(base.x, base.y, 0.0)
-                        .with_rotation(Quat::from_rotation_z(d.angle - std::f32::consts::FRAC_PI_2)),
+                    Transform::from_xyz(base.x, base.y, 0.0).with_rotation(Quat::from_rotation_z(
+                        d.angle - std::f32::consts::FRAC_PI_2,
+                    )),
                     Visibility::default(),
                     DepositVis {
                         planet: pi,
@@ -253,7 +367,15 @@ pub fn spawn_world(
             commands.entity(root).add_child(light);
         }
         if let Some(pad) = p.pad {
-            spawn_pad(&mut commands, &mut art, &mut meshes, &mut mats, &sim.0, pad, srgb([1.0, 0.75, 0.15]));
+            spawn_pad(
+                &mut commands,
+                &mut art,
+                &mut meshes,
+                &mut mats,
+                &sim.0,
+                pad,
+                srgb([1.0, 0.75, 0.15]),
+            );
         }
     }
     // Stützblöcke der Planeten-Außenposten
@@ -271,7 +393,15 @@ pub fn spawn_world(
                 Transform::from_xyz(c.x, c.y, 0.0).with_rotation(Quat::from_rotation_z(ang)),
             ));
             let top = c + crate::sim::geom::rot(Vec2::new(0.0, size.y * 0.5 + 0.3), ang);
-            spawn_beacon(&mut commands, &mut art, &mut mats, top.extend(0.6), srgb([1.0, 0.3, 0.2]), c.x, None);
+            spawn_beacon(
+                &mut commands,
+                &mut art,
+                &mut mats,
+                top.extend(0.6),
+                srgb([1.0, 0.3, 0.2]),
+                c.x,
+                None,
+            );
         }
     }
 
@@ -289,12 +419,16 @@ pub fn spawn_world(
             .id();
         for a in 0..sp.arms {
             let ang = std::f32::consts::PI * a as f32 / sp.arms as f32;
-            let m = art.bevel_box(&mut meshes, Vec3::new(sp.arm_length * 2.0, sp.arm_width, 0.9));
+            let m = art.bevel_box(
+                &mut meshes,
+                Vec3::new(sp.arm_length * 2.0, sp.arm_width, 0.9),
+            );
             let arm = commands
                 .spawn((
                     Mesh3d(m),
                     MeshMaterial3d(arm_mat.clone()),
-                    Transform::from_rotation(Quat::from_rotation_z(ang)).with_translation(Vec3::Z * (a as f32 * 0.05)),
+                    Transform::from_rotation(Quat::from_rotation_z(ang))
+                        .with_translation(Vec3::Z * (a as f32 * 0.05)),
                 ))
                 .id();
             commands.entity(root).add_child(arm);
@@ -313,7 +447,7 @@ pub fn spawn_world(
     for an in &world.anomalies {
         let tex = images.add(textures::anomaly(512, 77));
         let disk = mats.add(StandardMaterial {
-            base_color: Color::WHITE,
+            base_color: Color::srgba(0.85, 0.8, 1.0, 0.85),
             base_color_texture: Some(tex),
             unlit: true,
             alpha_mode: AlphaMode::Blend,
@@ -326,11 +460,51 @@ pub fn spawn_world(
             Swirl(Vec3::Z, 0.25),
             NotShadowCaster,
         ));
-        let core = mats.add(art.emissive_mat(srgb([1.0, 0.1, 0.08]), 9.0));
+        // Leuchtende Akkretionsringe, gegenläufig rotierend.
+        for (k, (col, size, speed)) in [
+            ([1.0, 0.25, 0.75], 7.0f32, 0.6f32),
+            ([1.0, 0.55, 0.15], 12.0, -0.35),
+            ([0.55, 0.3, 1.0], 20.0, 0.18),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let c = srgb(col).to_linear();
+            let ring = mats.add(StandardMaterial {
+                base_color: Color::LinearRgba(c * (0.9 - k as f32 * 0.22)),
+                base_color_texture: Some(art.ring.clone()),
+                unlit: true,
+                alpha_mode: AlphaMode::Add,
+                ..default()
+            });
+            commands.spawn((
+                Mesh3d(art.quad.clone()),
+                MeshMaterial3d(ring),
+                Transform::from_xyz(an.pos.x, an.pos.y, -0.5 + k as f32 * 0.05)
+                    .with_rotation(Quat::from_rotation_x(0.35 * (k as f32 - 1.0)))
+                    .with_scale(Vec3::new(
+                        an.core_radius * size,
+                        an.core_radius * size * 0.92,
+                        1.0,
+                    )),
+                Swirl(Vec3::Z, speed),
+                NotShadowCaster,
+            ));
+        }
+        let lens = art.glow_mat(&mut mats, srgb([1.0, 0.35, 0.6]), 0.45);
+        commands.spawn((
+            Mesh3d(art.quad.clone()),
+            MeshMaterial3d(lens),
+            Transform::from_xyz(an.pos.x, an.pos.y, -0.8)
+                .with_scale(Vec3::splat(an.core_radius * 22.0)),
+            NotShadowCaster,
+        ));
+        let core = mats.add(art.emissive_mat(srgb([1.0, 0.08, 0.06]), 4.0));
         commands.spawn((
             Mesh3d(art.sphere.clone()),
             MeshMaterial3d(core),
-            Transform::from_xyz(an.pos.x, an.pos.y, 0.5).with_scale(Vec3::splat(an.core_radius * 0.6)),
+            Transform::from_xyz(an.pos.x, an.pos.y, 0.5)
+                .with_scale(Vec3::splat(an.core_radius * 0.45)),
         ));
         commands.spawn((
             PointLight {
@@ -374,7 +548,11 @@ fn spawn_beacon(
             },
         ))
         .with_children(|c| {
-            c.spawn((Mesh3d(art.sphere.clone()), MeshMaterial3d(bulb), Transform::from_scale(Vec3::splat(0.55))));
+            c.spawn((
+                Mesh3d(art.sphere.clone()),
+                MeshMaterial3d(bulb),
+                Transform::from_scale(Vec3::splat(0.55)),
+            ));
             c.spawn((
                 Mesh3d(art.quad.clone()),
                 MeshMaterial3d(halo),
@@ -454,10 +632,18 @@ pub fn spawn_background(
         ..default()
     });
     let mut rng = Rng::new(99);
-    for (depth, tile, count, size) in [(180.0f32, 700.0f32, 700, (0.18, 0.5)), (520.0, 1300.0, 1300, (0.5, 1.1)), (1100.0, 2300.0, 1900, (1.0, 2.4))] {
+    for (depth, tile, count, size) in [
+        (180.0f32, 700.0f32, 700, (0.18, 0.5)),
+        (520.0, 1300.0, 1300, (0.5, 1.1)),
+        (1100.0, 2300.0, 1900, (1.0, 2.4)),
+    ] {
         let stars: Vec<(Vec3, f32, [f32; 4])> = (0..count)
             .map(|_| {
-                let p = Vec3::new(rng.range(-tile * 0.5, tile * 0.5), rng.range(-tile * 0.5, tile * 0.5), -depth);
+                let p = Vec3::new(
+                    rng.range(-tile * 0.5, tile * 0.5),
+                    rng.range(-tile * 0.5, tile * 0.5),
+                    -depth,
+                );
                 let s = rng.range(size.0, size.1) * if rng.chance(0.04) { 2.2 } else { 1.0 };
                 let t = rng.f32();
                 let c = if t < 0.6 {
@@ -496,7 +682,11 @@ pub fn spawn_background(
             let c = srgb(hex(col)).to_linear();
             let intensity = if k == 0 { 1.7 } else { 1.15 };
             let mat = mats.add(StandardMaterial {
-                base_color: Color::LinearRgba(LinearRgba::rgb(c.red * intensity, c.green * intensity, c.blue * intensity)),
+                base_color: Color::LinearRgba(LinearRgba::rgb(
+                    c.red * intensity,
+                    c.green * intensity,
+                    c.blue * intensity,
+                )),
                 base_color_texture: Some(art.nebulae[(ri + k) % art.nebulae.len()].clone()),
                 unlit: true,
                 alpha_mode: AlphaMode::Add,
@@ -507,13 +697,53 @@ pub fn spawn_background(
             });
             let depth = 1500.0 + k as f32 * 260.0 + ri as f32 * 15.0;
             let size = r.radius * (3.6 + k as f32 * 0.8);
-            let off = Vec2::new(((ri * 37 + k * 11) % 9) as f32 - 4.0, ((ri * 13 + k * 29) % 9) as f32 - 4.0) * r.radius * 0.06;
+            let off = Vec2::new(
+                ((ri * 37 + k * 11) % 9) as f32 - 4.0,
+                ((ri * 13 + k * 29) % 9) as f32 - 4.0,
+            ) * r.radius
+                * 0.06;
             commands.spawn((
                 Mesh3d(art.quad.clone()),
                 MeshMaterial3d(mat),
                 Transform::from_xyz(r.center.0 + off.x, r.center.1 + off.y, -depth)
                     .with_rotation(Quat::from_rotation_z((ri * 3 + k) as f32 * 0.9))
                     .with_scale(Vec3::splat(size)),
+                NotShadowCaster,
+            ));
+        }
+    }
+
+    // Felsbrocken hinter der Spielebene: lassen Asteroidenfelder dichter wirken (nur Optik).
+    let mut rng2 = Rng::new(555);
+    for f in &data.0.world.asteroid_fields {
+        let mat = mats.add(StandardMaterial {
+            base_color: srgb(hex(&f.color)),
+            base_color_texture: Some(art.rock.clone()),
+            perceptual_roughness: 0.95,
+            ..default()
+        });
+        let c = v(f.center);
+        for _ in 0..(f.count as usize * 2) {
+            let a = rng2.range(0.0, std::f32::consts::TAU);
+            let d = f.radius * 1.25 * rng2.f32().sqrt();
+            let z = -rng2.range(14.0, 90.0);
+            let p = c + Vec2::new(a.cos(), a.sin()) * d * (1.0 + -z / 140.0);
+            let mesh = art.asteroids[rng2.index(art.asteroids.len())].clone();
+            commands.spawn((
+                Mesh3d(mesh),
+                MeshMaterial3d(mat.clone()),
+                Transform::from_xyz(p.x, p.y, z)
+                    .with_rotation(Quat::from_euler(
+                        EulerRot::XYZ,
+                        rng2.range(0.0, 6.0),
+                        rng2.range(0.0, 6.0),
+                        rng2.range(0.0, 6.0),
+                    ))
+                    .with_scale(Vec3::splat(rng2.range(0.8, 4.5))),
+                Swirl(
+                    Vec3::new(rng2.range(-1.0, 1.0), rng2.range(-1.0, 1.0), 1.0).normalize(),
+                    rng2.range(-0.3, 0.3),
+                ),
                 NotShadowCaster,
             ));
         }
@@ -526,7 +756,8 @@ pub fn spawn_background(
         commands.spawn((
             Mesh3d(art.quad.clone()),
             MeshMaterial3d(mat),
-            Transform::from_xyz(r.center.0, r.center.1, -2600.0 - ri as f32 * 10.0).with_scale(Vec3::splat(r.radius * 5.0)),
+            Transform::from_xyz(r.center.0, r.center.1, -2600.0 - ri as f32 * 10.0)
+                .with_scale(Vec3::splat(r.radius * 5.0)),
             NotShadowCaster,
         ));
     }
@@ -562,12 +793,17 @@ pub fn spawn_background(
             Swirl(Vec3::Y, 0.012),
             NotShadowCaster,
         ));
-        let halo_col = srgb(hex(b.colors.get(2).map(|s| s.as_str()).unwrap_or("#ffffff")));
+        let halo_col = srgb(hex(b
+            .colors
+            .get(2)
+            .map(|s| s.as_str())
+            .unwrap_or("#ffffff")));
         let halo = art.glow_mat(&mut mats, halo_col, 0.9);
         commands.spawn((
             Mesh3d(art.quad.clone()),
             MeshMaterial3d(halo),
-            Transform::from_xyz(pos.x, pos.y, -b.depth - b.radius).with_scale(Vec3::splat(b.radius * 2.9)),
+            Transform::from_xyz(pos.x, pos.y, -b.depth - b.radius)
+                .with_scale(Vec3::splat(b.radius * 2.9)),
             NotShadowCaster,
         ));
         if b.rings {
@@ -594,7 +830,10 @@ pub fn spawn_background(
     let _ = Ore::ALL;
 }
 
-pub fn update_stars(cam: Query<&Transform, (With<GameCamera>, Without<StarTile>)>, mut tiles: Query<(&StarTile, &mut Transform)>) {
+pub fn update_stars(
+    cam: Query<&Transform, (With<GameCamera>, Without<StarTile>)>,
+    mut tiles: Query<(&StarTile, &mut Transform)>,
+) {
     let Ok(cam) = cam.single() else { return };
     for (t, mut tr) in &mut tiles {
         let base = (cam.translation.truncate() / t.tile).round() * t.tile;

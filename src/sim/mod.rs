@@ -7,6 +7,8 @@
 //!
 //! Die Simulation weiß nicht, wer gedrückt hat – nur welcher Slot.
 
+#[cfg(test)]
+pub mod autopilot;
 pub mod data;
 pub mod dock;
 pub mod economy;
@@ -54,13 +56,25 @@ impl TickInput {
 pub enum Command {
     Undock,
     /// Kauf anstoßen (bei mehreren Crewmitgliedern startet eine Abstimmung).
-    Buy { purchase: Purchase, voter: u8 },
+    Buy {
+        purchase: Purchase,
+        voter: u8,
+    },
     /// Stimme setzen: Some(true) = ja, Some(false) = nein.
-    Vote { voter: u8, yes: bool },
-    AcceptMission { id: u32 },
-    AbandonMission { id: u32 },
+    Vote {
+        voter: u8,
+        yes: bool,
+    },
+    AcceptMission {
+        id: u32,
+    },
+    AbandonMission {
+        id: u32,
+    },
     SellOre,
-    SwitchShip { id: String },
+    SwitchShip {
+        id: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -74,40 +88,93 @@ pub enum ToastKind {
 /// Ereignisse eines Ticks – für Effekte, Sound und UI. Werden jeden Tick geleert.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SimEvent {
-    Impact { pos: Vec2, normal: Vec2, strength: f32 },
-    ShieldHit { pos: Vec2 },
-    Damage { amount: f32 },
-    Explosion { pos: Vec2, size: f32, color: [f32; 3] },
-    Shot { pos: Vec2, dir: Vec2 },
+    Impact {
+        pos: Vec2,
+        normal: Vec2,
+        strength: f32,
+    },
+    ShieldHit {
+        pos: Vec2,
+    },
+    Damage {
+        amount: f32,
+    },
+    Explosion {
+        pos: Vec2,
+        size: f32,
+        color: [f32; 3],
+    },
+    Shot {
+        pos: Vec2,
+        dir: Vec2,
+    },
     EmptyGun,
-    ProjectileHit { pos: Vec2 },
+    ProjectileHit {
+        pos: Vec2,
+    },
     CraneFire,
-    CraneAttach { pos: Vec2 },
+    CraneAttach {
+        pos: Vec2,
+    },
     CraneRelease,
-    Stowed { what: String },
-    Docked { pad: usize },
+    Stowed {
+        what: String,
+    },
+    Docked {
+        pad: usize,
+    },
     Undocked,
-    Purchased { name: String },
+    Purchased {
+        name: String,
+    },
     VoteStarted,
-    VoteEnded { passed: bool, label: String },
-    MissionAccepted { id: u32 },
-    MissionCompleted { id: u32, reward: u32 },
-    MissionFailed { id: u32 },
-    Toast { text: String, kind: ToastKind },
+    VoteEnded {
+        passed: bool,
+        label: String,
+    },
+    MissionAccepted {
+        id: u32,
+    },
+    MissionCompleted {
+        id: u32,
+        reward: u32,
+    },
+    MissionFailed {
+        id: u32,
+    },
+    Toast {
+        text: String,
+        kind: ToastKind,
+    },
     ShipDestroyed,
     Respawned,
     /// Ein neues Schiff wurde gekauft/gewählt: Slots müssen neu verteilt werden.
     ShipChanged,
-    Sold { credits: u32 },
+    Sold {
+        credits: u32,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BodyKind {
-    Asteroid { ore: Option<Ore>, ore_left: f32, hp: f32, field: usize },
+    Asteroid {
+        ore: Option<Ore>,
+        ore_left: f32,
+        hp: f32,
+        field: usize,
+    },
     Meteor,
-    OreChunk { ore: Ore, amount: f32 },
-    Capsule { mission: u32 },
-    Derelict { mission: u32, name: String },
+    OreChunk {
+        ore: Ore,
+        amount: f32,
+    },
+    Capsule {
+        mission: u32,
+    },
+    Derelict {
+        mission: u32,
+        name: String,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -136,7 +203,10 @@ impl Body {
     }
     /// Klein genug, um eingeholt und eingelagert zu werden.
     pub fn stowable(&self) -> bool {
-        matches!(self.kind, BodyKind::OreChunk { .. } | BodyKind::Capsule { .. })
+        matches!(
+            self.kind,
+            BodyKind::OreChunk { .. } | BodyKind::Capsule { .. }
+        )
     }
 }
 
@@ -239,7 +309,10 @@ impl SimState {
     }
 
     pub fn toast(&mut self, text: impl Into<String>, kind: ToastKind) {
-        self.events.push(SimEvent::Toast { text: text.into(), kind });
+        self.events.push(SimEvent::Toast {
+            text: text.into(),
+            kind,
+        });
     }
 
     /// Schiff mit neuer Slot-Belegung neu bauen (nach der Lobby). Zustand bleibt erhalten.
@@ -332,18 +405,6 @@ impl SimState {
         self.bodies.retain(|b| b.alive);
         self.projectiles.retain(|p| p.life > 0.0);
     }
-
-    /// Momentane Belegung eines Slots (für Anzeige).
-    pub fn slot_label(&self, slot: u8) -> String {
-        if let Some(t) = self.ship.thrusters.iter().find(|t| t.slot == slot) {
-            let n = self.ship.thrusters.len();
-            return thruster_label(t.slot as usize, n);
-        }
-        if let Some(t) = self.ship.tools.iter().find(|t| t.slot == slot) {
-            return t.kind.label().to_string();
-        }
-        "?".into()
-    }
 }
 
 /// Bezeichnung eines Triebwerks nach Position (von links nach rechts).
@@ -377,7 +438,9 @@ mod tests {
         (
             s.ship.pos.x.to_bits() ^ s.ship.pos.y.to_bits(),
             s.ship.angle.to_bits(),
-            s.bodies.iter().fold(0u32, |a, b| a.wrapping_add(b.pos.x.to_bits()).rotate_left(3)),
+            s.bodies.iter().fold(0u32, |a, b| {
+                a.wrapping_add(b.pos.x.to_bits()).rotate_left(3)
+            }),
             s.bodies.len(),
         )
     }
@@ -391,10 +454,10 @@ mod tests {
         if (200..260).contains(&t) {
             slots &= !0b1;
         }
-        if t % 90 == 0 {
+        if t.is_multiple_of(90) {
             slots |= 1 << 5;
         }
-        if t % 120 == 0 {
+        if t.is_multiple_of(120) {
             slots |= 1 << 6;
         }
         TickInput {
@@ -429,7 +492,11 @@ mod tests {
             s.step(&inp);
         }
         assert!(s.ship.docked.is_none());
-        assert!(s.ship.vel.length() > 0.5, "Schiff bewegt sich: {:?}", s.ship.vel);
+        assert!(
+            s.ship.vel.length() > 0.5,
+            "Schiff bewegt sich: {:?}",
+            s.ship.vel
+        );
     }
 
     #[test]
@@ -460,6 +527,11 @@ mod tests {
         for _ in 0..120 {
             s.step(&TickInput::default());
         }
-        assert!((s.ship.vel - v0).length() < 0.05, "Trägheit: {:?} → {:?}", v0, s.ship.vel);
+        assert!(
+            (s.ship.vel - v0).length() < 0.05,
+            "Trägheit: {:?} → {:?}",
+            v0,
+            s.ship.vel
+        );
     }
 }

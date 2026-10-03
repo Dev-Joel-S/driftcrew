@@ -3,9 +3,12 @@
 use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
 
-use super::{fmt_num, mouse_pick, navigate, panel, spawn_items, text, Item, ItemButton, MenuFocus, Signature, ACCENT, BAD, GOOD, MENU_STATION, MUTED, TEAL, TEXT, WARN};
+use super::{
+    ACCENT, BAD, GOOD, Item, ItemButton, MENU_STATION, MUTED, MenuFocus, Signature, TEAL, TEXT,
+    WARN, fmt_num, mouse_pick, navigate, panel, spawn_items, text,
+};
 use crate::game::{AppState, MapOpen, Paused, PendingCommands, Sim};
-use crate::input::{btn_just_pressed, ActiveBindings, Crew, Device, MenuInput};
+use crate::input::{ActiveBindings, Crew, Device, MenuInput, btn_just_pressed};
 use crate::sim::data::{Service, ServiceEffect, StationKind};
 use crate::sim::economy::{Purchase, VOTE_SECONDS};
 use crate::sim::missions::MissionKind;
@@ -99,13 +102,26 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
             for s in &sim.data.shop.services {
                 let p = Purchase::Service(s.id.clone());
                 let it = match price_or(&p) {
-                    Ok((_, price)) => Item::new(s.name.clone(), Act::Buy(p)).right(format!("{price} Cr")),
-                    Err(reason) => Item::new(s.name.clone(), Act::Buy(p)).right("—").detail(reason).enabled(false),
+                    Ok((_, price)) => {
+                        Item::new(s.name.clone(), Act::Buy(p)).right(format!("{price} Cr"))
+                    }
+                    Err(reason) => Item::new(s.name.clone(), Act::Buy(p))
+                        .right("—")
+                        .detail(reason)
+                        .enabled(false),
                 };
                 let it = match s.effect {
-                    ServiceEffect::Ammo(_) => it.detail(format!("Magazin {}/{}", sim.ship.ammo, sim.ship.max_ammo)),
-                    ServiceEffect::ShieldFull => it.detail(format!("Schild {:.0}/{:.0}", sim.ship.shield, sim.ship.max_shield)),
-                    ServiceEffect::RepairFull => it.detail(format!("Hülle {:.0}/{:.0}", sim.ship.hull, sim.ship.max_hull)),
+                    ServiceEffect::Ammo(_) => {
+                        it.detail(format!("Magazin {}/{}", sim.ship.ammo, sim.ship.max_ammo))
+                    }
+                    ServiceEffect::ShieldFull => it.detail(format!(
+                        "Schild {:.0}/{:.0}",
+                        sim.ship.shield, sim.ship.max_shield
+                    )),
+                    ServiceEffect::RepairFull => it.detail(format!(
+                        "Hülle {:.0}/{:.0}",
+                        sim.ship.hull, sim.ship.max_hull
+                    )),
                 };
                 v.push(it);
             }
@@ -115,10 +131,15 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                 let p = Purchase::Upgrade(u.id.clone());
                 let owned = sim.crew.upgrades.contains(&u.id);
                 let it = if owned {
-                    Item::new(u.name.clone(), Act::Buy(p)).right("✓ eingebaut").enabled(false).detail(u.description.clone())
+                    Item::new(u.name.clone(), Act::Buy(p))
+                        .right("✓ eingebaut")
+                        .enabled(false)
+                        .detail(u.description.clone())
                 } else {
                     match price_or(&p) {
-                        Ok(_) => Item::new(u.name.clone(), Act::Buy(p)).right(format!("{} Cr", u.price)).detail(u.description.clone()),
+                        Ok(_) => Item::new(u.name.clone(), Act::Buy(p))
+                            .right(format!("{} Cr", u.price))
+                            .detail(u.description.clone()),
                         Err(reason) => Item::new(u.name.clone(), Act::Buy(p))
                             .right(format!("{} Cr", u.price))
                             .detail(format!("{} – {}", u.description, reason))
@@ -141,13 +162,20 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                     d.cargo_capacity()
                 );
                 let it = if current {
-                    Item::new(d.name.clone(), Act::Switch(d.id.clone())).right("im Einsatz").detail(stats).enabled(false)
+                    Item::new(d.name.clone(), Act::Switch(d.id.clone()))
+                        .right("im Einsatz")
+                        .detail(stats)
+                        .enabled(false)
                 } else if owned {
-                    Item::new(format!("{} wechseln", d.name), Act::Switch(d.id.clone())).right("gehört euch").detail(stats)
+                    Item::new(format!("{} wechseln", d.name), Act::Switch(d.id.clone()))
+                        .right("gehört euch")
+                        .detail(stats)
                 } else {
                     let p = Purchase::Ship(d.id.clone());
                     match price_or(&p) {
-                        Ok(_) => Item::new(format!("{} kaufen", d.name), Act::Buy(p)).right(format!("{} Cr", fmt_num(d.price))).detail(stats),
+                        Ok(_) => Item::new(format!("{} kaufen", d.name), Act::Buy(p))
+                            .right(format!("{} Cr", fmt_num(d.price)))
+                            .detail(stats),
                         Err(reason) => Item::new(format!("{} kaufen", d.name), Act::Buy(p))
                             .right(format!("{} Cr", fmt_num(d.price)))
                             .detail(format!("{stats} – {reason}"))
@@ -159,7 +187,11 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
         }
         Tab::Missions => {
             for m in &sim.active {
-                v.push(Item::new(format!("✓ {}", m.title(sim)), Act::Abandon(m.id)).right("abbrechen").detail(m.detail(sim)));
+                v.push(
+                    Item::new(format!("✓ {}", m.title(sim)), Act::Abandon(m.id))
+                        .right("abbrechen")
+                        .detail(m.detail(sim)),
+                );
             }
             for m in sim.offers_here() {
                 let here = sim.docked_station();
@@ -168,10 +200,16 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                     _ => true,
                 } && sim.active.len() < crate::sim::missions::MAX_ACTIVE;
                 let detail = match &m.kind {
-                    MissionKind::Delivery { mass, .. } => format!("{mass:.1} t Container – landet seitlich im Frachtraum"),
+                    MissionKind::Delivery { mass, .. } => {
+                        format!("{mass:.1} t Container – landet seitlich im Frachtraum")
+                    }
                     MissionKind::Mining { .. } => m.detail(sim),
-                    MissionKind::Tow { .. } => "Wrack treibt im All. Mit dem Kran zur Station schleppen.".into(),
-                    MissionKind::Capsules { .. } => "Kapseln einsammeln (Kran oder sanft berühren) und abliefern.".into(),
+                    MissionKind::Tow { .. } => {
+                        "Wrack treibt im All. Mit dem Kran zur Station schleppen.".into()
+                    }
+                    MissionKind::Capsules { .. } => {
+                        "Kapseln einsammeln (Kran oder sanft berühren) und abliefern.".into()
+                    }
                 };
                 v.push(
                     Item::new(m.title(sim), Act::Accept(m.id))
@@ -211,10 +249,17 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
             for c in &sim.ship.cargo {
                 let name = match &c.kind {
                     crate::sim::ship::CargoKind::Ore(o) => o.label().to_string(),
-                    crate::sim::ship::CargoKind::Container { name, .. } => format!("Container: {name}"),
+                    crate::sim::ship::CargoKind::Container { name, .. } => {
+                        format!("Container: {name}")
+                    }
                     crate::sim::ship::CargoKind::Capsule { .. } => "Rettungskapsel".into(),
                 };
-                v.push(Item::new(name, Act::Sell).right(format!("{:.1} t", c.mass)).enabled(false).detail(format!("Modul {}", c.pod + 1)));
+                v.push(
+                    Item::new(name, Act::Sell)
+                        .right(format!("{:.1} t", c.mass))
+                        .enabled(false)
+                        .detail(format!("Modul {}", c.pod + 1)),
+                );
             }
         }
     }
@@ -251,7 +296,10 @@ fn spawn_roots(mut commands: Commands) {
     ));
 }
 
-fn despawn_roots(mut commands: Commands, q: Query<Entity, Or<(With<StationRoot>, With<VoteRoot>)>>) {
+fn despawn_roots(
+    mut commands: Commands,
+    q: Query<Entity, Or<(With<StationRoot>, With<VoteRoot>)>>,
+) {
     for e in &q {
         commands.entity(e).despawn();
     }
@@ -277,7 +325,9 @@ fn station_menu(
     mut root: Query<(Entity, &mut Signature), With<StationRoot>>,
     tab_buttons: Query<(&Interaction, &TabButton), Changed<Interaction>>,
 ) {
-    let Ok((root, mut sig)) = root.single_mut() else { return };
+    let Ok((root, mut sig)) = root.single_mut() else {
+        return;
+    };
     let s = &sim.0;
     let tabs = tabs_for(s);
     let visible = s.ship.docked.is_some() && !paused.0 && !map.0 && !s.ship.destroyed;
@@ -308,23 +358,34 @@ fn station_menu(
 
     let mut f = focus.0[MENU_STATION];
     // Bestätigen nur per Enter/Start (Gesichtstasten könnten Triebwerke sein).
-    let mut activate = if navigate(&mut f, items.len(), &MenuInput { confirm: input.enter, ..input.clone() }) { Some(f) } else { None };
+    let mut activate = if navigate(
+        &mut f,
+        items.len(),
+        &MenuInput {
+            confirm: input.enter,
+            ..input.clone()
+        },
+    ) {
+        Some(f)
+    } else {
+        None
+    };
     if let Some(i) = mouse_pick(MENU_STATION, &mut f, &buttons) {
         activate = Some(i);
     }
     focus.0[MENU_STATION] = f.min(items.len().saturating_sub(1));
-    if let Some(i) = activate {
-        if let Some(it) = items.get(i).filter(|it| it.enabled) {
-            let voter = voter_for(input.device, &crew);
-            match it.action.clone() {
-                Some(Act::Buy(p)) => pending.0.push(Command::Buy { purchase: p, voter }),
-                Some(Act::Accept(id)) => pending.0.push(Command::AcceptMission { id }),
-                Some(Act::Abandon(id)) => pending.0.push(Command::AbandonMission { id }),
-                Some(Act::Sell) => pending.0.push(Command::SellOre),
-                Some(Act::Switch(id)) => pending.0.push(Command::SwitchShip { id }),
-                Some(Act::Undock) => pending.0.push(Command::Undock),
-                None => {}
-            }
+    if let Some(i) = activate
+        && let Some(it) = items.get(i).filter(|it| it.enabled)
+    {
+        let voter = voter_for(input.device, &crew);
+        match it.action.clone() {
+            Some(Act::Buy(p)) => pending.0.push(Command::Buy { purchase: p, voter }),
+            Some(Act::Accept(id)) => pending.0.push(Command::AcceptMission { id }),
+            Some(Act::Abandon(id)) => pending.0.push(Command::AbandonMission { id }),
+            Some(Act::Sell) => pending.0.push(Command::SellOre),
+            Some(Act::Switch(id)) => pending.0.push(Command::SwitchShip { id }),
+            Some(Act::Undock) => pending.0.push(Command::Undock),
+            None => {}
         }
     }
 
@@ -339,14 +400,20 @@ fn station_menu(
             };
             (st.name.clone(), kind.to_string())
         }
-        Some(Owner::Planet(pi)) => (format!("{} – Außenposten", s.world.planets[pi].name), "Erzannahme".to_string()),
+        Some(Owner::Planet(pi)) => (
+            format!("{} – Außenposten", s.world.planets[pi].name),
+            "Erzannahme".to_string(),
+        ),
         None => (String::new(), String::new()),
     };
     let key = format!(
         "{:?}|{}|{:?}|{}",
         title,
         tab.0,
-        items.iter().map(|i| format!("{}{}{}{}", i.label, i.right, i.detail, i.enabled)).collect::<Vec<_>>(),
+        items
+            .iter()
+            .map(|i| format!("{}{}{}{}", i.label, i.right, i.detail, i.enabled))
+            .collect::<Vec<_>>(),
         s.crew.credits
     );
     let h = super::sig_of(&key);
@@ -358,7 +425,11 @@ fn station_menu(
     commands.entity(root).with_children(|r| {
         r.spawn(panel(Val::Percent(100.0))).with_children(|p| {
             p.spawn(text(title.0.to_uppercase(), 22.0, TEXT));
-            p.spawn(text(format!("{} · Kasse {} Credits", title.1, fmt_num(s.crew.credits)), 14.0, ACCENT));
+            p.spawn(text(
+                format!("{} · Kasse {} Credits", title.1, fmt_num(s.crew.credits)),
+                14.0,
+                ACCENT,
+            ));
             p.spawn(Node {
                 column_gap: Val::Px(6.0),
                 margin: UiRect::vertical(Val::Px(6.0)),
@@ -375,7 +446,11 @@ fn station_menu(
                             border_radius: BorderRadius::all(Val::Px(6.0)),
                             ..default()
                         },
-                        BackgroundColor(if on { TEAL.with_alpha(0.35) } else { Color::srgba(1.0, 1.0, 1.0, 0.05) }),
+                        BackgroundColor(if on {
+                            TEAL.with_alpha(0.35)
+                        } else {
+                            Color::srgba(1.0, 1.0, 1.0, 0.05)
+                        }),
                         TabButton(i),
                     ))
                     .with_children(|b| {
@@ -394,7 +469,11 @@ fn station_menu(
                 ScrollPosition::default(),
             ))
             .with_children(|list| spawn_items(list, MENU_STATION, &items));
-            p.spawn(text("←→ Reiter · ↑↓ Auswahl · Enter/Start kaufen · Maus geht auch", 12.0, MUTED));
+            p.spawn(text(
+                "←→ Reiter · ↑↓ Auswahl · Enter/Start kaufen · Maus geht auch",
+                12.0,
+                MUTED,
+            ));
         });
     });
 }
@@ -422,11 +501,17 @@ fn vote_input(
     }
     for p in toggled {
         let cur = v.votes.get(p as usize).copied().unwrap_or(0);
-        pending.0.push(Command::Vote { voter: p, yes: cur != 1 });
+        pending.0.push(Command::Vote {
+            voter: p,
+            yes: cur != 1,
+        });
     }
     for (i, vb) in &buttons {
         if *i == Interaction::Pressed {
-            pending.0.push(Command::Vote { voter: vb.voter, yes: vb.yes });
+            pending.0.push(Command::Vote {
+                voter: vb.voter,
+                yes: vb.yes,
+            });
         }
     }
 }
@@ -437,8 +522,15 @@ struct VoteButton {
     yes: bool,
 }
 
-fn draw_vote(mut commands: Commands, sim: Res<Sim>, crew: Res<Crew>, mut root: Query<(Entity, &mut Signature), With<VoteRoot>>) {
-    let Ok((root, mut sig)) = root.single_mut() else { return };
+fn draw_vote(
+    mut commands: Commands,
+    sim: Res<Sim>,
+    crew: Res<Crew>,
+    mut root: Query<(Entity, &mut Signature), With<VoteRoot>>,
+) {
+    let Ok((root, mut sig)) = root.single_mut() else {
+        return;
+    };
     let s = &sim.0;
     let Some(v) = &s.vote else {
         if sig.0 != 0 {
@@ -458,7 +550,7 @@ fn draw_vote(mut commands: Commands, sim: Res<Sim>, crew: Res<Crew>, mut root: Q
     let after = s.crew.credits.saturating_sub(v.price);
     commands.entity(root).with_children(|r| {
         r.spawn(panel(Val::Percent(100.0))).with_children(|p| {
-            p.spawn(text("ABSTIMMUNG", 14.0, ACCENT));
+            p.spawn(text(format!("ABSTIMMUNG · angestoßen von Spieler {}", v.initiator + 1), 14.0, ACCENT));
             p.spawn(text(v.label.clone(), 22.0, TEXT));
             p.spawn(text(
                 format!("Preis {} Cr · Kasse jetzt {} → danach {}", fmt_num(v.price), fmt_num(s.crew.credits), fmt_num(after)),

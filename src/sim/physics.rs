@@ -2,10 +2,10 @@
 
 use bevy::math::Vec2;
 
-use super::geom::{circle_circle, cross, cross_sv, quad_circle, quad_quad, Aabb, Contact};
+use super::geom::{Aabb, Contact, circle_circle, cross, cross_sv, quad_circle, quad_quad};
 use super::ship::CargoKind;
 use super::world::{Shape, Surface};
-use super::{BodyKind, SimEvent, SimState, ToastKind, DT};
+use super::{BodyKind, DT, SimEvent, SimState, ToastKind};
 
 const SLOP: f32 = 0.01;
 /// Aufprallgeschwindigkeit, ab der die Hülle Schaden nimmt.
@@ -38,7 +38,15 @@ impl Dyn {
 }
 
 /// Löst einen Kontakt (Normale von A nach B). Liefert die Aufprallgeschwindigkeit.
-pub fn solve_contact(a: &mut Dyn, b: &mut Dyn, c: &Contact, e: f32, mu: f32, a_surface_vel: Vec2, pos_share: f32) -> f32 {
+pub fn solve_contact(
+    a: &mut Dyn,
+    b: &mut Dyn,
+    c: &Contact,
+    e: f32,
+    mu: f32,
+    a_surface_vel: Vec2,
+    pos_share: f32,
+) -> f32 {
     let n = c.normal;
     let ra = c.point - a.pos;
     let rb = c.point - b.pos;
@@ -225,7 +233,15 @@ impl SimState {
                     Surface::Planet(_) => (0.25, 0.7),
                     Surface::Block | Surface::Structure => (0.35, 0.5),
                 };
-                let imp = solve_contact(&mut stat, &mut d, c, e, mu, *sv, if iter == 0 { share } else { 0.0 });
+                let imp = solve_contact(
+                    &mut stat,
+                    &mut d,
+                    c,
+                    e,
+                    mu,
+                    *sv,
+                    if iter == 0 { share } else { 0.0 },
+                );
                 if iter == 0 && imp > max_impact {
                     max_impact = imp;
                     impact_at = (c.point, c.normal);
@@ -439,7 +455,11 @@ impl SimState {
 
     /// Schaden an Schild/Hülle.
     pub(crate) fn ship_damage(&mut self, amount: f32, at: Vec2, show: bool) {
-        if amount <= 0.0 || self.ship.invulnerable > 0.0 || self.ship.destroyed || self.ship.docked.is_some() {
+        if amount <= 0.0
+            || self.ship.invulnerable > 0.0
+            || self.ship.destroyed
+            || self.ship.docked.is_some()
+        {
             return;
         }
         let mut left = amount;
@@ -463,8 +483,16 @@ impl SimState {
     pub(crate) fn try_stow(&mut self, bi: usize) -> bool {
         let b = self.bodies[bi].clone();
         let (kind, mass, label) = match &b.kind {
-            BodyKind::OreChunk { ore, amount } => (CargoKind::Ore(*ore), *amount, format!("{:.1} t {}", amount, ore.label())),
-            BodyKind::Capsule { mission } => (CargoKind::Capsule { mission: *mission }, 0.8, "Rettungskapsel".to_string()),
+            BodyKind::OreChunk { ore, amount } => (
+                CargoKind::Ore(*ore),
+                *amount,
+                format!("{:.1} t {}", amount, ore.label()),
+            ),
+            BodyKind::Capsule { mission } => (
+                CargoKind::Capsule { mission: *mission },
+                0.8,
+                "Rettungskapsel".to_string(),
+            ),
             _ => return false,
         };
         let free = self.ship.cargo_capacity() - self.ship.cargo_mass();
@@ -479,10 +507,10 @@ impl SimState {
         self.bodies[bi].alive = false;
         // Kran lösen, falls er daran hing.
         for t in &mut self.ship.tools {
-            if let super::ship::CraneState::Attached { body, .. } = t.crane {
-                if body == b.id {
-                    t.crane = super::ship::CraneState::Idle;
-                }
+            if let super::ship::CraneState::Attached { body, .. } = t.crane
+                && body == b.id
+            {
+                t.crane = super::ship::CraneState::Idle;
             }
         }
         self.events.push(SimEvent::Stowed { what: label });

@@ -3,8 +3,11 @@
 use bevy::prelude::*;
 
 use super::title::HELP_TEXT;
-use super::{mouse_pick, navigate, panel, spawn_items, text, Item, ItemButton, MenuFocus, ACCENT, MENU_PAUSE, MUTED, TEXT};
-use crate::game::{write_save, AppState, LobbyMode, MapOpen, Paused, Sim};
+use super::{
+    ACCENT, Item, ItemButton, MENU_PAUSE, MUTED, MenuFocus, TEXT, mouse_pick, navigate, panel,
+    spawn_items, text,
+};
+use crate::game::{AppState, LobbyMode, MapOpen, Paused, Sim, write_save};
 use crate::input::MenuInput;
 
 pub struct PausePlugin;
@@ -34,7 +37,8 @@ enum PauseAct {
 fn items() -> Vec<Item<PauseAct>> {
     vec![
         Item::new("Weiter", PauseAct::Resume),
-        Item::new("Slots neu verteilen", PauseAct::Redistribute).detail("Jemand kommt dazu oder fällt aus"),
+        Item::new("Slots neu verteilen", PauseAct::Redistribute)
+            .detail("Jemand kommt dazu oder fällt aus"),
         Item::new("Steuerung & Spielprinzip", PauseAct::Help),
         Item::new("Speichern & zum Titel", PauseAct::SaveTitle),
         Item::new("Spiel beenden", PauseAct::Quit).detail("Der Spielstand wird gespeichert"),
@@ -69,7 +73,11 @@ fn spawn_pause(commands: &mut Commands) {
         });
 }
 
-fn despawn_pause(mut commands: Commands, q: Query<Entity, Or<(With<PauseRoot>, With<PauseHelp>)>>, mut paused: ResMut<Paused>) {
+fn despawn_pause(
+    mut commands: Commands,
+    q: Query<Entity, Or<(With<PauseRoot>, With<PauseHelp>)>>,
+    mut paused: ResMut<Paused>,
+) {
     paused.0 = false;
     for e in &q {
         commands.entity(e).despawn();
@@ -121,12 +129,21 @@ pub fn pause_input(
     }
     let its = items();
     let mut f = focus.0[MENU_PAUSE];
-    let mut act = if navigate(&mut f, its.len(), &input) { Some(f) } else { None };
+    let mut act = if navigate(&mut f, its.len(), &input) {
+        Some(f)
+    } else {
+        None
+    };
     if let Some(i) = mouse_pick(MENU_PAUSE, &mut f, &buttons) {
         act = Some(i);
     }
     focus.0[MENU_PAUSE] = f;
-    let Some(a) = act.and_then(|i| its.get(i)).and_then(|it| it.action.clone()) else { return };
+    let Some(a) = act
+        .and_then(|i| its.get(i))
+        .and_then(|it| it.action.clone())
+    else {
+        return;
+    };
     match a {
         PauseAct::Resume => close(&mut commands, &mut paused),
         PauseAct::Redistribute => {
@@ -152,7 +169,11 @@ pub fn pause_input(
                     r.spawn(panel(Val::Px(780.0))).with_children(|p| {
                         for line in HELP_TEXT {
                             let head = !line.is_empty() && line.chars().all(|c| !c.is_lowercase());
-                            p.spawn(text(*line, if head { 17.0 } else { 15.0 }, if head { ACCENT } else { TEXT }));
+                            p.spawn(text(
+                                *line,
+                                if head { 17.0 } else { 15.0 },
+                                if head { ACCENT } else { TEXT },
+                            ));
                         }
                         p.spawn(text("Esc / Enter: schließen", 13.0, MUTED));
                     });

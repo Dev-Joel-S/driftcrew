@@ -2,12 +2,15 @@
 
 use bevy::prelude::*;
 
-use super::{fmt_num, mouse_pick, navigate, panel, spawn_items, text, Item, ItemButton, MenuFocus, Signature, ACCENT, BG, BORDER, MENU_MAP, MUTED, TEAL, TEXT};
+use super::{
+    ACCENT, BG, BORDER, Item, ItemButton, MENU_MAP, MUTED, MenuFocus, Signature, TEAL, TEXT,
+    fmt_num, mouse_pick, navigate, panel, spawn_items, text,
+};
 use crate::game::{AppState, MapOpen, Paused, PendingCommands, Sim};
 use crate::input::MenuInput;
 use crate::render::srgb;
-use crate::sim::data::{hex, StationKind};
 use crate::sim::Command;
+use crate::sim::data::{StationKind, hex};
 
 pub struct MapPlugin;
 
@@ -85,7 +88,11 @@ fn close_map(mut commands: Commands, q: Query<Entity, With<MapRoot>>, mut open: 
 fn items(sim: &crate::sim::SimState) -> Vec<Item<MapAct>> {
     let mut v = Vec::new();
     for m in &sim.active {
-        v.push(Item::new(format!("✓ {}", m.title(sim)), MapAct::Abandon(m.id)).right("abbrechen").detail(m.detail(sim)));
+        v.push(
+            Item::new(format!("✓ {}", m.title(sim)), MapAct::Abandon(m.id))
+                .right("abbrechen")
+                .detail(m.detail(sim)),
+        );
     }
     for m in sim.offers.iter().filter(|m| m.is_distress()) {
         v.push(
@@ -111,7 +118,18 @@ fn map_input(
     }
     let its = items(&sim.0);
     let mut f = focus.0[MENU_MAP];
-    let mut act = if navigate(&mut f, its.len(), &MenuInput { confirm: input.enter, ..input.clone() }) { Some(f) } else { None };
+    let mut act = if navigate(
+        &mut f,
+        its.len(),
+        &MenuInput {
+            confirm: input.enter,
+            ..input.clone()
+        },
+    ) {
+        Some(f)
+    } else {
+        None
+    };
     if let Some(i) = mouse_pick(MENU_MAP, &mut f, &buttons) {
         act = Some(i);
     }
@@ -125,7 +143,13 @@ fn map_input(
     }
 }
 
-fn draw_map(mut commands: Commands, sim: Res<Sim>, open: Res<MapOpen>, time: Res<Time>, mut root: Query<(Entity, &mut Signature), With<MapRoot>>) {
+fn draw_map(
+    mut commands: Commands,
+    sim: Res<Sim>,
+    open: Res<MapOpen>,
+    time: Res<Time>,
+    mut root: Query<(Entity, &mut Signature), With<MapRoot>>,
+) {
     if !open.0 {
         return;
     }
@@ -168,7 +192,11 @@ fn draw_map(mut commands: Commands, sim: Res<Sim>, open: Res<MapOpen>, time: Res
             BorderColor::all(BORDER),
         ))
         .with_children(|m| {
-            let dot = |m: &mut ChildSpawnerCommands, at: Vec2, size: f32, color: Color, round: bool| {
+            let dot = |m: &mut ChildSpawnerCommands,
+                       at: Vec2,
+                       size: f32,
+                       color: Color,
+                       round: bool| {
                 m.spawn((
                     Node {
                         position_type: PositionType::Absolute,
@@ -202,12 +230,24 @@ fn draw_map(mut commands: Commands, sim: Res<Sim>, open: Res<MapOpen>, time: Res
             }
             for f in &s.data.world.asteroid_fields {
                 let at = to_map(Vec2::new(f.center.0, f.center.1));
-                dot(m, at, f.radius * scale * 2.0, srgb(hex(&f.color)).with_alpha(0.35), true);
+                dot(
+                    m,
+                    at,
+                    f.radius * scale * 2.0,
+                    srgb(hex(&f.color)).with_alpha(0.35),
+                    true,
+                );
                 label(m, at, f.name.clone(), MUTED);
             }
             for z in &s.data.world.meteor_zones {
                 let at = to_map(Vec2::new(z.center.0, z.center.1));
-                dot(m, at, z.radius * scale * 2.0, Color::srgba(1.0, 0.4, 0.1, 0.18), true);
+                dot(
+                    m,
+                    at,
+                    z.radius * scale * 2.0,
+                    Color::srgba(1.0, 0.4, 0.1, 0.18),
+                    true,
+                );
                 label(m, at, format!("⚠ {}", z.name), Color::srgb(1.0, 0.55, 0.3));
             }
             for (i, p) in s.world.planets.iter().enumerate() {
@@ -218,7 +258,13 @@ fn draw_map(mut commands: Commands, sim: Res<Sim>, open: Res<MapOpen>, time: Res
             }
             for an in &s.world.anomalies {
                 let at = to_map(an.pos);
-                dot(m, at, an.radius * scale * 2.0, Color::srgba(0.6, 0.6, 0.65, 0.35), true);
+                dot(
+                    m,
+                    at,
+                    an.radius * scale * 2.0,
+                    Color::srgba(0.6, 0.6, 0.65, 0.35),
+                    true,
+                );
                 dot(m, at, 6.0, Color::srgb(1.0, 0.2, 0.15), true);
                 label(m, at, an.name.clone(), Color::srgb(1.0, 0.4, 0.4));
             }
@@ -232,21 +278,22 @@ fn draw_map(mut commands: Commands, sim: Res<Sim>, open: Res<MapOpen>, time: Res
                 label(m, at, st.name.clone(), c);
             }
             for mi in &s.active {
-                if let Some(t) = mi.nav_target(s) {
-                    if blink == 0 {
-                        dot(m, to_map(t), 12.0, ACCENT, true);
-                    }
+                if let Some(t) = mi.nav_target(s)
+                    && blink == 0
+                {
+                    dot(m, to_map(t), 12.0, ACCENT, true);
                 }
             }
             for mi in s.offers.iter().filter(|m| m.is_distress()) {
                 let site = match &mi.kind {
-                    crate::sim::missions::MissionKind::Tow { site, .. } | crate::sim::missions::MissionKind::Capsules { site, .. } => Some(*site),
+                    crate::sim::missions::MissionKind::Tow { site, .. }
+                    | crate::sim::missions::MissionKind::Capsules { site, .. } => Some(*site),
                     _ => None,
                 };
-                if let Some(site) = site {
-                    if blink == 1 {
-                        dot(m, to_map(site), 10.0, Color::srgb(1.0, 0.25, 0.25), true);
-                    }
+                if let Some(site) = site
+                    && blink == 1
+                {
+                    dot(m, to_map(site), 10.0, Color::srgb(1.0, 0.25, 0.25), true);
                 }
             }
             let me = to_map(s.ship.pos);
@@ -256,7 +303,15 @@ fn draw_map(mut commands: Commands, sim: Res<Sim>, open: Res<MapOpen>, time: Res
         // Liste
         root.spawn(panel(Val::Px(460.0))).with_children(|p| {
             p.spawn(text("SEKTORKARTE", 22.0, TEXT));
-            p.spawn(text(format!("Kasse {} Credits · {} Aufträge erledigt", fmt_num(s.crew.credits), s.crew.missions_done), 14.0, ACCENT));
+            p.spawn(text(
+                format!(
+                    "Kasse {} Credits · {} Aufträge erledigt",
+                    fmt_num(s.crew.credits),
+                    s.crew.missions_done
+                ),
+                14.0,
+                ACCENT,
+            ));
             p.spawn(Node {
                 height: Val::Px(6.0),
                 ..default()
@@ -265,8 +320,16 @@ fn draw_map(mut commands: Commands, sim: Res<Sim>, open: Res<MapOpen>, time: Res
                 p.spawn(text("Keine Aufträge oder Notrufe.", 15.0, MUTED));
             }
             spawn_items(p, MENU_MAP, &its);
-            p.spawn(text("Notrufe (rot blinkend) lassen sich überall annehmen.", 13.0, MUTED));
-            p.spawn(text("↑↓ Auswahl · Enter/Start annehmen · Tab/Esc schließen", 12.0, MUTED));
+            p.spawn(text(
+                "Notrufe (rot blinkend) lassen sich überall annehmen.",
+                13.0,
+                MUTED,
+            ));
+            p.spawn(text(
+                "↑↓ Auswahl · Enter/Start annehmen · Tab/Esc schließen",
+                12.0,
+                MUTED,
+            ));
         });
     });
 }

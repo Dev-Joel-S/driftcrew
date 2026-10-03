@@ -2,7 +2,7 @@
 
 use bevy::math::Vec2;
 
-use super::data::{v, Ore, Service};
+use super::data::{Ore, Service, v};
 use super::rng::hash32;
 use super::ship::{CargoKind, CraneState};
 use super::world::Owner;
@@ -12,10 +12,29 @@ pub const MAX_ACTIVE: usize = 4;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum MissionKind {
-    Delivery { from: usize, to: usize, cargo: String, mass: f32 },
-    Mining { ore: Ore, amount: f32, to: usize },
-    Tow { site: Vec2, to: usize, name: String, body: Option<u32> },
-    Capsules { site: Vec2, total: u32, delivered: u32, to: usize },
+    Delivery {
+        from: usize,
+        to: usize,
+        cargo: String,
+        mass: f32,
+    },
+    Mining {
+        ore: Ore,
+        amount: f32,
+        to: usize,
+    },
+    Tow {
+        site: Vec2,
+        to: usize,
+        name: String,
+        body: Option<u32>,
+    },
+    Capsules {
+        site: Vec2,
+        total: u32,
+        delivered: u32,
+        to: usize,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -39,7 +58,9 @@ impl Mission {
             MissionKind::Mining { ore, amount, to } => {
                 format!("Abbau: {amount:.0} t {} → {}", ore.label(), st(*to))
             }
-            MissionKind::Tow { name, to, .. } => format!("Notruf: {name} abschleppen → {}", st(*to)),
+            MissionKind::Tow { name, to, .. } => {
+                format!("Notruf: {name} abschleppen → {}", st(*to))
+            }
             MissionKind::Capsules { total, to, .. } => {
                 format!("Notruf: {total} Rettungskapseln → {}", st(*to))
             }
@@ -49,7 +70,10 @@ impl Mission {
     pub fn detail(&self, s: &SimState) -> String {
         match &self.kind {
             MissionKind::Delivery { from, mass, .. } => {
-                format!("{mass:.1} t Fracht, Abholung an {}", s.world.stations[*from].name)
+                format!(
+                    "{mass:.1} t Fracht, Abholung an {}",
+                    s.world.stations[*from].name
+                )
             }
             MissionKind::Mining { ore, .. } => {
                 let have = s.ship.ore_amount(*ore).max(0.0);
@@ -71,7 +95,9 @@ impl Mission {
                 format!("Vorkommen: {source} · an Bord {have:.1} t")
             }
             MissionKind::Tow { .. } => "Treibendes Schiff mit dem Kran zur Station ziehen".into(),
-            MissionKind::Capsules { total, delivered, .. } => {
+            MissionKind::Capsules {
+                total, delivered, ..
+            } => {
                 let aboard = s
                     .ship
                     .cargo
@@ -111,9 +137,9 @@ impl Mission {
                 }
             }
             MissionKind::Tow { site, to, body, .. } => {
-                let attached = s.ship.tools.iter().any(|t| {
-                    matches!(t.crane, CraneState::Attached { body: b, .. } if Some(b) == *body)
-                });
+                let attached = s.ship.tools.iter().any(
+                    |t| matches!(t.crane, CraneState::Attached { body: b, .. } if Some(b) == *body),
+                );
                 if attached {
                     Some(station(*to))
                 } else {
@@ -126,10 +152,19 @@ impl Mission {
                     .bodies
                     .iter()
                     .filter(|b| b.alive && b.kind == BodyKind::Capsule { mission: self.id })
-                    .min_by(|a, b| (a.pos - s.ship.pos).length().total_cmp(&(b.pos - s.ship.pos).length()));
+                    .min_by(|a, b| {
+                        (a.pos - s.ship.pos)
+                            .length()
+                            .total_cmp(&(b.pos - s.ship.pos).length())
+                    });
                 match left {
                     Some(b) => Some(b.pos),
-                    None if s.ship.cargo.iter().any(|c| c.kind == CargoKind::Capsule { mission: self.id }) => {
+                    None if s
+                        .ship
+                        .cargo
+                        .iter()
+                        .any(|c| c.kind == CargoKind::Capsule { mission: self.id }) =>
+                    {
                         Some(station(*to))
                     }
                     None => Some(*site),
@@ -156,7 +191,9 @@ impl SimState {
                 self.offers.push(m);
             }
         }
-        while self.offers.iter().filter(|m| m.origin.is_none()).count() < self.data.missions.distress_offers as usize {
+        while self.offers.iter().filter(|m| m.origin.is_none()).count()
+            < self.data.missions.distress_offers as usize
+        {
             let m = self.generate_distress();
             self.offers.push(m);
         }
@@ -166,7 +203,16 @@ impl SimState {
         let id = self.next_id();
         let md = self.data.missions.clone();
         let n_st = self.world.stations.len();
-        if self.rng.chance(0.55) && n_st > 1 {
+        let ores_exist = md.mining.iter().any(|m| {
+            self.world.planets.iter().any(|p| p.ore == m.ore)
+                || self
+                    .data
+                    .world
+                    .asteroid_fields
+                    .iter()
+                    .any(|f| f.ore == m.ore)
+        });
+        if (self.rng.chance(0.55) || !ores_exist) && n_st > 1 {
             let mut to = self.rng.index(n_st - 1);
             if to >= si {
                 to += 1;
@@ -191,7 +237,12 @@ impl SimState {
                 .iter()
                 .filter(|m| {
                     self.world.planets.iter().any(|p| p.ore == m.ore)
-                        || self.data.world.asteroid_fields.iter().any(|f| f.ore == m.ore)
+                        || self
+                            .data
+                            .world
+                            .asteroid_fields
+                            .iter()
+                            .any(|f| f.ore == m.ore)
                 })
                 .cloned()
                 .collect();
@@ -199,7 +250,11 @@ impl SimState {
             let amount = (self.rng.range(t.amount.0, t.amount.1) * 2.0).round() / 2.0;
             Mission {
                 id,
-                kind: MissionKind::Mining { ore: t.ore, amount, to: si },
+                kind: MissionKind::Mining {
+                    ore: t.ore,
+                    amount,
+                    to: si,
+                },
                 reward: round5(amount * t.reward_per_t),
                 origin: Some(si),
             }
@@ -224,7 +279,12 @@ impl SimState {
             let name = md.derelict_names[self.rng.index(md.derelict_names.len())].clone();
             Mission {
                 id,
-                kind: MissionKind::Tow { site, to, name, body: None },
+                kind: MissionKind::Tow {
+                    site,
+                    to,
+                    name,
+                    body: None,
+                },
                 reward: round5(self.rng.range(md.tow_reward.0, md.tow_reward.1)),
                 origin: None,
             }
@@ -232,7 +292,12 @@ impl SimState {
             let total = self.rng.range_u32(md.capsule_count.0, md.capsule_count.1);
             Mission {
                 id,
-                kind: MissionKind::Capsules { site, total, delivered: 0, to },
+                kind: MissionKind::Capsules {
+                    site,
+                    total,
+                    delivered: 0,
+                    to,
+                },
                 reward: round5(self.rng.range(md.capsule_reward.0, md.capsule_reward.1)),
                 origin: None,
             }
@@ -244,30 +309,52 @@ impl SimState {
             return;
         };
         if self.active.len() >= MAX_ACTIVE {
-            self.toast(format!("Höchstens {MAX_ACTIVE} Aufträge gleichzeitig"), ToastKind::Warn);
+            self.toast(
+                format!("Höchstens {MAX_ACTIVE} Aufträge gleichzeitig"),
+                ToastKind::Warn,
+            );
             return;
         }
         let mut m = self.offers[idx].clone();
         match &mut m.kind {
-            MissionKind::Delivery { from, cargo, mass, .. } => {
+            MissionKind::Delivery {
+                from, cargo, mass, ..
+            } => {
                 let here = self.docked_station();
                 if here != Some(*from) {
                     let name = self.world.stations[*from].name.clone();
-                    self.toast(format!("Fracht liegt in {name} – dort andocken"), ToastKind::Warn);
+                    self.toast(
+                        format!("Fracht liegt in {name} – dort andocken"),
+                        ToastKind::Warn,
+                    );
                     return;
                 }
-                let stored = self.ship.store(CargoKind::Container { mission: m.id, name: cargo.clone() }, *mass);
+                let stored = self.ship.store(
+                    CargoKind::Container {
+                        mission: m.id,
+                        name: cargo.clone(),
+                    },
+                    *mass,
+                );
                 if stored <= 0.0 {
-                    self.toast("Kein Platz im Frachtraum für den Container", ToastKind::Warn);
+                    self.toast(
+                        "Kein Platz im Frachtraum für den Container",
+                        ToastKind::Warn,
+                    );
                     return;
                 }
             }
-            MissionKind::Tow { site, body, name, .. } => {
+            MissionKind::Tow {
+                site, body, name, ..
+            } => {
                 let bid = self.next_id();
                 let pos = *site;
                 self.bodies.push(Body {
                     id: bid,
-                    kind: BodyKind::Derelict { mission: m.id, name: name.clone() },
+                    kind: BodyKind::Derelict {
+                        mission: m.id,
+                        name: name.clone(),
+                    },
                     pos,
                     vel: Vec2::new(self.rng.range(-0.5, 0.5), self.rng.range(-0.5, 0.5)),
                     angle: self.rng.range(0.0, 6.2),
@@ -285,7 +372,8 @@ impl SimState {
             MissionKind::Capsules { site, total, .. } => {
                 for k in 0..*total {
                     let bid = self.next_id();
-                    let a = std::f32::consts::TAU * k as f32 / *total as f32 + self.rng.range(0.0, 0.8);
+                    let a =
+                        std::f32::consts::TAU * k as f32 / *total as f32 + self.rng.range(0.0, 0.8);
                     let pos = *site + Vec2::new(a.cos(), a.sin()) * self.rng.range(6.0, 22.0);
                     self.bodies.push(Body {
                         id: bid,
@@ -330,7 +418,9 @@ impl SimState {
         });
         for b in &mut self.bodies {
             match &b.kind {
-                BodyKind::Capsule { mission } | BodyKind::Derelict { mission, .. } if *mission == mid => {
+                BodyKind::Capsule { mission } | BodyKind::Derelict { mission, .. }
+                    if *mission == mid =>
+                {
                     b.alive = false;
                 }
                 _ => {}
@@ -344,7 +434,10 @@ impl SimState {
             self.cleanup_mission(&m);
             let title = m.title(self);
             self.events.push(SimEvent::MissionFailed { id });
-            self.toast(format!("Auftrag gescheitert ({reason}): {title}"), ToastKind::Bad);
+            self.toast(
+                format!("Auftrag gescheitert ({reason}): {title}"),
+                ToastKind::Bad,
+            );
         }
     }
 
@@ -353,8 +446,14 @@ impl SimState {
         self.crew.credits += m.reward;
         self.crew.missions_done += 1;
         let title = m.title(self);
-        self.events.push(SimEvent::MissionCompleted { id: m.id, reward: m.reward });
-        self.toast(format!("Auftrag erfüllt: {title}  +{} Credits", m.reward), ToastKind::Good);
+        self.events.push(SimEvent::MissionCompleted {
+            id: m.id,
+            reward: m.reward,
+        });
+        self.toast(
+            format!("Auftrag erfüllt: {title}  +{} Credits", m.reward),
+            ToastKind::Good,
+        );
         self.cleanup_mission(&m);
     }
 
@@ -362,18 +461,26 @@ impl SimState {
     pub(crate) fn update_missions(&mut self) {
         let mut done = None;
         for (i, m) in self.active.iter().enumerate() {
-            if let MissionKind::Tow { to, body: Some(bid), .. } = &m.kind {
+            if let MissionKind::Tow {
+                to,
+                body: Some(bid),
+                ..
+            } = &m.kind
+            {
                 let st = &self.world.stations[*to];
                 let reach = (st.bounds.max - st.bounds.min).length() * 0.5 + 25.0;
-                if let Some(b) = self.bodies.iter().find(|b| b.id == *bid && b.alive) {
-                    if (b.pos - st.pos).length() < reach {
-                        done = Some(i);
-                    }
+                if let Some(b) = self.bodies.iter().find(|b| b.id == *bid && b.alive)
+                    && (b.pos - st.pos).length() < reach
+                {
+                    done = Some(i);
                 }
             }
         }
         if let Some(i) = done {
-            if let MissionKind::Tow { body: Some(bid), .. } = self.active[i].kind {
+            if let MissionKind::Tow {
+                body: Some(bid), ..
+            } = self.active[i].kind
+            {
                 for t in &mut self.ship.tools {
                     if matches!(t.crane, CraneState::Attached { body, .. } if body == bid) {
                         t.crane = CraneState::Idle;
@@ -403,7 +510,12 @@ impl SimState {
                         false
                     }
                 }
-                MissionKind::Capsules { total, delivered, to, .. } if *to == si => {
+                MissionKind::Capsules {
+                    total,
+                    delivered,
+                    to,
+                    ..
+                } if *to == si => {
                     let mid = m.id;
                     let n = self
                         .ship
@@ -414,7 +526,10 @@ impl SimState {
                         *d = now;
                     }
                     if n > 0 && now < *total {
-                        self.toast(format!("Kapseln abgeliefert: {now}/{total}"), ToastKind::Info);
+                        self.toast(
+                            format!("Kapseln abgeliefert: {now}/{total}"),
+                            ToastKind::Info,
+                        );
                     }
                     now >= *total
                 }
@@ -464,10 +579,15 @@ mod tests {
             .find(|m| matches!(m.kind, MissionKind::Delivery { from, .. } if from == here))
             .cloned();
         let Some(m) = m else { return };
-        s.step(&TickInput { commands: vec![Command::AcceptMission { id: m.id }], ..Default::default() });
+        s.step(&TickInput {
+            commands: vec![Command::AcceptMission { id: m.id }],
+            ..Default::default()
+        });
         assert_eq!(s.active.len(), 1);
         assert!(s.ship.cargo_mass() > 0.0);
-        let MissionKind::Delivery { to, .. } = m.kind else { unreachable!() };
+        let MissionKind::Delivery { to, .. } = m.kind else {
+            unreachable!()
+        };
         let credits = s.crew.credits;
         s.ship.docked = None;
         s.dock_at_station(to);

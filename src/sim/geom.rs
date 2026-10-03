@@ -19,6 +19,7 @@ pub fn cross_sv(w: f32, r: Vec2) -> Vec2 {
 }
 
 /// Richtung der Schiffsnase für einen Winkel (0 = +y).
+#[cfg(test)]
 pub fn forward(angle: f32) -> Vec2 {
     Vec2::new(-angle.sin(), angle.cos())
 }
@@ -31,7 +32,10 @@ pub struct Aabb {
 
 impl Aabb {
     pub fn overlaps(&self, o: &Aabb) -> bool {
-        self.min.x <= o.max.x && self.max.x >= o.min.x && self.min.y <= o.max.y && self.max.y >= o.min.y
+        self.min.x <= o.max.x
+            && self.max.x >= o.min.x
+            && self.min.y <= o.max.y
+            && self.max.y >= o.min.y
     }
     pub fn around(c: Vec2, r: f32) -> Aabb {
         Aabb {

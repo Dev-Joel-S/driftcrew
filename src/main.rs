@@ -1,5 +1,8 @@
 //! DriftCrew – ein Koop-Weltraumspiel: jede Taste ist ein Triebwerk, der Rest ist Physik.
 
+// Bevy-Systeme haben naturgemäß viele Parameter und lange Query-Typen.
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
+
 mod audio;
 mod demo;
 mod game;

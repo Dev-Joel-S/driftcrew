@@ -33,7 +33,8 @@ impl Builder {
             self.nrm.push(n.to_array());
             self.uv.push(uv[i]);
         }
-        self.idx.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+        self.idx
+            .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
     }
 
     fn tri(&mut self, v: [Vec3; 3], out: Vec3) {
@@ -53,11 +54,14 @@ impl Builder {
     }
 
     fn build(self, tangents: bool) -> Mesh {
-        let mut m = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
-            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.pos)
-            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, self.nrm)
-            .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, self.uv)
-            .with_inserted_indices(Indices::U32(self.idx));
+        let mut m = Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::RENDER_WORLD,
+        )
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.pos)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, self.nrm)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, self.uv)
+        .with_inserted_indices(Indices::U32(self.idx));
         if tangents {
             let _ = m.generate_tangents();
         }
@@ -172,7 +176,9 @@ pub fn crystal(radius: f32, height: f32) -> Mesh {
 /// Facettierter Asteroid: verformte Ikosphäre mit flachen Normalen.
 pub fn asteroid(seed: u32) -> Mesh {
     let mut mesh = Sphere::new(1.0).mesh().ico(2).expect("Ikosphäre");
-    if let Some(bevy::mesh::VertexAttributeValues::Float32x3(pos)) = mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION) {
+    if let Some(bevy::mesh::VertexAttributeValues::Float32x3(pos)) =
+        mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION)
+    {
         for p in pos.iter_mut() {
             let v = Vec3::from_array(*p);
             let n = fbm3(v * 1.6 + Vec3::splat(seed as f32 * 0.37), 4, seed);
@@ -182,6 +188,7 @@ pub fn asteroid(seed: u32) -> Mesh {
     }
     mesh.duplicate_vertices();
     mesh.compute_flat_normals();
+    let _ = mesh.generate_tangents();
     mesh
 }
 
@@ -208,7 +215,12 @@ pub fn star_layer(stars: &[(Vec3, f32, [f32; 4])]) -> Mesh {
     let mut idx = Vec::with_capacity(stars.len() * 6);
     for (p, s, c) in stars {
         let base = pos.len() as u32;
-        for (dx, dy, u, v) in [(-1.0, -1.0, 0.0, 1.0), (1.0, -1.0, 1.0, 1.0), (1.0, 1.0, 1.0, 0.0), (-1.0, 1.0, 0.0, 0.0)] {
+        for (dx, dy, u, v) in [
+            (-1.0, -1.0, 0.0, 1.0),
+            (1.0, -1.0, 1.0, 1.0),
+            (1.0, 1.0, 1.0, 0.0),
+            (-1.0, 1.0, 0.0, 0.0),
+        ] {
             pos.push([p.x + dx * s, p.y + dy * s, p.z]);
             nrm.push([0.0, 0.0, 1.0]);
             uv.push([u, v]);
@@ -216,19 +228,25 @@ pub fn star_layer(stars: &[(Vec3, f32, [f32; 4])]) -> Mesh {
         }
         idx.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
     }
-    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, pos)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, nrm)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uv)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, col)
-        .with_inserted_indices(Indices::U32(idx))
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, pos)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, nrm)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uv)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, col)
+    .with_inserted_indices(Indices::U32(idx))
 }
 
 /// Kugel mit planarer UV-Projektion (für frontal betrachtete Planeten).
 pub fn planet_sphere() -> Mesh {
     let mut mesh = Sphere::new(1.0).mesh().uv(96, 64);
     let uvs: Vec<[f32; 2]> = match mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
-        Some(bevy::mesh::VertexAttributeValues::Float32x3(pos)) => pos.iter().map(|p| [p[0] * 0.5 + 0.5, 0.5 - p[1] * 0.5]).collect(),
+        Some(bevy::mesh::VertexAttributeValues::Float32x3(pos)) => pos
+            .iter()
+            .map(|p| [p[0] * 0.5 + 0.5, 0.5 - p[1] * 0.5])
+            .collect(),
         _ => Vec::new(),
     };
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);

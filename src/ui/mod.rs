@@ -13,7 +13,7 @@ use crate::game::SimMsg;
 use crate::input::MenuInput;
 use crate::sim::{SimEvent, ToastKind};
 
-pub const BG: Color = Color::srgba(0.025, 0.04, 0.085, 0.86);
+pub const BG: Color = Color::srgba(0.025, 0.04, 0.085, 0.94);
 pub const BG_ITEM: Color = Color::srgba(1.0, 1.0, 1.0, 0.035);
 pub const BG_FOCUS: Color = Color::srgba(0.12, 0.82, 0.76, 0.22);
 pub const BORDER: Color = Color::srgba(0.12, 0.82, 0.76, 0.55);
@@ -62,10 +62,10 @@ impl Plugin for UiPlugin {
 
 pub fn text(s: impl Into<String>, size: f32, color: Color) -> impl Bundle {
     let mut font = TextFont::from_font_size(size);
-    if size >= 19.0 {
-        if let Some(h) = BOLD.get() {
-            font.font = bevy::text::FontSource::Handle(h.clone());
-        }
+    if size >= 19.0
+        && let Some(h) = BOLD.get()
+    {
+        font.font = bevy::text::FontSource::Handle(h.clone());
     }
     (Text::new(s), font, TextColor(color))
 }
@@ -83,7 +83,11 @@ pub fn panel_node(width: Val) -> Node {
 }
 
 pub fn panel(width: Val) -> impl Bundle {
-    (panel_node(width), BackgroundColor(BG), BorderColor::all(BORDER))
+    (
+        panel_node(width),
+        BackgroundColor(BG),
+        BorderColor::all(BORDER),
+    )
 }
 
 pub fn chip(color: Color, size: f32) -> impl Bundle {
@@ -168,7 +172,11 @@ pub fn spawn_items<A: Clone>(parent: &mut ChildSpawnerCommands, menu: usize, ite
                 .with_children(|row| {
                     row.spawn(text(it.label.clone(), 17.0, label_color));
                     if !it.right.is_empty() {
-                        row.spawn(text(it.right.clone(), 17.0, if it.enabled { ACCENT } else { MUTED }));
+                        row.spawn(text(
+                            it.right.clone(),
+                            17.0,
+                            if it.enabled { ACCENT } else { MUTED },
+                        ));
                     }
                 });
                 if !it.detail.is_empty() {
@@ -197,7 +205,11 @@ pub fn navigate(focus: &mut usize, len: usize, input: &MenuInput) -> bool {
 }
 
 /// Maus: Hover setzt den Fokus, Klick löst aus.
-pub fn mouse_pick(menu: usize, focus: &mut usize, q: &Query<(&Interaction, &ItemButton), Changed<Interaction>>) -> Option<usize> {
+pub fn mouse_pick(
+    menu: usize,
+    focus: &mut usize,
+    q: &Query<(&Interaction, &ItemButton), Changed<Interaction>>,
+) -> Option<usize> {
     let mut clicked = None;
     for (i, b) in q.iter() {
         if b.menu != menu {
@@ -215,7 +227,10 @@ pub fn mouse_pick(menu: usize, focus: &mut usize, q: &Query<(&Interaction, &Item
     clicked
 }
 
-fn highlight_items(focus: Res<MenuFocus>, mut q: Query<(&ItemButton, &mut BackgroundColor, &mut BorderColor)>) {
+fn highlight_items(
+    focus: Res<MenuFocus>,
+    mut q: Query<(&ItemButton, &mut BackgroundColor, &mut BorderColor)>,
+) {
     for (b, mut bg, mut border) in &mut q {
         let f = focus.0.get(b.menu).copied().unwrap_or(0) == b.index;
         bg.0 = if f { BG_FOCUS } else { BG_ITEM };
@@ -274,7 +289,11 @@ fn collect_toasts(mut events: MessageReader<SimMsg>, mut toasts: ResMut<Toasts>,
     }
 }
 
-fn draw_toasts(mut commands: Commands, mut toasts: ResMut<Toasts>, root: Query<Entity, With<ToastRoot>>) {
+fn draw_toasts(
+    mut commands: Commands,
+    mut toasts: ResMut<Toasts>,
+    root: Query<Entity, With<ToastRoot>>,
+) {
     let root = match root.single() {
         Ok(r) => r,
         Err(_) => commands
@@ -332,7 +351,7 @@ pub fn fmt_num(n: u32) -> String {
     let s = n.to_string();
     let mut out = String::new();
     for (i, ch) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
             out.push('.');
         }
         out.push(ch);

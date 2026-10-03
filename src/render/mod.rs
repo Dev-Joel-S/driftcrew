@@ -34,7 +34,14 @@ impl Plugin for RenderPlugin {
             .init_resource::<CameraRig>()
             .init_resource::<ship_vis::VisMaps>()
             .add_systems(PreStartup, setup_art)
-            .add_systems(Startup, (setup_camera, world_vis::spawn_world, world_vis::spawn_background))
+            .add_systems(
+                Startup,
+                (
+                    setup_camera,
+                    world_vis::spawn_world,
+                    world_vis::spawn_background,
+                ),
+            )
             .add_systems(
                 Update,
                 (
@@ -45,6 +52,7 @@ impl Plugin for RenderPlugin {
                     ship_vis::sync_bodies,
                     ship_vis::sync_projectiles,
                     ship_vis::sync_tools,
+                    ship_vis::blink_nav_lights,
                 )
                     .chain(),
             )
@@ -84,7 +92,11 @@ pub struct Art {
 impl Art {
     /// Abgeschrägte Box in passender Größe (zwischengespeichert).
     pub fn bevel_box(&mut self, meshes: &mut Assets<Mesh>, size: Vec3) -> Handle<Mesh> {
-        let key = [(size.x * 100.0) as u32, (size.y * 100.0) as u32, (size.z * 100.0) as u32];
+        let key = [
+            (size.x * 100.0) as u32,
+            (size.y * 100.0) as u32,
+            (size.z * 100.0) as u32,
+        ];
         self.box_cache
             .entry(key)
             .or_insert_with(|| {
@@ -95,7 +107,12 @@ impl Art {
     }
 
     /// Additives, unbeleuchtetes Leuchtmaterial (HDR-Farbe), zwischengespeichert.
-    pub fn glow_mat(&mut self, mats: &mut Assets<StandardMaterial>, color: Color, intensity: f32) -> Handle<StandardMaterial> {
+    pub fn glow_mat(
+        &mut self,
+        mats: &mut Assets<StandardMaterial>,
+        color: Color,
+        intensity: f32,
+    ) -> Handle<StandardMaterial> {
         let c = color.to_linear();
         let q = |x: f32| (x * 12.0).round().clamp(0.0, 4000.0) as u16;
         let key = [q(c.red), q(c.green), q(c.blue), q(intensity)];
@@ -104,7 +121,11 @@ impl Art {
             .entry(key)
             .or_insert_with(|| {
                 mats.add(StandardMaterial {
-                    base_color: Color::LinearRgba(LinearRgba::rgb(c.red * intensity, c.green * intensity, c.blue * intensity)),
+                    base_color: Color::LinearRgba(LinearRgba::rgb(
+                        c.red * intensity,
+                        c.green * intensity,
+                        c.blue * intensity,
+                    )),
                     base_color_texture: Some(tex),
                     unlit: true,
                     alpha_mode: AlphaMode::Add,
@@ -162,14 +183,20 @@ pub fn slot_color(slot: u8) -> Color {
     srgb(SLOT_COLORS[slot as usize % SLOT_COLORS.len()])
 }
 
-fn setup_art(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut meshes: ResMut<Assets<Mesh>>) {
+fn setup_art(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
     // Texturen parallel erzeugen, damit der Start flott bleibt.
     let (panel, window, rock, veins, nebulae) = std::thread::scope(|s| {
         let p = s.spawn(|| textures::panels(512, 2, 11));
         let w = s.spawn(|| textures::windows(256, 5));
         let r = s.spawn(|| textures::rock(256, 3));
         let v = s.spawn(|| textures::veins(256, 9));
-        let n: Vec<_> = (0..3u32).map(|i| s.spawn(move || textures::nebula(384, 40 + i * 7))).collect();
+        let n: Vec<_> = (0..3u32)
+            .map(|i| s.spawn(move || textures::nebula(384, 40 + i * 7)))
+            .collect();
         (
             p.join().unwrap(),
             w.join().unwrap(),
@@ -178,7 +205,9 @@ fn setup_art(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut mesh
             n.into_iter().map(|h| h.join().unwrap()).collect::<Vec<_>>(),
         )
     });
-    let asteroids = (0..8).map(|i| meshes.add(meshes::asteroid(1000 + i * 17))).collect();
+    let asteroids = (0..8)
+        .map(|i| meshes.add(meshes::asteroid(1000 + i * 17)))
+        .collect();
     let art = Art {
         panel: images.add(panel.albedo),
         panel_n: images.add(panel.normal),
@@ -307,19 +336,34 @@ fn camera_follow(
     let target = match state.get() {
         AppState::Title => {
             let a = rig.t * 0.03;
-            Vec3::new(origin.x + 40.0 * a.cos() - 30.0, origin.y + 25.0 * a.sin() + 12.0, 150.0)
+            Vec3::new(
+                origin.x + 40.0 * a.cos() - 30.0,
+                origin.y + 25.0 * a.sin() + 12.0,
+                150.0,
+            )
         }
         AppState::Lobby => Vec3::new(com.x + 5.0, com.y + 0.3, 21.0),
         AppState::Playing => {
             let speed = s.vel.length();
             let look = s.vel * 0.55;
-            let dist = (54.0 + speed * 1.1).min(140.0) * rig.zoom;
-            let dist = if s.docked.is_some() { 38.0 * rig.zoom } else { dist };
+            let dist = (48.0 + speed * 1.1).min(140.0) * rig.zoom;
+            let dist = if s.docked.is_some() {
+                38.0 * rig.zoom
+            } else {
+                dist
+            };
             Vec3::new(com.x + look.x, com.y + look.y, dist)
         }
     };
     let k = 1.0 - (-dt * 4.5).exp();
-    let kz = 1.0 - (-dt * if *state.get() == AppState::Playing { 1.6 } else { 4.0 }).exp();
+    let kz = 1.0
+        - (-dt
+            * if *state.get() == AppState::Playing {
+                1.6
+            } else {
+                4.0
+            })
+        .exp();
     let mut p = rig.pos;
     p.x += (target.x - p.x) * k;
     p.y += (target.y - p.y) * k;

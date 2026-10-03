@@ -4,7 +4,7 @@ use bevy::light::NotShadowCaster;
 use bevy::prelude::*;
 
 use super::ship_vis::ShieldVis;
-use super::{slot_color, srgb, Art, CameraRig};
+use super::{Art, CameraRig, slot_color, srgb};
 use crate::game::{AppState, Sim, SimMsg};
 use crate::sim::geom::rot;
 use crate::sim::rng::Rng;
@@ -108,7 +108,18 @@ fn burst(
         let s = rng.range(speed.0, speed.1);
         let v = Vec3::new(a.cos() * s, a.sin() * s, rng.range(-0.3, 0.3) * s);
         let l = rng.range(life.0, life.1);
-        spawn_particle(commands, art, mats, pos.extend(rng.range(0.5, 1.5)), v, color, intensity, l, size, 1.8);
+        spawn_particle(
+            commands,
+            art,
+            mats,
+            pos.extend(rng.range(0.5, 1.5)),
+            v,
+            color,
+            intensity,
+            l,
+            size,
+            1.8,
+        );
     }
 }
 
@@ -128,14 +139,29 @@ fn react_to_sim_events(
     let ship_pos = sim.0.ship.pos;
     for SimMsg(e) in events.read() {
         match e {
-            SimEvent::Impact { pos, normal, strength } => {
+            SimEvent::Impact {
+                pos,
+                normal,
+                strength,
+            } => {
                 let n = (*strength * 2.0).min(30.0) as usize;
                 if !crowded {
                     for _ in 0..n {
                         let a = normal.to_angle() + rng.0.range(-1.2, 1.2);
                         let s = rng.0.range(3.0, 10.0) * (strength / 6.0).min(2.0);
                         let v = Vec3::new(a.cos() * s, a.sin() * s, rng.0.range(-2.0, 2.0));
-                        spawn_particle(&mut commands, &mut art, &mut mats, pos.extend(1.0), v, Color::srgb(1.0, 0.75, 0.35), 5.0, rng.0.range(0.2, 0.6), (0.35, 0.05), 3.0);
+                        spawn_particle(
+                            &mut commands,
+                            &mut art,
+                            &mut mats,
+                            pos.extend(1.0),
+                            v,
+                            Color::srgb(1.0, 0.75, 0.35),
+                            5.0,
+                            rng.0.range(0.2, 0.6),
+                            (0.35, 0.05),
+                            3.0,
+                        );
                     }
                 }
                 if (*pos - ship_pos).length() < 20.0 {
@@ -145,9 +171,45 @@ fn react_to_sim_events(
             SimEvent::Explosion { pos, size, color } => {
                 let c = srgb(*color);
                 if !crowded {
-                    burst(&mut commands, &mut art, &mut mats, &mut rng.0, *pos, (14.0 * size) as usize + 10, (2.0, 8.0 * size.sqrt()), c, 4.0, (0.4, 1.1), (size * 0.9, 0.1));
-                    burst(&mut commands, &mut art, &mut mats, &mut rng.0, *pos, (6.0 * size) as usize + 4, (0.5, 2.0), Color::srgb(1.0, 0.95, 0.8), 6.0, (0.15, 0.4), (size * 1.6, 0.2));
-                    burst(&mut commands, &mut art, &mut mats, &mut rng.0, *pos, (10.0 * size) as usize, (1.0, 4.0), Color::srgb(0.35, 0.3, 0.3), 0.6, (1.0, 2.2), (size * 0.7, size * 1.4));
+                    burst(
+                        &mut commands,
+                        &mut art,
+                        &mut mats,
+                        &mut rng.0,
+                        *pos,
+                        (14.0 * size) as usize + 10,
+                        (2.0, 8.0 * size.sqrt()),
+                        c,
+                        4.0,
+                        (0.4, 1.1),
+                        (size * 0.9, 0.1),
+                    );
+                    burst(
+                        &mut commands,
+                        &mut art,
+                        &mut mats,
+                        &mut rng.0,
+                        *pos,
+                        (6.0 * size) as usize + 4,
+                        (0.5, 2.0),
+                        Color::srgb(1.0, 0.95, 0.8),
+                        6.0,
+                        (0.15, 0.4),
+                        (size * 1.6, 0.2),
+                    );
+                    burst(
+                        &mut commands,
+                        &mut art,
+                        &mut mats,
+                        &mut rng.0,
+                        *pos,
+                        (10.0 * size) as usize,
+                        (1.0, 4.0),
+                        Color::srgb(0.35, 0.3, 0.3),
+                        0.6,
+                        (1.0, 2.2),
+                        (size * 0.7, size * 1.4),
+                    );
                 }
                 commands.spawn((
                     PointLight {
@@ -190,12 +252,35 @@ fn react_to_sim_events(
                     let a = dir.to_angle() + rng.0.range(-0.5, 0.5);
                     let s = rng.0.range(4.0, 14.0);
                     let v = Vec3::new(a.cos() * s, a.sin() * s, 0.0);
-                    spawn_particle(&mut commands, &mut art, &mut mats, pos.extend(1.0), v, Color::srgb(1.0, 0.85, 0.4), 6.0, rng.0.range(0.08, 0.2), (0.5, 0.05), 6.0);
+                    spawn_particle(
+                        &mut commands,
+                        &mut art,
+                        &mut mats,
+                        pos.extend(1.0),
+                        v,
+                        Color::srgb(1.0, 0.85, 0.4),
+                        6.0,
+                        rng.0.range(0.08, 0.2),
+                        (0.5, 0.05),
+                        6.0,
+                    );
                 }
                 rig.shake = (rig.shake + 0.12).min(1.0);
             }
             SimEvent::ProjectileHit { pos } => {
-                burst(&mut commands, &mut art, &mut mats, &mut rng.0, *pos, 10, (2.0, 9.0), Color::srgb(1.0, 0.7, 0.3), 5.0, (0.1, 0.35), (0.4, 0.05));
+                burst(
+                    &mut commands,
+                    &mut art,
+                    &mut mats,
+                    &mut rng.0,
+                    *pos,
+                    10,
+                    (2.0, 9.0),
+                    Color::srgb(1.0, 0.7, 0.3),
+                    5.0,
+                    (0.1, 0.35),
+                    (0.4, 0.05),
+                );
             }
             SimEvent::ShieldHit { .. } => shield.0 = 1.0,
             SimEvent::Docked { .. } => {
@@ -224,7 +309,19 @@ fn react_to_sim_events(
                     SimEvent::CraneAttach { pos } => *pos,
                     _ => sim.0.ship.pos,
                 };
-                burst(&mut commands, &mut art, &mut mats, &mut rng.0, p, 12, (1.0, 4.0), Color::srgb(0.4, 1.0, 0.9), 4.0, (0.2, 0.5), (0.4, 0.05));
+                burst(
+                    &mut commands,
+                    &mut art,
+                    &mut mats,
+                    &mut rng.0,
+                    p,
+                    12,
+                    (1.0, 4.0),
+                    Color::srgb(0.4, 1.0, 0.9),
+                    4.0,
+                    (0.2, 0.5),
+                    (0.4, 0.05),
+                );
             }
             SimEvent::ShipDestroyed => rig.shake = 1.6,
             _ => {}
@@ -268,20 +365,56 @@ fn emit_continuous(
                 let spread = rng.0.range(-0.25, 0.25);
                 let v = ship.vel - rot(world_dir, spread) * rng.0.range(14.0, 22.0);
                 let c = slot_color(t.slot);
-                spawn_particle(&mut commands, &mut art, &mut mats, nozzle.extend(rng.0.range(-0.2, 0.4)), v.extend(0.0), c, 3.5 * t.level, rng.0.range(0.25, 0.5), (0.55, 0.05), 2.5);
+                spawn_particle(
+                    &mut commands,
+                    &mut art,
+                    &mut mats,
+                    nozzle.extend(rng.0.range(-0.2, 0.4)),
+                    v.extend(0.0),
+                    c,
+                    3.5 * t.level,
+                    rng.0.range(0.25, 0.5),
+                    (0.55, 0.05),
+                    2.5,
+                );
                 if rng.0.chance(0.35) {
                     let v2 = ship.vel - world_dir * rng.0.range(3.0, 6.0);
-                    spawn_particle(&mut commands, &mut art, &mut mats, nozzle.extend(-0.3), v2.extend(0.0), Color::srgb(0.5, 0.5, 0.6), 0.35, rng.0.range(0.8, 1.6), (0.4, 1.6), 1.0);
+                    spawn_particle(
+                        &mut commands,
+                        &mut art,
+                        &mut mats,
+                        nozzle.extend(-0.3),
+                        v2.extend(0.0),
+                        Color::srgb(0.5, 0.5, 0.6),
+                        0.35,
+                        rng.0.range(0.8, 1.6),
+                        (0.4, 1.6),
+                        1.0,
+                    );
                 }
             }
             for tool in &ship.tools {
                 if let Some(d) = &tool.drill {
-                    let c = d.ore.map(|o| srgb(o.color())).unwrap_or(Color::srgb(1.0, 0.7, 0.4));
+                    let c = d
+                        .ore
+                        .map(|o| srgb(o.color()))
+                        .unwrap_or(Color::srgb(1.0, 0.7, 0.4));
                     for _ in 0..2 {
                         let a = rng.0.range(0.0, std::f32::consts::TAU);
                         let s = rng.0.range(2.0, 7.0);
                         let v = Vec3::new(a.cos() * s, a.sin() * s, rng.0.range(0.0, 3.0));
-                        spawn_particle(&mut commands, &mut art, &mut mats, d.point.extend(0.5), v, c, 4.0, rng.0.range(0.2, 0.5), (0.35, 0.05), 3.0);
+                        spawn_particle(
+                            &mut commands,
+                            &mut art,
+                            &mut mats,
+                            d.point.extend(0.5),
+                            v,
+                            c,
+                            4.0,
+                            rng.0.range(0.2, 0.5),
+                            (0.35, 0.05),
+                            3.0,
+                        );
                     }
                 }
             }
@@ -291,8 +424,21 @@ fn emit_continuous(
                 continue;
             }
             let back = -b.vel.normalize_or_zero();
-            let p = b.pos + back * b.radius * 0.8 + Vec2::new(rng.0.range(-0.4, 0.4), rng.0.range(-0.4, 0.4));
-            spawn_particle(&mut commands, &mut art, &mut mats, p.extend(0.3), (b.vel * 0.3).extend(0.0), Color::srgb(1.0, 0.45, 0.15), 3.0, rng.0.range(0.4, 0.8), (b.radius * 1.4, 0.1), 1.0);
+            let p = b.pos
+                + back * b.radius * 0.8
+                + Vec2::new(rng.0.range(-0.4, 0.4), rng.0.range(-0.4, 0.4));
+            spawn_particle(
+                &mut commands,
+                &mut art,
+                &mut mats,
+                p.extend(0.3),
+                (b.vel * 0.3).extend(0.0),
+                Color::srgb(1.0, 0.45, 0.15),
+                3.0,
+                rng.0.range(0.4, 0.8),
+                (b.radius * 1.4, 0.1),
+                1.0,
+            );
         }
     }
 }
@@ -331,7 +477,11 @@ fn update_particles(
     }
 }
 
-fn update_flashes(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Flash, &mut PointLight)>) {
+fn update_flashes(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut q: Query<(Entity, &mut Flash, &mut PointLight)>,
+) {
     let dt = time.delta_secs();
     for (e, mut f, mut l) in &mut q {
         f.life -= dt;
@@ -353,11 +503,16 @@ fn update_shield(
 ) {
     flash.0 = (flash.0 - time.delta_secs() * 2.5).max(0.0);
     let ship = &sim.0.ship;
-    let base = if ship.shield > 0.5 && ship.docked.is_none() { 0.012 } else { 0.0 };
+    let base = if ship.shield > 0.5 && ship.docked.is_none() {
+        0.012
+    } else {
+        0.0
+    };
     let a = base + flash.0 * 0.9;
     for m in &q {
         if let Some(mut mat) = mats.get_mut(&m.0) {
-            mat.base_color = Color::LinearRgba(LinearRgba::rgb(0.3 * a * 3.0, 0.9 * a * 3.0, 1.0 * a * 3.0));
+            mat.base_color =
+                Color::LinearRgba(LinearRgba::rgb(0.3 * a * 3.0, 0.9 * a * 3.0, 1.0 * a * 3.0));
         }
     }
 }

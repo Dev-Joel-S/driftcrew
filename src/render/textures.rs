@@ -20,7 +20,11 @@ fn hash(mut x: u32) -> u32 {
 }
 
 fn lattice2(x: i32, y: i32, seed: u32) -> f32 {
-    let h = hash((x as u32).wrapping_mul(0x8da6_b343) ^ (y as u32).wrapping_mul(0xd816_3841) ^ seed.wrapping_mul(0xcb1a_b31f));
+    let h = hash(
+        (x as u32).wrapping_mul(0x8da6_b343)
+            ^ (y as u32).wrapping_mul(0xd816_3841)
+            ^ seed.wrapping_mul(0xcb1a_b31f),
+    );
     (h & 0xffff) as f32 / 65535.0
 }
 
@@ -70,7 +74,11 @@ pub fn fbm2(x: f32, y: f32, octaves: u32, period: i32, seed: u32) -> f32 {
 
 pub fn vnoise3(p: Vec3, seed: u32) -> f32 {
     let (xi, yi, zi) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
-    let (fx, fy, fz) = (smooth(p.x - xi as f32), smooth(p.y - yi as f32), smooth(p.z - zi as f32));
+    let (fx, fy, fz) = (
+        smooth(p.x - xi as f32),
+        smooth(p.y - yi as f32),
+        smooth(p.z - zi as f32),
+    );
     let l = |dx, dy, dz| lattice3(xi + dx, yi + dy, zi + dz, seed);
     let x00 = l(0, 0, 0) + (l(1, 0, 0) - l(0, 0, 0)) * fx;
     let x10 = l(0, 1, 0) + (l(1, 1, 0) - l(0, 1, 0)) * fx;
@@ -106,7 +114,11 @@ fn to_u8(x: f32) -> u8 {
 }
 
 pub fn lerp3(a: Rgb, b: Rgb, t: f32) -> Rgb {
-    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    ]
 }
 
 /// Farbverlauf über mehrere Stützfarben, t in 0..1.
@@ -123,13 +135,21 @@ pub fn gradient(colors: &[Rgb], t: f32) -> Rgb {
 }
 
 fn sampler(repeat: bool, mips: bool) -> ImageSampler {
-    let mode = if repeat { ImageAddressMode::Repeat } else { ImageAddressMode::ClampToEdge };
+    let mode = if repeat {
+        ImageAddressMode::Repeat
+    } else {
+        ImageAddressMode::ClampToEdge
+    };
     ImageSampler::Descriptor(ImageSamplerDescriptor {
         address_mode_u: mode,
         address_mode_v: mode,
         mag_filter: ImageFilterMode::Linear,
         min_filter: ImageFilterMode::Linear,
-        mipmap_filter: if mips { ImageFilterMode::Linear } else { ImageFilterMode::Nearest },
+        mipmap_filter: if mips {
+            ImageFilterMode::Linear
+        } else {
+            ImageFilterMode::Nearest
+        },
         anisotropy_clamp: if mips { 8 } else { 1 },
         ..Default::default()
     })
@@ -137,7 +157,11 @@ fn sampler(repeat: bool, mips: bool) -> ImageSampler {
 
 /// RGBA8-Bild, optional mit auf der CPU erzeugten Mipmaps.
 pub fn make_image(w: u32, h: u32, data: Vec<u8>, srgb: bool, repeat: bool, mips: bool) -> Image {
-    let format = if srgb { TextureFormat::Rgba8UnormSrgb } else { TextureFormat::Rgba8Unorm };
+    let format = if srgb {
+        TextureFormat::Rgba8UnormSrgb
+    } else {
+        TextureFormat::Rgba8Unorm
+    };
     let mut levels = 1u32;
     let mut all = data.clone();
     if mips {
@@ -149,7 +173,10 @@ pub fn make_image(w: u32, h: u32, data: Vec<u8>, srgb: bool, repeat: bool, mips:
                 for x in 0..nw {
                     for c in 0..4 {
                         let s = |xx: u32, yy: u32| cur[((yy * cw + xx) * 4 + c) as usize] as u32;
-                        let v = s(2 * x, 2 * y) + s(2 * x + 1, 2 * y) + s(2 * x, 2 * y + 1) + s(2 * x + 1, 2 * y + 1);
+                        let v = s(2 * x, 2 * y)
+                            + s(2 * x + 1, 2 * y)
+                            + s(2 * x, 2 * y + 1)
+                            + s(2 * x + 1, 2 * y + 1);
                         next[((y * nw + x) * 4 + c) as usize] = (v / 4) as u8;
                     }
                 }
@@ -226,10 +253,21 @@ pub fn panels(size: u32, panels_per_side: u32, seed: u32) -> PanelSet {
             let ly = fy % cell;
             let edge = lx.min(cell - lx).min(ly).min(cell - ly);
             // Fuge
-            let seam = if edge < 1.6 { 1.0 } else if edge < 3.5 { 1.0 - (edge - 1.6) / 1.9 } else { 0.0 };
+            let seam = if edge < 1.6 {
+                1.0
+            } else if edge < 3.5 {
+                1.0 - (edge - 1.6) / 1.9
+            } else {
+                0.0
+            };
             // Nieten an den Ecken
             let mut rivet = 0.0f32;
-            for (cx, cy) in [(6.5, 6.5), (cell - 6.5, 6.5), (6.5, cell - 6.5), (cell - 6.5, cell - 6.5)] {
+            for (cx, cy) in [
+                (6.5, 6.5),
+                (cell - 6.5, 6.5),
+                (6.5, cell - 6.5),
+                (cell - 6.5, cell - 6.5),
+            ] {
                 let d = ((lx - cx).powi(2) + (ly - cy).powi(2)).sqrt();
                 rivet = rivet.max((1.0 - d / 2.6).clamp(0.0, 1.0));
             }
@@ -287,7 +325,11 @@ pub fn windows(size: u32, seed: u32) -> (Image, Image) {
             alb[i + 3] = 255;
             if inside && lit {
                 let grad = 0.75 + 0.25 * (1.0 - ly / ch);
-                let c: Rgb = if warm { [1.0, 0.82, 0.55] } else { [0.55, 0.95, 1.0] };
+                let c: Rgb = if warm {
+                    [1.0, 0.82, 0.55]
+                } else {
+                    [0.55, 0.95, 1.0]
+                };
                 emi[i] = to_u8(c[0] * grad);
                 emi[i + 1] = to_u8(c[1] * grad);
                 emi[i + 2] = to_u8(c[2] * grad);
@@ -295,7 +337,10 @@ pub fn windows(size: u32, seed: u32) -> (Image, Image) {
             emi[i + 3] = 255;
         }
     }
-    (make_image(size, size, alb, true, true, true), make_image(size, size, emi, true, true, true))
+    (
+        make_image(size, size, alb, true, true, true),
+        make_image(size, size, emi, true, true, true),
+    )
 }
 
 /// Gestein (kachelbar) + Normalen.
@@ -364,7 +409,8 @@ pub fn planet(colors: &[Rgb], seed: u32, w: u32, h: u32, bands: f32) -> Image {
             );
             let n = fbm3(p * 2.2 + warp * 1.8, 6, seed);
             let n = ((n - 0.3) / 0.42).clamp(0.0, 1.0);
-            let band = ((p.y * bands + n * 3.0 + warp.x * 2.0).sin() * 0.5 + 0.5) * (bands / 12.0).min(1.0);
+            let band = ((p.y * bands + n * 3.0 + warp.x * 2.0).sin() * 0.5 + 0.5)
+                * (bands / 12.0).min(1.0);
             let t = (n * 0.8 + band * 0.3).clamp(0.0, 1.0);
             let t = t * t * (3.0 - 2.0 * t);
             let mut c = gradient(colors, t);
@@ -480,8 +526,16 @@ pub fn ring(size: u32, thickness: f32) -> Image {
             let v = (y as f32 + 0.5) / n as f32 * 2.0 - 1.0;
             let r = (u * u + v * v).sqrt();
             let d = ((r - (1.0 - thickness)) / thickness).clamp(-1.0, 1.0);
-            let a = if r > 1.0 { 0.0 } else { (1.0 - d.abs()).powf(1.5) };
-            let inner = if r < 1.0 - thickness { (r / (1.0 - thickness)).powf(6.0) * 0.25 } else { 0.0 };
+            let a = if r > 1.0 {
+                0.0
+            } else {
+                (1.0 - d.abs()).powf(1.5)
+            };
+            let inner = if r < 1.0 - thickness {
+                (r / (1.0 - thickness)).powf(6.0) * 0.25
+            } else {
+                0.0
+            };
             let i = (y * n + x) * 4;
             out[i] = 255;
             out[i + 1] = 255;
@@ -512,7 +566,8 @@ pub fn anomaly(size: u32, seed: u32) -> Image {
             out[i] = c;
             out[i + 1] = c;
             out[i + 2] = to_u8(shade * 0.66);
-            out[i + 3] = to_u8(edge * (0.55 + 0.45 * (1.0 - r)).min(1.0) * if r < 0.08 { 0.0 } else { 1.0 });
+            out[i + 3] =
+                to_u8(edge * (0.55 + 0.45 * (1.0 - r)).min(1.0) * if r < 0.08 { 0.0 } else { 1.0 });
         }
     }
     make_image(size, size, out, true, false, false)

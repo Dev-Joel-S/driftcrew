@@ -5,9 +5,11 @@
 use bevy::input::gamepad::{Gamepad, GamepadButton};
 use bevy::prelude::*;
 
-use super::{chip, panel, text, Signature, ACCENT, BAD, BG_FOCUS, BORDER, GOOD, MUTED, TEAL, TEXT};
+use super::{ACCENT, BAD, BG_FOCUS, BORDER, GOOD, MUTED, Signature, TEAL, TEXT, chip, panel, text};
 use crate::game::{AppState, GameCamera, LobbyMode, Sim};
-use crate::input::{fresh_claimable, ActiveBindings, Binding, Btn, ClaimTarget, Crew, Device, MenuInput};
+use crate::input::{
+    ActiveBindings, Binding, Btn, ClaimTarget, Crew, Device, MenuInput, fresh_claimable,
+};
 use crate::render::slot_color;
 use crate::sim::data::ShipDef;
 use crate::sim::thruster_label;
@@ -39,9 +41,6 @@ pub struct LobbyState {
 struct LobbyRoot;
 
 #[derive(Component)]
-struct LobbyPanel;
-
-#[derive(Component)]
 struct TargetRow(usize);
 
 #[derive(Component)]
@@ -52,7 +51,9 @@ struct SlotLabelLayer;
 
 /// Alle belegbaren Ziele des Schiffs in Belegungsreihenfolge.
 pub fn targets(def: &ShipDef) -> Vec<ClaimTarget> {
-    let mut v: Vec<ClaimTarget> = (0..def.max_thrusters() as usize).map(ClaimTarget::Thruster).collect();
+    let mut v: Vec<ClaimTarget> = (0..def.max_thrusters() as usize)
+        .map(ClaimTarget::Thruster)
+        .collect();
     v.extend((0..def.tool_parts().count()).map(ClaimTarget::Tool));
     v
 }
@@ -60,7 +61,15 @@ pub fn targets(def: &ShipDef) -> Vec<ClaimTarget> {
 pub fn target_name(def: &ShipDef, t: ClaimTarget) -> String {
     match t {
         ClaimTarget::Thruster(i) => {
-            let order = ["links", "rechts", "Mitte", "außen links", "außen rechts", "ganz außen links", "ganz außen rechts"];
+            let order = [
+                "links",
+                "rechts",
+                "Mitte",
+                "außen links",
+                "außen rechts",
+                "ganz außen links",
+                "ganz außen rechts",
+            ];
             format!("Triebwerk {}", order.get(i).copied().unwrap_or("extra"))
         }
         ClaimTarget::Tool(i) => def
@@ -113,7 +122,10 @@ fn enter_lobby(
     ));
 }
 
-fn exit_lobby(mut commands: Commands, q: Query<Entity, Or<(With<LobbyRoot>, With<SlotLabelLayer>)>>) {
+fn exit_lobby(
+    mut commands: Commands,
+    q: Query<Entity, Or<(With<LobbyRoot>, With<SlotLabelLayer>)>>,
+) {
     for e in &q {
         commands.entity(e).despawn();
     }
@@ -157,7 +169,11 @@ fn lobby_input(
     }
     if input.backspace {
         // Letzte Tastatur-Belegung lösen.
-        if let Some(pos) = crew.bindings.iter().rposition(|b| b.btn.device() == Device::Keyboard) {
+        if let Some(pos) = crew
+            .bindings
+            .iter()
+            .rposition(|b| b.btn.device() == Device::Keyboard)
+        {
             let b = crew.bindings.remove(pos);
             state.cursor = ts.iter().position(|t| *t == b.target).unwrap_or(0);
             changed = true;
@@ -165,12 +181,15 @@ fn lobby_input(
     }
     // Select am Gamepad löst dessen letzte Belegung.
     for (e, g, _) in &pads {
-        if g.just_pressed(GamepadButton::Select) {
-            if let Some(pos) = crew.bindings.iter().rposition(|b| b.btn.device() == Device::Pad(e)) {
-                let b = crew.bindings.remove(pos);
-                state.cursor = ts.iter().position(|t| *t == b.target).unwrap_or(0);
-                changed = true;
-            }
+        if g.just_pressed(GamepadButton::Select)
+            && let Some(pos) = crew
+                .bindings
+                .iter()
+                .rposition(|b| b.btn.device() == Device::Pad(e))
+        {
+            let b = crew.bindings.remove(pos);
+            state.cursor = ts.iter().position(|t| *t == b.target).unwrap_or(0);
+            changed = true;
         }
     }
 
@@ -181,7 +200,11 @@ fn lobby_input(
         let target = ts[state.cursor.min(ts.len() - 1)];
         let player = crew.player_for(btn.device(), &pads);
         crew.bindings.retain(|b| b.target != target);
-        crew.bindings.push(Binding { btn, player, target });
+        crew.bindings.push(Binding {
+            btn,
+            player,
+            target,
+        });
         state.cursor = first_free(&crew, &ts);
         changed = true;
     }
@@ -195,7 +218,10 @@ fn lobby_input(
     if input.enter || input.start {
         let thrusters = crew.thruster_claims().len() as u8;
         if thrusters < def.min_thrusters {
-            state.message = Some((format!("Mindestens {} Triebwerke belegen", def.min_thrusters), 3.0));
+            state.message = Some((
+                format!("Mindestens {} Triebwerke belegen", def.min_thrusters),
+                3.0,
+            ));
         } else {
             crew.prune_players();
             let loadout = crew.loadout();
@@ -245,7 +271,11 @@ fn lobby_preview(
 }
 
 fn binding_text(crew: &Crew, b: &Binding) -> String {
-    let who = crew.players.get(b.player).map(|p| p.label.clone()).unwrap_or_default();
+    let who = crew
+        .players
+        .get(b.player)
+        .map(|p| p.label.clone())
+        .unwrap_or_default();
     format!("[{}]  Spieler {} · {}", b.btn.label(), b.player + 1, who)
 }
 
@@ -259,11 +289,20 @@ fn draw_lobby(
     active: Res<ActiveBindings>,
     mut root: Query<(Entity, &mut Signature), With<LobbyRoot>>,
 ) {
-    let Ok((root, mut sig)) = root.single_mut() else { return };
+    let Ok((root, mut sig)) = root.single_mut() else {
+        return;
+    };
     let def = sim.0.data.ship(&sim.0.crew.current_ship).clone();
     let ts = targets(&def);
-    let msg = state.message.as_ref().filter(|(_, t)| *t > 0.0).map(|(m, _)| m.clone());
-    let key = format!("{:?}|{}|{:?}|{:?}|{:?}", crew.bindings, state.cursor, msg, active.0, *mode);
+    let msg = state
+        .message
+        .as_ref()
+        .filter(|(_, t)| *t > 0.0)
+        .map(|(m, _)| m.clone());
+    let key = format!(
+        "{:?}|{}|{:?}|{:?}|{:?}",
+        crew.bindings, state.cursor, msg, active.0, *mode
+    );
     let s = super::sig_of(&key);
     if sig.0 == s {
         return;
@@ -289,9 +328,13 @@ fn draw_lobby(
             });
             for (i, t) in ts.iter().enumerate() {
                 let bound = crew.bindings.iter().find(|b| b.target == *t);
-                let slot = bound.and_then(|b| active.0.iter().find(|a| a.btn == b.btn)).map(|a| a.slot);
+                let slot = bound
+                    .and_then(|b| active.0.iter().find(|a| a.btn == b.btn))
+                    .map(|a| a.slot);
                 let is_cursor = i == state.cursor;
-                let color = slot.map(slot_color).unwrap_or(Color::srgb(0.25, 0.27, 0.33));
+                let color = slot
+                    .map(slot_color)
+                    .unwrap_or(Color::srgb(0.25, 0.27, 0.33));
                 p.spawn((
                     Button,
                     Node {
@@ -302,7 +345,11 @@ fn draw_lobby(
                         border_radius: BorderRadius::all(Val::Px(8.0)),
                         ..default()
                     },
-                    BackgroundColor(if is_cursor { BG_FOCUS } else { Color::srgba(1.0, 1.0, 1.0, 0.03) }),
+                    BackgroundColor(if is_cursor {
+                        BG_FOCUS
+                    } else {
+                        Color::srgba(1.0, 1.0, 1.0, 0.03)
+                    }),
                     BorderColor::all(if is_cursor { BORDER } else { Color::NONE }),
                     TargetRow(i),
                 ))
@@ -334,9 +381,15 @@ fn draw_lobby(
             });
             let n_thr = crew.thruster_claims().len();
             let status = if n_thr < def.min_thrusters as usize {
-                (format!("Triebwerke: {n_thr} (mindestens {})", def.min_thrusters), BAD)
+                (
+                    format!("Triebwerke: {n_thr} (mindestens {})", def.min_thrusters),
+                    BAD,
+                )
             } else {
-                (format!("Triebwerke: {n_thr} · symmetrisch angeordnet"), GOOD)
+                (
+                    format!("Triebwerke: {n_thr} · symmetrisch angeordnet"),
+                    GOOD,
+                )
             };
             p.spawn(text(status.0, 15.0, status.1));
             let players: Vec<String> = crew
@@ -383,7 +436,9 @@ fn draw_slot_labels(
     layer: Query<Entity, With<SlotLabelLayer>>,
     mut labels: Query<(Entity, &SlotLabel, &mut Node, &mut Text)>,
 ) {
-    let (Ok((cam, cam_t)), Ok(layer)) = (cam.single(), layer.single()) else { return };
+    let (Ok((cam, cam_t)), Ok(layer)) = (cam.single(), layer.single()) else {
+        return;
+    };
     let ship = &sim.0.ship;
     let mut wanted: Vec<(usize, Vec2, String)> = Vec::new();
     for (ti, t) in ship.thrusters.iter().enumerate() {
@@ -400,9 +455,17 @@ fn draw_slot_labels(
     for t in &ship.tools {
         let out = (t.pos - ship.com).normalize_or(Vec2::Y);
         let world = ship.to_world(t.pos + out * 1.7);
-        let label = active.0.iter().find(|b| b.slot == t.slot).map(|b| b.btn.label());
+        let label = active
+            .0
+            .iter()
+            .find(|b| b.slot == t.slot)
+            .map(|b| b.btn.label());
         if let Some(l) = label {
-            wanted.push((t.slot as usize, world, format!("{}\n[{}]", t.kind.label(), l)));
+            wanted.push((
+                t.slot as usize,
+                world,
+                format!("{}\n[{}]", t.kind.label(), l),
+            ));
         }
     }
     let _ = &crew;

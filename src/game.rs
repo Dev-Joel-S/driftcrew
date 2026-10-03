@@ -6,7 +6,7 @@ use std::sync::Arc;
 use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
 
-use crate::input::{build_tick_input, ActiveBindings, Aims, Crew, InputLatch};
+use crate::input::{ActiveBindings, Aims, Crew, InputLatch, build_tick_input};
 use crate::sim::data::{CrewSave, GameData};
 use crate::sim::ship::Loadout;
 use crate::sim::{Command, SimEvent, SimState, TICK_HZ};
@@ -80,14 +80,61 @@ impl Plugin for GamePlugin {
             .add_message::<SimMsg>()
             .add_systems(
                 FixedUpdate,
-                fixed_tick.run_if(in_state(AppState::Playing).and(|p: Res<Paused>| !p.0)),
+                fixed_tick.run_if(in_state(AppState::Playing).and_then(|p: Res<Paused>| !p.0)),
             )
-            .add_systems(OnEnter(AppState::Playing), |mut p: ResMut<Paused>, mut m: ResMut<MapOpen>| {
-                p.0 = false;
-                m.0 = false;
-            })
-            .add_systems(Update, react_to_events.run_if(in_state(AppState::Playing)));
+            .add_systems(
+                OnEnter(AppState::Playing),
+                |mut p: ResMut<Paused>, mut m: ResMut<MapOpen>| {
+                    p.0 = false;
+                    m.0 = false;
+                },
+            )
+            .add_systems(Update, react_to_events.run_if(in_state(AppState::Playing)))
+            .add_systems(Update, toggle_fullscreen)
+            .add_systems(OnEnter(AppState::Playing), first_hints)
+            .add_systems(Last, save_on_exit);
     }
+}
+
+fn toggle_fullscreen(keys: Res<ButtonInput<KeyCode>>, mut windows: Query<&mut Window>) {
+    if !keys.just_pressed(KeyCode::F11) {
+        return;
+    }
+    for mut w in &mut windows {
+        w.mode = match w.mode {
+            bevy::window::WindowMode::Windowed => bevy::window::WindowMode::BorderlessFullscreen(
+                bevy::window::MonitorSelection::Current,
+            ),
+            _ => bevy::window::WindowMode::Windowed,
+        };
+    }
+}
+
+fn save_on_exit(
+    mut exit: MessageReader<AppExit>,
+    state: Res<State<AppState>>,
+    sim: Res<Sim>,
+    has_save: Res<HasSave>,
+) {
+    if exit.read().next().is_some() && (*state.get() == AppState::Playing || has_save.0) {
+        write_save(&sim.0.to_save());
+    }
+}
+
+/// Ein paar Tipps beim ersten Start der Sitzung.
+fn first_hints(mut shown: Local<bool>, mut toasts: ResMut<crate::ui::Toasts>) {
+    if *shown {
+        return;
+    }
+    *shown = true;
+    toasts.push(
+        "Alle Triebwerke = geradeaus · nur links = Drehung nach rechts",
+        crate::sim::ToastKind::Info,
+    );
+    toasts.push(
+        "Aufträge im Stationsmenü · Tab öffnet die Karte · F11 Vollbild",
+        crate::sim::ToastKind::Info,
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -120,12 +167,14 @@ fn react_to_events(
     mut next: ResMut<NextState<AppState>>,
     mut mode: ResMut<LobbyMode>,
     mut crew: ResMut<Crew>,
+    mut active: ResMut<ActiveBindings>,
 ) {
     let mut save = false;
     for SimMsg(e) in events.read() {
         match e {
             SimEvent::ShipChanged => {
                 crew.bindings.clear();
+                active.0.clear();
                 *mode = LobbyMode::NewShip;
                 next.set(AppState::Lobby);
                 save = true;

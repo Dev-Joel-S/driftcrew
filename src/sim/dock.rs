@@ -3,8 +3,8 @@
 use bevy::math::Vec2;
 
 use super::ship::{CargoKind, CraneState};
-use super::world::{angle_diff, Owner};
-use super::{Body, BodyKind, SimEvent, SimState, TickInput, ToastKind, DT};
+use super::world::{Owner, angle_diff};
+use super::{Body, BodyKind, DT, SimEvent, SimState, TickInput, ToastKind};
 
 /// Maximal erlaubte Geschwindigkeit beim Andocken.
 pub const DOCK_MAX_SPEED: f32 = 2.6;
@@ -40,7 +40,8 @@ impl SimState {
             best = Some(DockGuide {
                 pad: pi,
                 speed_ok: self.ship.vel.length() < DOCK_MAX_SPEED,
-                angle_ok: angle_diff(self.ship.angle, pad.ship_angle()).abs() < DOCK_MAX_ANGLE_DEG.to_radians(),
+                angle_ok: angle_diff(self.ship.angle, pad.ship_angle()).abs()
+                    < DOCK_MAX_ANGLE_DEG.to_radians(),
                 spin_ok: self.ship.ang_vel.abs() < 0.9,
                 in_zone: lateral.abs() < pad.half_width && along > rest - 0.6 && along < rest + 1.4,
                 distance: dist,
@@ -92,9 +93,10 @@ impl SimState {
     pub(crate) fn snap_to_pad(&mut self, pad: usize) {
         let p = self.world.pads[pad].clone();
         let rest = self.ship.rest_height();
-        let lateral = (self.ship.pos - p.center)
-            .dot(p.tangent())
-            .clamp(-(p.half_width - 0.8).max(0.0), (p.half_width - 0.8).max(0.0));
+        let lateral = (self.ship.pos - p.center).dot(p.tangent()).clamp(
+            -(p.half_width - 0.8).max(0.0),
+            (p.half_width - 0.8).max(0.0),
+        );
         let target = p.center + p.normal * (rest + 0.02) + p.tangent() * lateral;
         let ta = p.ship_angle();
         self.ship.angle += angle_diff(ta, self.ship.angle) * 0.2;
@@ -105,16 +107,14 @@ impl SimState {
 
     pub(crate) fn dock_at_station(&mut self, si: usize) {
         // Die Plattform, die dem Zentrum der Station am nächsten liegt (meist die sicherste).
-        let Some(st) = self.world.stations.get(si) else { return };
-        let Some(&pad) = st
-            .pads
-            .iter()
-            .min_by(|a, b| {
-                let da = (self.world.pads[**a].center - st.pos).length();
-                let db = (self.world.pads[**b].center - st.pos).length();
-                da.total_cmp(&db)
-            })
-        else {
+        let Some(st) = self.world.stations.get(si) else {
+            return;
+        };
+        let Some(&pad) = st.pads.iter().min_by(|a, b| {
+            let da = (self.world.pads[**a].center - st.pos).length();
+            let db = (self.world.pads[**b].center - st.pos).length();
+            da.total_cmp(&db)
+        }) else {
             return;
         };
         let p = self.world.pads[pad].clone();
@@ -189,7 +189,9 @@ impl SimState {
                         age: 0.0,
                     });
                 }
-                CargoKind::Container { mission, .. } => self.fail_mission(mission, "Fracht zerstört"),
+                CargoKind::Container { mission, .. } => {
+                    self.fail_mission(mission, "Fracht zerstört")
+                }
                 CargoKind::Ore(_) => {}
             }
         }

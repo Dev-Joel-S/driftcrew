@@ -16,7 +16,9 @@ pub fn v(p: P) -> Vec2 {
 /// Farbe aus "#rrggbb" in lineare-ish sRGB-Komponenten 0..1 (die Umrechnung macht das Rendering).
 pub fn hex(s: &str) -> [f32; 3] {
     let s = s.trim_start_matches('#');
-    let p = |i: usize| u8::from_str_radix(s.get(i..i + 2).unwrap_or("ff"), 16).unwrap_or(255) as f32 / 255.0;
+    let p = |i: usize| {
+        u8::from_str_radix(s.get(i..i + 2).unwrap_or("ff"), 16).unwrap_or(255) as f32 / 255.0
+    };
     [p(0), p(2), p(4)]
 }
 
@@ -101,16 +103,22 @@ fn default_min_thrusters() -> u8 {
 
 impl ShipDef {
     pub fn thruster_parts(&self) -> impl Iterator<Item = (usize, &PartDef, f32)> {
-        self.parts.iter().enumerate().filter_map(|(i, p)| match p.kind {
-            PartKind::Thruster(t) => Some((i, p, t)),
-            _ => None,
-        })
+        self.parts
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| match p.kind {
+                PartKind::Thruster(t) => Some((i, p, t)),
+                _ => None,
+            })
     }
     pub fn tool_parts(&self) -> impl Iterator<Item = (usize, &PartDef, ToolKind)> {
-        self.parts.iter().enumerate().filter_map(|(i, p)| match p.kind {
-            PartKind::Tool(k) => Some((i, p, k)),
-            _ => None,
-        })
+        self.parts
+            .iter()
+            .enumerate()
+            .filter_map(|(i, p)| match p.kind {
+                PartKind::Tool(k) => Some((i, p, k)),
+                _ => None,
+            })
     }
     pub fn max_thrusters(&self) -> u8 {
         self.thruster_parts().count() as u8
@@ -126,7 +134,11 @@ impl ShipDef {
     }
     /// x-Positionen der Triebwerke, wenn `n` belegt sind (symmetrisch neu angeordnet).
     pub fn thruster_xs(&self, n: u8) -> Vec<f32> {
-        if let Some(l) = self.thruster_layouts.iter().find(|l| l.count == n && l.xs.len() == n as usize) {
+        if let Some(l) = self
+            .thruster_layouts
+            .iter()
+            .find(|l| l.count == n && l.xs.len() == n as usize)
+        {
             return l.xs.clone();
         }
         let span = self
@@ -219,6 +231,8 @@ pub struct StationDef {
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct PlanetDef {
+    /// Kennung für Verweise aus anderen Daten (z. B. künftige Missionen).
+    #[allow(dead_code)]
     pub id: String,
     pub name: String,
     pub pos: P,
@@ -367,7 +381,11 @@ pub struct ShopDef {
 
 impl ShopDef {
     pub fn ore_price(&self, ore: Ore) -> u32 {
-        self.ore_prices.iter().find(|(o, _)| *o == ore).map(|(_, p)| *p).unwrap_or(5)
+        self.ore_prices
+            .iter()
+            .find(|(o, _)| *o == ore)
+            .map(|(_, p)| *p)
+            .unwrap_or(5)
     }
 }
 
@@ -473,6 +491,7 @@ impl GameData {
     }
 
     /// Nur die eingebetteten Daten (für Tests, unabhängig vom Arbeitsverzeichnis).
+    #[cfg(test)]
     pub fn embedded() -> Result<Self, String> {
         let data = GameData {
             ships: parse("ships.ron", SHIPS_RON)?,
@@ -496,7 +515,10 @@ impl GameData {
         for st in &self.world.stations {
             let w = st.layout.first().map(|r| r.chars().count()).unwrap_or(0);
             if st.layout.iter().any(|r| r.chars().count() != w) {
-                return Err(format!("Station {}: Layout-Zeilen unterschiedlich lang", st.id));
+                return Err(format!(
+                    "Station {}: Layout-Zeilen unterschiedlich lang",
+                    st.id
+                ));
             }
         }
         if self.station_index(&self.world.start_station).is_none() {
@@ -506,7 +528,10 @@ impl GameData {
     }
 
     pub fn ship(&self, id: &str) -> &ShipDef {
-        self.ships.iter().find(|s| s.id == id).unwrap_or(&self.ships[0])
+        self.ships
+            .iter()
+            .find(|s| s.id == id)
+            .unwrap_or(&self.ships[0])
     }
 
     pub fn station_index(&self, id: &str) -> Option<usize> {

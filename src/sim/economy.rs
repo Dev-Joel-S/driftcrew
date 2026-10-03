@@ -3,7 +3,7 @@
 use super::data::{GameData, Service, ServiceEffect, UpgradeEffect};
 use super::ship::{Loadout, ShipStats};
 use super::world::Owner;
-use super::{Command, SimEvent, SimState, TickInput, ToastKind, DT};
+use super::{Command, DT, SimEvent, SimState, TickInput, ToastKind};
 
 pub const VOTE_SECONDS: f32 = 10.0;
 
@@ -98,8 +98,13 @@ impl SimState {
                     .ok_or("Unbekannt")?;
                 let (needed, ok) = match item.effect {
                     ServiceEffect::Ammo(_) => (Service::Ammo, self.ship.ammo < self.ship.max_ammo),
-                    ServiceEffect::ShieldFull => (Service::Shield, self.ship.shield < self.ship.max_shield - 0.5),
-                    ServiceEffect::RepairFull => (Service::Repair, self.ship.hull < self.ship.max_hull - 0.5),
+                    ServiceEffect::ShieldFull => (
+                        Service::Shield,
+                        self.ship.shield < self.ship.max_shield - 0.5,
+                    ),
+                    ServiceEffect::RepairFull => {
+                        (Service::Repair, self.ship.hull < self.ship.max_hull - 0.5)
+                    }
                 };
                 if !st.has(needed) {
                     return Err(format!("{} bietet das nicht an", st.name));
@@ -107,10 +112,15 @@ impl SimState {
                 if !ok {
                     return Err("Bereits voll".into());
                 }
-                if matches!(item.effect, ServiceEffect::Ammo(_)) && !self.ship.has_tool(super::data::ToolKind::Cannon) {
+                if matches!(item.effect, ServiceEffect::Ammo(_))
+                    && !self.ship.has_tool(super::data::ToolKind::Cannon)
+                {
                     return Err("Keine Kanone belegt".into());
                 }
-                (item.name.clone(), self.service_price(&item.effect, item.price))
+                (
+                    item.name.clone(),
+                    self.service_price(&item.effect, item.price),
+                )
             }
             Purchase::Upgrade(id) => {
                 if !st.has(Service::Upgrades) {
@@ -120,11 +130,15 @@ impl SimState {
                 if self.crew.upgrades.contains(id) {
                     return Err("Bereits eingebaut".into());
                 }
-                if let Some(req) = &u.requires {
-                    if !self.crew.upgrades.contains(req) {
-                        let name = self.data.upgrade(req).map(|r| r.name.clone()).unwrap_or_default();
-                        return Err(format!("Benötigt {name}"));
-                    }
+                if let Some(req) = &u.requires
+                    && !self.crew.upgrades.contains(req)
+                {
+                    let name = self
+                        .data
+                        .upgrade(req)
+                        .map(|r| r.name.clone())
+                        .unwrap_or_default();
+                    return Err(format!("Benötigt {name}"));
                 }
                 (u.name.clone(), u.price)
             }
@@ -135,7 +149,12 @@ impl SimState {
                 if self.crew.owned_ships.contains(id) {
                     return Err("Gehört der Crew bereits".into());
                 }
-                let def = self.data.ships.iter().find(|s| &s.id == id).ok_or("Unbekannt")?;
+                let def = self
+                    .data
+                    .ships
+                    .iter()
+                    .find(|s| &s.id == id)
+                    .ok_or("Unbekannt")?;
                 (format!("Schiff: {}", def.name), def.price)
             }
         };
@@ -151,10 +170,10 @@ impl SimState {
                 Command::Undock => self.undock(),
                 Command::Buy { purchase, voter } => self.request_purchase(purchase.clone(), *voter),
                 Command::Vote { voter, yes } => {
-                    if let Some(v) = &mut self.vote {
-                        if let Some(slot) = v.votes.get_mut(*voter as usize) {
-                            *slot = if *yes { 1 } else { -1 };
-                        }
+                    if let Some(v) = &mut self.vote
+                        && let Some(slot) = v.votes.get_mut(*voter as usize)
+                    {
+                        *slot = if *yes { 1 } else { -1 };
                     }
                 }
                 Command::AcceptMission { id } => self.accept_mission(*id),
@@ -212,7 +231,10 @@ impl SimState {
         if passed {
             self.execute_purchase(&v.purchase);
         } else {
-            self.toast(format!("Abgelehnt: {} ({yes}:{no})", v.label), ToastKind::Warn);
+            self.toast(
+                format!("Abgelehnt: {} ({yes}:{no})", v.label),
+                ToastKind::Warn,
+            );
         }
     }
 
@@ -227,9 +249,17 @@ impl SimState {
         self.crew.credits -= price;
         match p {
             Purchase::Service(id) => {
-                let effect = self.data.shop.services.iter().find(|s| &s.id == id).map(|s| s.effect.clone());
+                let effect = self
+                    .data
+                    .shop
+                    .services
+                    .iter()
+                    .find(|s| &s.id == id)
+                    .map(|s| s.effect.clone());
                 match effect {
-                    Some(ServiceEffect::Ammo(n)) => self.ship.ammo = (self.ship.ammo + n).min(self.ship.max_ammo),
+                    Some(ServiceEffect::Ammo(n)) => {
+                        self.ship.ammo = (self.ship.ammo + n).min(self.ship.max_ammo)
+                    }
                     Some(ServiceEffect::ShieldFull) => self.ship.shield = self.ship.max_shield,
                     Some(ServiceEffect::RepairFull) => self.ship.hull = self.ship.max_hull,
                     None => {}
@@ -248,7 +278,9 @@ impl SimState {
                 self.switch_ship(id);
             }
         }
-        self.events.push(SimEvent::Purchased { name: label.clone() });
+        self.events.push(SimEvent::Purchased {
+            name: label.clone(),
+        });
         self.toast(format!("Gekauft: {label}  (-{price})"), ToastKind::Good);
     }
 
@@ -256,7 +288,9 @@ impl SimState {
         if !self.crew.owned_ships.iter().any(|s| s == id) || self.crew.current_ship == id {
             return;
         }
-        let Some(si) = self.docked_station() else { return };
+        let Some(si) = self.docked_station() else {
+            return;
+        };
         if !self.world.stations[si].has(Service::Ships) {
             self.toast("Schiffswechsel nur in Werften", ToastKind::Warn);
             return;
@@ -281,7 +315,10 @@ impl SimState {
             self.ship.docked = Some(pad);
         }
         self.events.push(SimEvent::ShipChanged);
-        self.toast(format!("Neues Schiff: {} – Slots neu verteilen", def.name), ToastKind::Good);
+        self.toast(
+            format!("Neues Schiff: {} – Slots neu verteilen", def.name),
+            ToastKind::Good,
+        );
     }
 
     /// Erz an Station oder Planeten-Außenposten abgeben. Was aktive Abbau-Aufträge
@@ -298,7 +335,9 @@ impl SimState {
                 .active
                 .iter()
                 .filter_map(|m| match m.kind {
-                    super::missions::MissionKind::Mining { ore: o, amount, .. } if o == ore => Some(amount),
+                    super::missions::MissionKind::Mining { ore: o, amount, .. } if o == ore => {
+                        Some(amount)
+                    }
                     _ => None,
                 })
                 .sum();
@@ -317,7 +356,10 @@ impl SimState {
         self.crew.credits += earned;
         self.crew.ore_sold += sold_t;
         self.events.push(SimEvent::Sold { credits: earned });
-        self.toast(format!("{sold_t:.1} t Erz verkauft  +{earned} Credits"), ToastKind::Good);
+        self.toast(
+            format!("{sold_t:.1} t Erz verkauft  +{earned} Credits"),
+            ToastKind::Good,
+        );
     }
 }
 
@@ -358,7 +400,10 @@ mod tests {
         buy(&mut s, Purchase::Upgrade("armor1".into()), 0);
         assert!(s.vote.is_some());
         s.step(&TickInput {
-            commands: vec![Command::Vote { voter: 1, yes: false }],
+            commands: vec![Command::Vote {
+                voter: 1,
+                yes: false,
+            }],
             ..Default::default()
         });
         // Alle haben abgestimmt → 1:1 → abgelehnt.
@@ -371,7 +416,10 @@ mod tests {
         let mut s = sim(3);
         buy(&mut s, Purchase::Upgrade("armor1".into()), 0);
         s.step(&TickInput {
-            commands: vec![Command::Vote { voter: 2, yes: true }],
+            commands: vec![Command::Vote {
+                voter: 2,
+                yes: true,
+            }],
             ..Default::default()
         });
         for _ in 0..(VOTE_SECONDS * 60.0) as usize + 5 {

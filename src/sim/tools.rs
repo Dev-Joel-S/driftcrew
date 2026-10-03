@@ -5,8 +5,8 @@ use bevy::math::Vec2;
 use super::data::ToolKind;
 use super::geom::{cross, ray_circle, ray_quad, rot};
 use super::ship::{CargoKind, CraneState, DrillHit};
-use super::world::{angle_diff, Shape};
-use super::{BodyKind, Projectile, SimEvent, SimState, TickInput, ToastKind, DT};
+use super::world::{Shape, angle_diff};
+use super::{BodyKind, DT, Projectile, SimEvent, SimState, TickInput, ToastKind};
 
 const SHOT_SPEED: f32 = 75.0;
 const SHOT_RECOIL: f32 = 2.2;
@@ -98,7 +98,10 @@ impl SimState {
         self.ship.tools[i].cooldown = 0.22;
         self.events.push(SimEvent::Shot { pos: mount, dir });
         if self.ship.ammo == 0 {
-            self.toast("Munition leer – an einer Station nachkaufen", ToastKind::Warn);
+            self.toast(
+                "Munition leer – an einer Station nachkaufen",
+                ToastKind::Warn,
+            );
         }
     }
 
@@ -127,10 +130,10 @@ impl SimState {
                         if !b.alive || !b.grabbable() {
                             continue;
                         }
-                        if let Some(t) = ray_circle(mount, dir, len, b.pos, b.radius + 0.3) {
-                            if best.is_none_or(|(bt, _)| t < bt) {
-                                best = Some((t, bi));
-                            }
+                        if let Some(t) = ray_circle(mount, dir, len, b.pos, b.radius + 0.3)
+                            && best.is_none_or(|(bt, _)| t < bt)
+                        {
+                            best = Some((t, bi));
                         }
                     }
                     let tip = mount + dir * len;
@@ -142,7 +145,10 @@ impl SimState {
                             let msg = format!("{name} am Haken – zur Zielstation schleppen");
                             self.toast(msg, ToastKind::Info);
                         }
-                        CraneState::Attached { body: self.bodies[bi].id, rope }
+                        CraneState::Attached {
+                            body: self.bodies[bi].id,
+                            rope,
+                        }
                     } else if len >= range || self.point_in_static(tip) {
                         CraneState::Retracting { len, dir }
                     } else {
@@ -166,7 +172,10 @@ impl SimState {
                 if just {
                     self.events.push(SimEvent::CraneRelease);
                     let d = (self.bodies[bi].pos - mount).length();
-                    CraneState::Retracting { len: d, dir: (self.bodies[bi].pos - mount).normalize_or_zero() }
+                    CraneState::Retracting {
+                        len: d,
+                        dir: (self.bodies[bi].pos - mount).normalize_or_zero(),
+                    }
                 } else {
                     let stowable = self.bodies[bi].stowable();
                     let mut rope = rope;
@@ -261,7 +270,9 @@ impl SimState {
                     .iter()
                     .position(|d| d.amount > 0.0 && angle_diff(ang, d.angle).abs() < half)
                 {
-                    let amount = rate.min(self.world.planets[pi].deposits[di].amount).min(free);
+                    let amount = rate
+                        .min(self.world.planets[pi].deposits[di].amount)
+                        .min(free);
                     if amount > 0.0 {
                         self.world.planets[pi].deposits[di].amount -= amount;
                         self.ship.store(CargoKind::Ore(ore), amount);
@@ -272,7 +283,10 @@ impl SimState {
                 }
             }
             Target::Body(bi) => {
-                if let BodyKind::Asteroid { ore, ore_left, hp, .. } = &mut self.bodies[bi].kind {
+                if let BodyKind::Asteroid {
+                    ore, ore_left, hp, ..
+                } = &mut self.bodies[bi].kind
+                {
                     *hp -= 5.0 * DT;
                     if let Some(o) = *ore {
                         let amount = rate.min(*ore_left).min(free);
@@ -291,7 +305,10 @@ impl SimState {
         if full {
             self.cargo_full_warning();
         }
-        self.ship.tools[i].drill = Some(DrillHit { point, ore: mined_ore });
+        self.ship.tools[i].drill = Some(DrillHit {
+            point,
+            ore: mined_ore,
+        });
     }
 
     fn cargo_full_warning(&mut self) {

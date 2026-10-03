@@ -2,12 +2,14 @@
 
 use bevy::prelude::*;
 
-use super::{chip, fmt_num, text, Signature, ACCENT, BAD, BG, BORDER, GOOD, MUTED, TEAL, TEXT, WARN};
+use super::{
+    ACCENT, BAD, BG, BORDER, GOOD, MUTED, Signature, TEAL, TEXT, WARN, chip, fmt_num, text,
+};
 use crate::game::{AppState, GameCamera, MapOpen, Paused, Sim};
 use crate::input::{ActiveBindings, Crew};
 use crate::render::{slot_color, srgb};
 use crate::sim::data::StationKind;
-use crate::sim::{thruster_label, SimState};
+use crate::sim::{SimState, thruster_label};
 
 pub struct HudPlugin;
 
@@ -17,7 +19,14 @@ impl Plugin for HudPlugin {
             .add_systems(OnExit(AppState::Playing), despawn_hud)
             .add_systems(
                 Update,
-                (update_info, update_bars, update_slots, update_radar, update_markers, update_center)
+                (
+                    update_info,
+                    update_bars,
+                    update_slots,
+                    update_radar,
+                    update_markers,
+                    update_center,
+                )
                     .run_if(in_state(AppState::Playing)),
             );
     }
@@ -202,7 +211,11 @@ fn spawn_hud(mut commands: Commands) {
                 Pickable::IGNORE,
             ))
             .with_children(|c| {
-                c.spawn((text("", 40.0, BAD), CenterText, TextLayout::justify(Justify::Center)));
+                c.spawn((
+                    text("", 40.0, BAD),
+                    CenterText,
+                    TextLayout::justify(Justify::Center),
+                ));
             });
             root.spawn((
                 Node {
@@ -215,7 +228,11 @@ fn spawn_hud(mut commands: Commands) {
                 Pickable::IGNORE,
             ))
             .with_children(|c| {
-                c.spawn((text("", 16.0, TEXT), DockGuideText, TextLayout::justify(Justify::Center)));
+                c.spawn((
+                    text("", 16.0, TEXT),
+                    DockGuideText,
+                    TextLayout::justify(Justify::Center),
+                ));
             });
             root.spawn((
                 Node {
@@ -253,26 +270,57 @@ fn region_name(sim: &SimState) -> String {
         .unwrap_or_default()
 }
 
-fn update_info(mut commands: Commands, sim: Res<Sim>, mut q: Query<(Entity, &mut Signature), With<InfoPanel>>) {
-    let Ok((e, mut sig)) = q.single_mut() else { return };
+fn update_info(
+    mut commands: Commands,
+    sim: Res<Sim>,
+    mut q: Query<(Entity, &mut Signature), With<InfoPanel>>,
+) {
+    let Ok((e, mut sig)) = q.single_mut() else {
+        return;
+    };
     let s = &sim.0;
     let mut lines: Vec<(String, f32, Color)> = vec![
-        (format!("◆ {} Credits", fmt_num(s.crew.credits)), 22.0, ACCENT),
         (
-            format!("{} · Crew {} · {}", s.data.ship(&s.crew.current_ship).name, s.crew.size, region_name(s)),
+            format!("◆ {} Credits", fmt_num(s.crew.credits)),
+            22.0,
+            ACCENT,
+        ),
+        (
+            format!(
+                "{} · Crew {} · {}",
+                s.data.ship(&s.crew.current_ship).name,
+                s.crew.size,
+                region_name(s)
+            ),
             13.0,
             MUTED,
         ),
     ];
     if s.active.is_empty() {
-        lines.push(("Keine Aufträge – an einer Station annehmen".into(), 13.0, MUTED));
+        lines.push((
+            "Keine Aufträge – an einer Station annehmen".into(),
+            13.0,
+            MUTED,
+        ));
     } else {
         for m in &s.active {
-            lines.push((m.title(s), 15.0, if m.is_distress() { Color::srgb(1.0, 0.45, 0.45) } else { TEXT }));
+            lines.push((
+                m.title(s),
+                15.0,
+                if m.is_distress() {
+                    Color::srgb(1.0, 0.45, 0.45)
+                } else {
+                    TEXT
+                },
+            ));
             lines.push((m.detail(s), 12.0, MUTED));
         }
     }
-    let key: String = lines.iter().map(|l| l.0.as_str()).collect::<Vec<_>>().join("|");
+    let key: String = lines
+        .iter()
+        .map(|l| l.0.as_str())
+        .collect::<Vec<_>>()
+        .join("|");
     let h = super::sig_of(&key);
     if sig.0 == h {
         return;
@@ -302,14 +350,24 @@ fn update_bars(
         let f = frac(b.0);
         n.width = Val::Percent(f * 100.0);
         if b.0 == BarKind::Hull {
-            bg.0 = if f < 0.3 { BAD } else if f < 0.6 { WARN } else { GOOD };
+            bg.0 = if f < 0.3 {
+                BAD
+            } else if f < 0.6 {
+                WARN
+            } else {
+                GOOD
+            };
         }
     }
     for (b, mut t) in &mut texts {
         let v = match b.0 {
             BarKind::Hull => format!("{:.0} / {:.0}", s.hull.max(0.0), s.max_hull),
             BarKind::Shield => format!("{:.0} / {:.0}", s.shield, s.max_shield),
-            BarKind::Cargo => format!("{:.1} / {:.1} t", s.cargo_mass().max(0.0), s.cargo_capacity()),
+            BarKind::Cargo => format!(
+                "{:.1} / {:.1} t",
+                s.cargo_mass().max(0.0),
+                s.cargo_capacity()
+            ),
         };
         if t.0 != v {
             t.0 = v;
@@ -321,7 +379,12 @@ fn update_bars(
         } else {
             String::new()
         };
-        let v = format!("{:.1} m/s  ·  {:.1} t Masse{}", s.vel.length(), s.mass, ammo);
+        let v = format!(
+            "{:.1} m/s  ·  {:.1} t Masse{}",
+            s.vel.length(),
+            s.mass,
+            ammo
+        );
         if t.0 != v {
             t.0 = v;
         }
@@ -336,7 +399,9 @@ fn update_slots(
     mut strip: Query<(Entity, &mut Signature), With<SlotStrip>>,
     mut boxes: Query<(&SlotBox, &mut BackgroundColor)>,
 ) {
-    let Ok((e, mut sig)) = strip.single_mut() else { return };
+    let Ok((e, mut sig)) = strip.single_mut() else {
+        return;
+    };
     let ship = &sim.0.ship;
     let key = format!("{:?}|{}", active.0, ship.slot_count);
     let h = super::sig_of(&key);
@@ -355,7 +420,11 @@ fn update_slots(
                     "?".into()
                 };
                 let c = slot_color(b.slot);
-                let who = if crew.players.len() > 1 { format!("S{}", b.player + 1) } else { String::new() };
+                let who = if crew.players.len() > 1 {
+                    format!("S{}", b.player + 1)
+                } else {
+                    String::new()
+                };
                 p.spawn((
                     Node {
                         flex_direction: FlexDirection::Column,
@@ -379,8 +448,13 @@ fn update_slots(
         });
     }
     for (sb, mut bg) in &mut boxes {
-        let on = ship.thrusters.iter().any(|t| t.slot == sb.0 && t.firing) || ship.tools.iter().any(|t| t.slot == sb.0 && t.pressed);
-        bg.0 = if on { slot_color(sb.0).with_alpha(0.55) } else { BG };
+        let on = ship.thrusters.iter().any(|t| t.slot == sb.0 && t.firing)
+            || ship.tools.iter().any(|t| t.slot == sb.0 && t.pressed);
+        bg.0 = if on {
+            slot_color(sb.0).with_alpha(0.55)
+        } else {
+            BG
+        };
     }
 }
 
@@ -388,7 +462,6 @@ struct Poi {
     pos: Vec2,
     color: Color,
     size: f32,
-    label: String,
     round: bool,
 }
 
@@ -404,7 +477,6 @@ fn pois(sim: &SimState) -> Vec<Poi> {
             pos: st.pos,
             color,
             size: 9.0,
-            label: st.name.clone(),
             round: false,
         });
     }
@@ -414,7 +486,6 @@ fn pois(sim: &SimState) -> Vec<Poi> {
             pos: p.pos,
             color: srgb(crate::sim::data::hex(&c)),
             size: (p.radius / 6.0).clamp(7.0, 14.0),
-            label: format!("{} ({})", p.name, p.ore.label()),
             round: true,
         });
     }
@@ -423,14 +494,19 @@ fn pois(sim: &SimState) -> Vec<Poi> {
             pos: an.pos,
             color: Color::srgb(1.0, 0.2, 0.2),
             size: 9.0,
-            label: an.name.clone(),
             round: true,
         });
     }
     v
 }
 
-fn update_radar(mut commands: Commands, sim: Res<Sim>, time: Res<Time>, radar: Query<Entity, With<Radar>>, dots: Query<Entity, With<RadarDot>>) {
+fn update_radar(
+    mut commands: Commands,
+    sim: Res<Sim>,
+    time: Res<Time>,
+    radar: Query<Entity, With<Radar>>,
+    dots: Query<Entity, With<RadarDot>>,
+) {
     let Ok(radar) = radar.single() else { return };
     for d in &dots {
         commands.entity(d).despawn();
@@ -446,7 +522,7 @@ fn update_radar(mut commands: Commands, sim: Res<Sim>, time: Res<Time>, radar: Q
         }
         Vec2::new(half + d.x, half - d.y)
     };
-    let mut spawn_dot = |c: &mut Commands, at: Vec2, size: f32, color: Color, round: bool| {
+    let spawn_dot = |c: &mut Commands, at: Vec2, size: f32, color: Color, round: bool| {
         let e = c
             .spawn((
                 Node {
@@ -470,15 +546,23 @@ fn update_radar(mut commands: Commands, sim: Res<Sim>, time: Res<Time>, radar: Q
     }
     let blink = (time.elapsed_secs() * 3.0).sin() > 0.0;
     for m in &s.active {
-        if let Some(t) = m.nav_target(s) {
-            if blink {
-                spawn_dot(&mut commands, place(t), 10.0, ACCENT, true);
-            }
+        if let Some(t) = m.nav_target(s)
+            && blink
+        {
+            spawn_dot(&mut commands, place(t), 10.0, ACCENT, true);
         }
     }
     for b in &s.bodies {
-        if matches!(b.kind, crate::sim::BodyKind::Meteor) && (b.pos - me).length() < RADAR_RANGE * 0.4 {
-            spawn_dot(&mut commands, place(b.pos), 3.0, Color::srgb(1.0, 0.5, 0.2), true);
+        if matches!(b.kind, crate::sim::BodyKind::Meteor)
+            && (b.pos - me).length() < RADAR_RANGE * 0.4
+        {
+            spawn_dot(
+                &mut commands,
+                place(b.pos),
+                3.0,
+                Color::srgb(1.0, 0.5, 0.2),
+                true,
+            );
         }
     }
     spawn_dot(&mut commands, Vec2::splat(half), 8.0, Color::WHITE, true);
@@ -498,7 +582,8 @@ fn update_markers(
     for e in &old {
         commands.entity(e).despawn();
     }
-    let (Ok(layer), Ok((cam, cam_t)), Ok(win)) = (layer.single(), cam.single(), windows.single()) else {
+    let (Ok(layer), Ok((cam, cam_t)), Ok(win)) = (layer.single(), cam.single(), windows.single())
+    else {
         return;
     };
     if map.0 || paused.0 {
@@ -506,10 +591,13 @@ fn update_markers(
     }
     let s = &sim.0;
     let size = Vec2::new(win.width(), win.height());
-    let mut add = |c: &mut Commands, world: Vec2, label: String, color: Color, arrow_always: bool| {
-        let Ok(p) = cam.world_to_viewport(cam_t, world.extend(0.0)) else { return };
+    let add = |c: &mut Commands, world: Vec2, label: String, color: Color, arrow_always: bool| {
+        let Ok(p) = cam.world_to_viewport(cam_t, world.extend(0.0)) else {
+            return;
+        };
         let margin = 40.0;
-        let on_screen = p.x > margin && p.y > margin && p.x < size.x - margin && p.y < size.y - margin;
+        let on_screen =
+            p.x > margin && p.y > margin && p.x < size.x - margin && p.y < size.y - margin;
         let dist = (world - s.ship.pos).length();
         if on_screen && !arrow_always {
             let e = c
@@ -526,18 +614,25 @@ fn update_markers(
                     Pickable::IGNORE,
                 ))
                 .with_children(|n| {
-                    n.spawn((text(label, 14.0, color), TextLayout::justify(Justify::Center), Pickable::IGNORE));
+                    n.spawn((
+                        text(label, 14.0, color),
+                        TextLayout::justify(Justify::Center),
+                        Pickable::IGNORE,
+                    ));
                 })
                 .id();
             c.entity(layer).add_child(e);
         } else if !on_screen {
             let center = size * 0.5;
             let dir = (p - center).normalize_or_zero();
-            let t = ((size.x * 0.5 - margin) / dir.x.abs().max(1e-3)).min((size.y * 0.5 - margin) / dir.y.abs().max(1e-3));
+            let t = ((size.x * 0.5 - margin) / dir.x.abs().max(1e-3))
+                .min((size.y * 0.5 - margin) / dir.y.abs().max(1e-3));
             let mut at = center + dir * t;
             if at.x > size.x - 250.0 && at.y < 250.0 {
                 at.y = 250.0;
             }
+            // Nicht über die Slot-Leiste und die Balken legen.
+            at.y = at.y.min(size.y - 150.0);
             let arrow = match (dir.x.abs() > dir.y.abs(), dir.x > 0.0, dir.y > 0.0) {
                 (true, true, _) => "▶",
                 (true, false, _) => "◀",
@@ -560,7 +655,10 @@ fn update_markers(
                 ))
                 .with_children(|n| {
                     n.spawn((text(arrow, 16.0, color), Pickable::IGNORE));
-                    n.spawn((text(format!("{label} {:.0} m", dist), 12.0, color), Pickable::IGNORE));
+                    n.spawn((
+                        text(format!("{label} {:.0} m", dist), 12.0, color),
+                        Pickable::IGNORE,
+                    ));
                 })
                 .id();
             c.entity(layer).add_child(e);
@@ -580,10 +678,19 @@ fn update_markers(
     for p in &s.world.planets {
         let anchor = p.pos + Vec2::Y * (p.radius + 8.0);
         // Planeten nur beschriften, wenn sie im Bild sind (sonst wird es zu voll).
-        if let Ok(v) = cam.world_to_viewport(cam_t, anchor.extend(0.0)) {
-            if v.x > 0.0 && v.y > 0.0 && v.x < size.x && v.y < size.y {
-                add(&mut commands, anchor, format!("{} · {}", p.name, p.ore.label()), MUTED, false);
-            }
+        if let Ok(v) = cam.world_to_viewport(cam_t, anchor.extend(0.0))
+            && v.x > 0.0
+            && v.y > 0.0
+            && v.x < size.x
+            && v.y < size.y
+        {
+            add(
+                &mut commands,
+                anchor,
+                format!("{} · {}", p.name, p.ore.label()),
+                MUTED,
+                false,
+            );
         }
     }
     for m in &s.active {
@@ -605,7 +712,10 @@ fn update_center(
     let s = &sim.0;
     if let Ok(mut t) = center.single_mut() {
         let v = if s.ship.destroyed {
-            format!("SCHIFF ZERSTÖRT\nBergung in {:.0} …", s.ship.respawn_timer.max(0.0).ceil())
+            format!(
+                "SCHIFF ZERSTÖRT\nBergung in {:.0} …",
+                s.ship.respawn_timer.max(0.0).ceil()
+            )
         } else {
             String::new()
         };
@@ -618,9 +728,16 @@ fn update_center(
             let name = s.world.owner_name(s.world.pads[pad].owner).to_string();
             c.0 = GOOD;
             format!("Angedockt: {name}  ·  ein Triebwerk zünden zum Abdocken")
-        } else if let Some(g) = s.dock_guide() {
+        } else if let Some(g) = s.dock_guide().filter(|g| {
+            let to_pad = s.world.pads[g.pad].center - s.ship.pos;
+            g.distance < 20.0 && (s.ship.vel.length() < 8.0 || s.ship.vel.dot(to_pad) > 0.0)
+        }) {
             let mark = |ok: bool| if ok { "✓" } else { "✗" };
-            c.0 = if g.speed_ok && g.angle_ok && g.spin_ok { GOOD } else { WARN };
+            c.0 = if g.speed_ok && g.angle_ok && g.spin_ok {
+                GOOD
+            } else {
+                WARN
+            };
             format!(
                 "ANDOCKEN  Tempo {} {:.1}  ·  Ausrichtung {}  ·  Drehung {}",
                 mark(g.speed_ok),
