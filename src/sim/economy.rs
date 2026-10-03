@@ -18,6 +18,14 @@ pub enum Purchase {
     RepayLoan,
     /// Versicherung abschließen (true) oder kündigen (false).
     Insurance(bool),
+    /// Modul an einem Bauplatz des aktuellen Schiffs anbauen bzw. abbauen.
+    Module {
+        mount: String,
+        module: String,
+    },
+    RemoveModule {
+        mount: String,
+    },
     /// Lackierung des aktuellen Schiffs ändern (`None` = zurück zum Werkslack).
     Paint {
         part: PaintPart,
@@ -61,6 +69,26 @@ impl Vote {
     }
 }
 
+/// Kosten eines Moduls.
+pub fn module_cost(m: &super::data::ModuleDef) -> super::workshop::Cost {
+    super::workshop::Cost {
+        credits: m.credits,
+        materials: m.materials.clone(),
+        parts: m.parts,
+        artifact: false,
+    }
+}
+
+/// Kosten eines Upgrades.
+pub fn upgrade_cost(u: &super::data::UpgradeDef) -> super::workshop::Cost {
+    super::workshop::Cost {
+        credits: u.price,
+        materials: u.materials.clone(),
+        parts: u.parts,
+        artifact: u.artifact,
+    }
+}
+
 pub fn stats_for(data: &GameData, upgrades: &[String]) -> ShipStats {
     let mut s = ShipStats::default();
     for id in upgrades {
@@ -77,6 +105,13 @@ pub fn stats_for(data: &GameData, upgrades: &[String]) -> ShipStats {
             UpgradeEffect::FuelTank(f) => s.fuel_mul += f,
             UpgradeEffect::ScanRange(m) => s.scan_mul *= m,
             UpgradeEffect::RepairDrones(r) => s.hull_regen += r,
+            UpgradeEffect::FuelBurn(m) => s.fuel_burn_mul *= m,
+            UpgradeEffect::CannonRate(m) => s.cannon_rate *= m,
+            UpgradeEffect::CannonDamage(m) => s.cannon_damage *= m,
+            UpgradeEffect::CraneLoad(m) => s.crane_load *= m,
+        }
+        if u.mass > 0.0 {
+            s.part_mass.push((u.part, u.mass));
         }
     }
     s
@@ -225,6 +260,7 @@ impl SimState {
                         .unwrap_or_default();
                     return Err(format!("Benötigt {name}"));
                 }
+                self.can_afford(&upgrade_cost(u))?;
                 (u.name.clone(), u.price)
             }
             Purchase::Ship(id) => {
@@ -273,6 +309,46 @@ impl SimState {
                 }
                 let l = self.crew.loan.as_ref().ok_or("Kein Kredit offen")?;
                 ("Kredit tilgen".to_string(), l.left)
+            }
+            Purchase::Module { mount, module } => {
+                if !st.has(Service::Ships) {
+                    return Err("Anbauen geht nur in einer Werft".into());
+                }
+                let base = self.data.ship(&self.crew.current_ship);
+                let m = base
+                    .mounts
+                    .iter()
+                    .find(|x| &x.id == mount)
+                    .ok_or("Unbekannter Bauplatz")?;
+                let md = self.data.module(module).ok_or("Unbekanntes Modul")?;
+                if !m.accepts.contains(&md.slot) {
+                    return Err(format!("{} passt nicht an {}", md.name, m.name));
+                }
+                if self
+                    .build_of(&self.crew.current_ship)
+                    .iter()
+                    .any(|(x, y)| x == mount && y == module)
+                {
+                    return Err("Ist schon angebaut".into());
+                }
+                self.can_afford(&module_cost(md))?;
+                (format!("{} an {}", md.name, m.name), md.credits)
+            }
+            Purchase::RemoveModule { mount } => {
+                if !st.has(Service::Ships) {
+                    return Err("Abbauen geht nur in einer Werft".into());
+                }
+                let (_, module) = self
+                    .build_of(&self.crew.current_ship)
+                    .iter()
+                    .find(|(x, _)| x == mount)
+                    .ok_or("Der Bauplatz ist leer")?;
+                let name = self
+                    .data
+                    .module(module)
+                    .map(|m| m.name.clone())
+                    .unwrap_or_default();
+                (format!("{name} abbauen"), 0)
             }
             Purchase::Insurance(on) => {
                 if *on == self.crew.insured {
@@ -352,6 +428,7 @@ impl SimState {
                 Command::Ping { player, pos } => self.add_ping(*player, *pos),
                 Command::SellCharts => self.sell_charts(),
                 Command::DeliverProject => self.deliver_project(),
+                Command::StoreCargo => self.store_cargo(),
                 Command::StartCourse { course } => self.arm_course(*course),
                 Command::AbortCourse => self.abort_course("auf Wunsch der Crew"),
                 Command::SetLoadout {
@@ -359,7 +436,7 @@ impl SimState {
                     tools,
                     crew_size,
                 } => {
-                    let def = self.data.ship(&self.crew.current_ship);
+                    let def = self.current_def();
                     let tools: Vec<usize> = tools
                         .iter()
                         .copied()
@@ -437,6 +514,28 @@ impl SimState {
         };
         self.crew.credits -= price;
         match p {
+            Purchase::Module { mount, module } => {
+                if let Some(md) = self.data.module(module).cloned() {
+                    // Ersetzt ein anderes Modul? Dessen halbes Material kommt ins Lager zurück.
+                    self.refund_module(mount);
+                    self.pay_materials(&module_cost(&md));
+                    self.set_module(mount, Some(module));
+                    self.after_rebuild(md.slot);
+                }
+            }
+            Purchase::RemoveModule { mount } => {
+                let slot = self
+                    .build_of(&self.crew.current_ship)
+                    .iter()
+                    .find(|(x, _)| x == mount)
+                    .and_then(|(_, m)| self.data.module(m))
+                    .map(|m| m.slot);
+                self.refund_module(mount);
+                self.set_module(mount, None);
+                if let Some(slot) = slot {
+                    self.after_rebuild(slot);
+                }
+            }
             Purchase::ShipOnCredit(id) => {
                 let full = self.data.ship(id).price;
                 let (_, rest, rate) = self.loan_terms(full);
@@ -482,6 +581,9 @@ impl SimState {
                 }
             }
             Purchase::Upgrade(id) => {
+                if let Some(u) = self.data.upgrade(id).cloned() {
+                    self.pay_materials(&upgrade_cost(&u));
+                }
                 self.crew.upgrades.push(id.clone());
                 let (old_max_hull, old_max_shield, old_max_fuel) =
                     (self.ship.max_hull, self.ship.max_shield, self.ship.max_fuel);
@@ -525,7 +627,7 @@ impl SimState {
             return;
         }
         self.crew.current_ship = id.to_string();
-        let def = self.data.ship(id).clone();
+        let def = self.current_def();
         // Fracht bleibt in der Werft nicht liegen – sie wird umgeladen, soweit Platz ist.
         let pad = self.ship.docked;
         let stats = stats_for(&self.data, &self.crew.upgrades);
@@ -548,6 +650,43 @@ impl SimState {
             format!("Neues Schiff: {} – Slots neu verteilen", def.name),
             ToastKind::Good,
         );
+    }
+
+    /// Abgebautes oder ersetztes Modul: die Hälfte des Materials kommt ins Lager zurück.
+    fn refund_module(&mut self, mount: &str) {
+        let Some(md) = self
+            .build_of(&self.crew.current_ship)
+            .iter()
+            .find(|(x, _)| x == mount)
+            .and_then(|(_, m)| self.data.module(m))
+            .cloned()
+        else {
+            return;
+        };
+        for (o, t) in &md.materials {
+            let i = super::data::Ore::ALL
+                .iter()
+                .position(|x| x == o)
+                .unwrap_or(0);
+            self.crew.storage[i] += t * 0.5;
+        }
+    }
+
+    /// Nach dem Umbau: Schiff neu zusammensetzen. Neue oder entfernte Slots (Triebwerk,
+    /// Werkzeug) heißen: Slots neu verteilen.
+    fn after_rebuild(&mut self, slot: super::data::ModuleSlot) {
+        use super::data::ModuleSlot;
+        let def = self.current_def();
+        match slot {
+            ModuleSlot::Engine | ModuleSlot::Tool => {
+                self.rebuild_ship(Loadout::full(&def));
+                self.events.push(SimEvent::ShipChanged);
+            }
+            ModuleSlot::Cargo | ModuleSlot::Armor => {
+                let loadout = self.loadout.clone();
+                self.rebuild_ship(loadout);
+            }
+        }
     }
 
     /// Erz an Station oder Planeten-Außenposten abgeben. Was aktive Abbau-Aufträge
@@ -623,6 +762,12 @@ mod tests {
         let data = Arc::new(GameData::embedded().unwrap());
         let mut save = CrewSave::new_game(&data);
         save.credits = 5000;
+        // Volles Crew-Lager: Upgrades kosten auch Material und Bauteile.
+        save.storage = crate::sim::data::Ore::ALL
+            .iter()
+            .map(|o| (*o, 50.0))
+            .collect();
+        save.storage_parts = 10;
         let def = data.ship(&save.current_ship).clone();
         SimState::new(data, &save, Loadout::full(&def), crew)
     }

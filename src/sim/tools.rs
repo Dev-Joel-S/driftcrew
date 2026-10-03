@@ -169,7 +169,7 @@ impl SimState {
         self.ship.ammo -= 1;
         let slot = self.ship.tools[i].slot;
         self.stats.slot(slot).shots += 1;
-        self.ship.tools[i].cooldown = 0.22;
+        self.ship.tools[i].cooldown = 0.22 * self.ship.cannon_rate;
         self.events.push(SimEvent::Shot { pos: mount, dir });
         if self.ship.ammo == 0 {
             self.toast(
@@ -400,10 +400,11 @@ impl SimState {
         }
         // Wracks sind verankert genug, dass vorher Bauteile nachgeben (siehe `tear_part`).
         let tearable = matches!(self.bodies[bi].kind, BodyKind::Wreck { parts, .. } if parts > 0);
-        if lambda > ROPE_BREAK_IMPULSE && !tearable {
+        let limit = ROPE_BREAK_IMPULSE * self.ship.crane_load;
+        if lambda > limit && !tearable {
             return None;
         }
-        let lambda = lambda.min(ROPE_BREAK_IMPULSE);
+        let lambda = lambda.min(limit);
         let b = &mut self.bodies[bi];
         b.vel -= n * (lambda / bm);
         b.ang_vel -= cross(rb, n * lambda) / bi_inertia;
@@ -415,7 +416,7 @@ impl SimState {
 
     /// Seilbelastung für die Anzeige glätten und vor dem Reißen warnen.
     fn note_strain(&mut self, i: usize, pull: f32) {
-        let target = (pull / ROPE_BREAK_IMPULSE).clamp(0.0, 1.0);
+        let target = (pull / (ROPE_BREAK_IMPULSE * self.ship.crane_load)).clamp(0.0, 1.0);
         let t = &mut self.ship.tools[i];
         // Schnell hoch, langsam runter – so bleibt ein Ruck kurz sichtbar.
         let k = if target > t.strain { 0.5 } else { 0.04 };

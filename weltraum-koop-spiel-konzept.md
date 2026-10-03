@@ -45,6 +45,13 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - Solo: z. B. zwei Joy-Cons, linker steuert die linke Seite, rechter die rechte
 - Slots können während des Spiels neu verteilt werden (z. B. wenn jemand ausfällt)
 
+## Werkstatt und Umbau
+
+- **Crew-Lager** für Material und Bauteile, an jeder Station befüllbar, in jeder Werft verbaubar
+- **Feste Bauplätze** pro Rumpf (Daten in `ships.ron`), Module aus `modules.ron` (Triebwerk, Fracht, Panzerung, Kran, Bohrer); Masse, Schwerpunkt und Trägheit folgen aus den Teilen
+- **Werft-Editor** im Stationsmenü (Reiter „Bau“) mit Markierungen am Schiff; Bauplan als RON exportierbar
+- **Upgrades pro Schiffsteil** mit Nachteil (Zusatzmasse am Teil), Kosten aus Credits, Material, Bauteilen und für die stärkste Stufe einem Artefakt; Kauf über die Abstimmung. Upgrades gelten für die Crew und wandern beim Schiffswechsel mit, Module bleiben am Rumpf
+
 ## Minispiele für einzelne Slots
 
 - Laufen in der Simulation und nur mit den Slot-Tasten
@@ -146,7 +153,7 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - **Online-Koop** mit Rollback-Netcode (z. B. ggrs / bevy_ggrs)
 - **Deterministische Physik mit Ganzzahlen / Fixed-Point** statt Floats, damit nur Eingaben übers Netz gehen
 - Spielstand online beim Host
-- Optional: Schiffseditor, Abstimmung auch für Missionen
+- Optional: Abstimmung auch für Missionen
 
 ## Architektur für Claude Code
 
@@ -170,5 +177,6 @@ Was sich gegenüber der ersten Fassung geändert hat (Begründungen und Details 
 - **Runde 2, Zielen:** Werkzeuge zielen ausschließlich mit dem Gerät des Slot-Besitzers
 - **Runde 3, Training und Zeitrennen:** in der offenen Welt mit Toren statt eigener Trainingsszenarien, Bestenliste pro Spielstand *(umgesetzt in Phase 7)*
 - **Runde 3, NPC-Schiffe:** volle Physik wie das Crew-Schiff, gesteuert per Autopilot über echte Triebwerke *(entschieden, Umsetzung in Phase 12)*
-- **Runde 3, Modulbau und Schiffseditor:** feste Bauplätze pro Rumpf (Daten) statt freiem Raster; die Belegung steht im Spielstand und lässt sich als RON exportieren *(entschieden, Umsetzung in Phase 11)*
-- **Runde 3, Material:** gemeinsames Crew-Lager wie die Kasse *(entschieden, Umsetzung in Phase 11)*
+- **Runde 3, Modulbau und Schiffseditor:** feste Bauplätze pro Rumpf (Daten) statt freiem Raster; die Belegung steht im Spielstand und lässt sich als RON exportieren *(umgesetzt in Phase 11)*
+- **Runde 3, Material:** gemeinsames Crew-Lager wie die Kasse *(umgesetzt in Phase 11)*
+- **Runde 3, Upgrades:** pro Schiffsteil mit Masse als Nachteil und Materialkosten; sie gelten weiter für die Crew (nicht pro Rumpf), Module dagegen gehören zum Rumpf

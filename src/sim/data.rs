@@ -46,7 +46,7 @@ impl ToolKind {
     }
 }
 
-#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub enum PartKind {
     Hull,
     Cockpit,
@@ -58,22 +58,33 @@ pub enum PartKind {
     Tool(ToolKind),
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct PartDef {
     pub kind: PartKind,
     pub pos: P,
     pub size: P,
     pub mass: f32,
     /// Schubrichtung in Grad relativ zur Schiffsnase (0 = schiebt nach vorne).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub dir: f32,
     /// Umriss des Teils (Optik und Kollision).
     #[serde(default)]
     pub shape: PartShape,
+    /// Feste Position: wird nicht mit den Triebwerken symmetrisch neu angeordnet
+    /// (angebaute Module an Bauplätzen).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub fixed: bool,
+}
+
+fn is_zero(x: &f32) -> bool {
+    *x == 0.0
+}
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 /// Umriss eines Schiffsteils. „Oben“ = Richtung Schiffsnase.
-#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Default)]
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Default)]
 pub enum PartShape {
     #[default]
     Box,
@@ -155,13 +166,13 @@ impl PartShape {
     }
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ThrusterLayout {
     pub count: u8,
     pub xs: Vec<f32>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ShipDef {
     pub id: String,
     pub name: String,
@@ -195,6 +206,61 @@ pub struct ShipDef {
     pub parts: Vec<PartDef>,
     #[serde(default)]
     pub thruster_layouts: Vec<ThrusterLayout>,
+    /// Bauplätze: feste Stellen am Rumpf, an die in der Werft Module angebaut werden.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mounts: Vec<MountDef>,
+}
+
+/// Ein Bauplatz am Rumpf.
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct MountDef {
+    pub id: String,
+    pub name: String,
+    pub pos: P,
+    /// Welche Modularten hier passen.
+    pub accepts: Vec<ModuleSlot>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModuleSlot {
+    Engine,
+    Cargo,
+    Tool,
+    Armor,
+}
+
+impl ModuleSlot {
+    pub fn label(self) -> &'static str {
+        match self {
+            ModuleSlot::Engine => "Triebwerk",
+            ModuleSlot::Cargo => "Fracht",
+            ModuleSlot::Tool => "Werkzeug",
+            ModuleSlot::Armor => "Panzerung",
+        }
+    }
+}
+
+/// Ein Modul, das in der Werft aus Credits, Material und Bauteilen gebaut wird.
+#[derive(Deserialize, Clone, Debug)]
+pub struct ModuleDef {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub slot: ModuleSlot,
+    pub part: PartKind,
+    pub size: P,
+    pub mass: f32,
+    #[serde(default)]
+    pub shape: PartShape,
+    /// Zusätzliche Hülle (Panzerung).
+    #[serde(default)]
+    pub hull: f32,
+    pub credits: u32,
+    #[serde(default)]
+    pub materials: Vec<(Ore, f32)>,
+    /// Bauteile aus Wracks.
+    #[serde(default)]
+    pub parts: u32,
 }
 
 fn default_ang_damp() -> f32 {
@@ -682,6 +748,46 @@ pub enum UpgradeEffect {
     ScanRange(f32),
     /// Reparaturdrohnen: Hülle flickt sich im Flug (Punkte pro Sekunde).
     RepairDrones(f32),
+    /// Treibstoffverbrauch (Faktor).
+    FuelBurn(f32),
+    /// Kanone: Nachladezeit (Faktor, < 1 = schneller) und Schaden (Faktor).
+    CannonRate(f32),
+    CannonDamage(f32),
+    /// Kran: Tragkraft – das Seil hält mehr aus (Faktor).
+    CraneLoad(f32),
+}
+
+/// Welches Schiffsteil ein Upgrade betrifft (dort sitzt auch die Zusatzmasse).
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum UpgradePart {
+    Thrusters,
+    Hull,
+    Shield,
+    Cargo,
+    Crane,
+    Drill,
+    Cannon,
+    Scanner,
+    Tank,
+    #[default]
+    Systems,
+}
+
+impl UpgradePart {
+    pub fn label(self) -> &'static str {
+        match self {
+            UpgradePart::Thrusters => "Triebwerke",
+            UpgradePart::Hull => "Hülle",
+            UpgradePart::Shield => "Schild",
+            UpgradePart::Cargo => "Frachtraum",
+            UpgradePart::Crane => "Kran",
+            UpgradePart::Drill => "Bohrer",
+            UpgradePart::Cannon => "Kanone",
+            UpgradePart::Scanner => "Scanner",
+            UpgradePart::Tank => "Tank",
+            UpgradePart::Systems => "Bordsysteme",
+        }
+    }
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -693,6 +799,27 @@ pub struct UpgradeDef {
     pub effect: UpgradeEffect,
     #[serde(default)]
     pub requires: Option<String>,
+    /// Betroffenes Schiffsteil und Stufe (1–3).
+    #[serde(default)]
+    pub part: UpgradePart,
+    #[serde(default = "default_tier")]
+    pub tier: u8,
+    /// Nachteil: Zusatzmasse pro betroffenem Teil (t), dazu ein kurzer Text.
+    #[serde(default)]
+    pub mass: f32,
+    #[serde(default)]
+    pub drawback: String,
+    /// Kosten außer Credits: Material aus dem Crew-Lager, Bauteile, ein Artefakt.
+    #[serde(default)]
+    pub materials: Vec<(Ore, f32)>,
+    #[serde(default)]
+    pub parts: u32,
+    #[serde(default)]
+    pub artifact: bool,
+}
+
+fn default_tier() -> u8 {
+    1
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -1145,6 +1272,16 @@ pub struct CrewSave {
     pub market: Vec<(String, Vec<f32>)>,
     #[serde(default)]
     pub demand: Option<DemandSave>,
+    /// Crew-Lager: Material pro Sorte (t), Bauteile aus Wracks, Artefakte.
+    #[serde(default)]
+    pub storage: Vec<(Ore, f32)>,
+    #[serde(default)]
+    pub storage_parts: u32,
+    #[serde(default)]
+    pub artifacts: Vec<String>,
+    /// Angebaute Module pro Schiff: (Schiff, [(Bauplatz, Modul)]).
+    #[serde(default)]
+    pub builds: Vec<(String, Vec<(String, String)>)>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -1209,6 +1346,10 @@ impl CrewSave {
             loan: None,
             market: Vec::new(),
             demand: None,
+            storage: Vec::new(),
+            storage_parts: 0,
+            artifacts: Vec::new(),
+            builds: Vec::new(),
         }
     }
 }
@@ -1226,6 +1367,7 @@ pub struct GameData {
     pub npcs: Vec<NpcDef>,
     pub radio: RadioDef,
     pub courses: CoursesDef,
+    pub modules: Vec<ModuleDef>,
 }
 
 const SHIPS_RON: &str = include_str!("../../assets/data/ships.ron");
@@ -1235,6 +1377,7 @@ const MISSIONS_RON: &str = include_str!("../../assets/data/missions.ron");
 const NPCS_RON: &str = include_str!("../../assets/data/npcs.ron");
 const RADIO_RON: &str = include_str!("../../assets/data/radio.ron");
 const COURSES_RON: &str = include_str!("../../assets/data/courses.ron");
+const MODULES_RON: &str = include_str!("../../assets/data/modules.ron");
 
 fn read_or(name: &str, embedded: &str) -> String {
     let path = std::path::Path::new("assets/data").join(name);
@@ -1256,6 +1399,7 @@ impl GameData {
             npcs: parse("npcs.ron", &read_or("npcs.ron", NPCS_RON))?,
             radio: parse("radio.ron", &read_or("radio.ron", RADIO_RON))?,
             courses: parse("courses.ron", &read_or("courses.ron", COURSES_RON))?,
+            modules: parse("modules.ron", &read_or("modules.ron", MODULES_RON))?,
         };
         data.validate()?;
         Ok(data)
@@ -1272,6 +1416,7 @@ impl GameData {
             npcs: parse("npcs.ron", NPCS_RON)?,
             radio: parse("radio.ron", RADIO_RON)?,
             courses: parse("courses.ron", COURSES_RON)?,
+            modules: parse("modules.ron", MODULES_RON)?,
         };
         data.validate()?;
         Ok(data)
@@ -1352,6 +1497,35 @@ impl GameData {
             .iter()
             .find(|s| s.id == id)
             .unwrap_or(&self.ships[0])
+    }
+
+    pub fn module(&self, id: &str) -> Option<&ModuleDef> {
+        self.modules.iter().find(|m| m.id == id)
+    }
+
+    /// Schiff mit angebauten Modulen: Grundschiff plus ein festes Teil pro belegtem Bauplatz.
+    /// Masse, Schwerpunkt und Trägheit ergeben sich daraus wie bei jedem Schiff.
+    pub fn built_ship(&self, id: &str, build: &[(String, String)]) -> ShipDef {
+        let mut def = self.ship(id).clone();
+        for (mount, module) in build {
+            let (Some(m), Some(md)) = (
+                def.mounts.iter().find(|x| &x.id == mount).cloned(),
+                self.module(module),
+            ) else {
+                continue;
+            };
+            def.parts.push(PartDef {
+                kind: md.part.clone(),
+                pos: m.pos,
+                size: md.size,
+                mass: md.mass,
+                dir: 0.0,
+                shape: md.shape,
+                fixed: true,
+            });
+            def.max_hull += md.hull;
+        }
+        def
     }
 
     pub fn station_index(&self, id: &str) -> Option<usize> {

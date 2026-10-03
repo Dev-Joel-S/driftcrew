@@ -2,7 +2,7 @@
 
 use bevy::math::Vec2;
 
-use super::data::{Ore, PartKind, PartShape, ShipDef, ToolKind, v};
+use super::data::{Ore, PartKind, PartShape, ShipDef, ToolKind, UpgradePart, v};
 use super::geom::{Poly, rot};
 
 /// Was die Lobby belegt hat: Anzahl Triebwerke und welche Werkzeuge (Index in `tool_parts`).
@@ -35,6 +35,12 @@ pub struct ShipStats {
     pub fuel_mul: f32,
     pub scan_mul: f32,
     pub hull_regen: f32,
+    pub fuel_burn_mul: f32,
+    pub cannon_rate: f32,
+    pub cannon_damage: f32,
+    pub crane_load: f32,
+    /// Nachteil der Upgrades: Zusatzmasse pro betroffenem Teil.
+    pub part_mass: Vec<(UpgradePart, f32)>,
 }
 
 impl Default for ShipStats {
@@ -51,6 +57,11 @@ impl Default for ShipStats {
             fuel_mul: 1.0,
             scan_mul: 1.0,
             hull_regen: 0.0,
+            fuel_burn_mul: 1.0,
+            cannon_rate: 1.0,
+            cannon_damage: 1.0,
+            crane_load: 1.0,
+            part_mass: Vec::new(),
         }
     }
 }
@@ -150,6 +161,43 @@ pub struct Tool {
     pub jitter: f32,
 }
 
+/// Upgrade-Masse auf die betroffenen Teile verteilen. Triebwerke, Fracht und Werkzeuge
+/// bekommen sie je Teil; Hülle, Schild und Bordsysteme sitzen im Rumpf; ein größerer Tank
+/// sitzt hinten bei den Triebwerken und zieht den Schwerpunkt nach hinten.
+fn add_upgrade_mass(parts: &mut [ShipPart], up: UpgradePart, m: f32) {
+    let each = |k: &PartKind| match up {
+        UpgradePart::Thrusters => matches!(k, PartKind::Thruster(_)),
+        UpgradePart::Cargo => matches!(k, PartKind::CargoPod(_)),
+        UpgradePart::Crane => *k == PartKind::Tool(ToolKind::Crane),
+        UpgradePart::Drill => *k == PartKind::Tool(ToolKind::Drill),
+        UpgradePart::Cannon => *k == PartKind::Tool(ToolKind::Cannon),
+        UpgradePart::Scanner => *k == PartKind::Tool(ToolKind::Scanner),
+        _ => false,
+    };
+    if up == UpgradePart::Tank {
+        let n = parts
+            .iter()
+            .filter(|p| matches!(p.kind, PartKind::Thruster(_)))
+            .count();
+        for p in parts.iter_mut() {
+            if matches!(p.kind, PartKind::Thruster(_)) {
+                p.mass += m / n.max(1) as f32;
+            }
+        }
+        return;
+    }
+    let mut hit = false;
+    for p in parts.iter_mut() {
+        if each(&p.kind) {
+            p.mass += m;
+            hit = true;
+        }
+    }
+    if !hit && let Some(p) = parts.iter_mut().find(|p| p.kind == PartKind::Hull) {
+        p.mass += m;
+    }
+}
+
 /// Ertragsfaktor beim Bohren je nach Ruhe der Zielhand: ruhig mehr, zittrig weniger.
 pub fn steady_factor(jitter: f32) -> f32 {
     let k = ((jitter - 0.25) / 1.75).clamp(0.0, 1.0);
@@ -231,6 +279,10 @@ pub struct Ship {
     pub fuel: f32,
     pub max_fuel: f32,
     pub fuel_burn: f32,
+    /// Kanone: Faktor auf die Nachladezeit und den Schaden; Kran: Faktor auf die Seilgrenze.
+    pub cannon_rate: f32,
+    pub cannon_damage: f32,
+    pub crane_load: f32,
     pub scan_range: f32,
     pub shield_regen: f32,
     pub shield_delay: f32,
@@ -257,17 +309,37 @@ impl Ship {
             def.min_thrusters.min(def.max_thrusters()),
             def.max_thrusters(),
         );
-        type Claimed = (f32, f32, f32, f32, Vec2, f32, PartShape, usize);
+        // Angebaute Module (feste Position) werden nicht umsortiert, sie hängen hinten an.
+        type Claimed = (f32, f32, f32, f32, Vec2, f32, PartShape, usize, bool);
         let mut claimed: Vec<Claimed> = def
             .thruster_parts()
             .take(n as usize)
-            .map(|(pi, p, t)| (p.pos.0, p.pos.1, t, p.dir, v(p.size), p.mass, p.shape, pi))
+            .map(|(pi, p, t)| {
+                (
+                    p.pos.0,
+                    p.pos.1,
+                    t,
+                    p.dir,
+                    v(p.size),
+                    p.mass,
+                    p.shape,
+                    pi,
+                    p.fixed,
+                )
+            })
             .collect();
-        claimed.sort_by(|a, b| a.0.total_cmp(&b.0));
-        let xs = def.thruster_xs(n);
+        claimed.sort_by(|a, b| a.8.cmp(&b.8).then(a.0.total_cmp(&b.0)));
+        let movable = claimed.iter().filter(|c| !c.8).count() as u8;
+        let xs = def.thruster_xs(movable);
         let mut thrusters = Vec::new();
-        for (i, (_, y, thrust, dir, size, mass, shape, part)) in claimed.into_iter().enumerate() {
-            let x = xs.get(i).copied().unwrap_or(0.0);
+        for (i, (x0, y, thrust, dir, size, mass, shape, part, fixed)) in
+            claimed.into_iter().enumerate()
+        {
+            let x = if fixed {
+                x0
+            } else {
+                xs.get(i).copied().unwrap_or(0.0)
+            };
             let pos = Vec2::new(x, y);
             parts.push(ShipPart {
                 kind: PartKind::Thruster(thrust),
@@ -344,6 +416,10 @@ impl Ship {
             }
         }
 
+        // Nachteil der Upgrades: Zusatzmasse an den betroffenen Teilen.
+        for (up, m) in &stats.part_mass {
+            add_upgrade_mass(&mut parts, *up, *m);
+        }
         let max_hull = def.max_hull + stats.hull_bonus;
         let max_shield = def.max_shield + stats.shield_bonus;
         let max_ammo = def.max_ammo + stats.ammo_bonus;
@@ -376,7 +452,10 @@ impl Ship {
             drill_rate: 1.6 * stats.drill_mul,
             fuel: max_fuel,
             max_fuel,
-            fuel_burn: def.fuel_burn,
+            fuel_burn: def.fuel_burn * stats.fuel_burn_mul,
+            cannon_rate: stats.cannon_rate,
+            cannon_damage: stats.cannon_damage,
+            crane_load: stats.crane_load,
             scan_range: 450.0 * stats.scan_mul,
             shield_regen: def.shield_regen,
             shield_delay: def.shield_delay,

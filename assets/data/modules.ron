@@ -1,0 +1,38 @@
+// Module für die Bauplätze der Rümpfe (ships.ron, mounts). Gebaut wird in einer Werft aus
+// Credits, Material aus dem Crew-Lager und Bauteilen aus Wracks. Ein Modul ist ein ganz
+// normales Schiffsteil: Masse, Schwerpunkt und Trägheit rechnen sich daraus.
+//   slot:  Engine, Cargo, Tool, Armor – muss zum Bauplatz passen
+//   part:  Teil wie in ships.ron (Thruster(Schub), CargoPod(t), Tool(...), Armor)
+//   hull:  zusätzliche Hülle (Panzerung)
+[
+    (
+        id: "triebwerk", name: "Zusatztriebwerk", slot: Engine,
+        description: "Eigener Slot. Seitlich angebaut dreht es das Schiff mit – Gegenschub nicht vergessen.",
+        part: Thruster(32.0), size: (0.46, 0.4), mass: 0.6, shape: Taper(1.0, 0.72),
+        credits: 220, materials: [(Ferrit, 4.0), (Kobalt, 2.0)], parts: 1,
+    ),
+    (
+        id: "frachtmodul", name: "Frachtmodul", slot: Cargo,
+        description: "+5 t Frachtraum. Einseitig angebaut wandert der Schwerpunkt zur Seite.",
+        part: CargoPod(5.0), size: (0.6, 1.2), mass: 0.7, shape: Nose(0.22),
+        credits: 140, materials: [(Ferrit, 5.0)],
+    ),
+    (
+        id: "panzerplatte", name: "Panzerplatte", slot: Armor,
+        description: "+30 Hülle – und 1,4 t mehr, die bei jedem Manöver mitwollen.",
+        part: Armor, size: (0.5, 1.3), mass: 1.4, shape: Chamfer(0.3), hull: 30.0,
+        credits: 160, materials: [(Ferrit, 6.0), (Schrott, 3.0)],
+    ),
+    (
+        id: "kran", name: "Zusatzkran", slot: Tool,
+        description: "Zweiter Kran mit eigenem Slot: zwei Seile an einer Last.",
+        part: Tool(Crane), size: (0.42, 0.42), mass: 0.6, shape: Chamfer(0.45),
+        credits: 260, materials: [(Ferrit, 3.0), (Ionit, 1.0)], parts: 1,
+    ),
+    (
+        id: "bohrer", name: "Zusatzbohrer", slot: Tool,
+        description: "Zweiter Bohrer mit eigenem Slot – zwei Leute bauen gleichzeitig ab.",
+        part: Tool(Drill), size: (0.4, 0.4), mass: 0.5, shape: Chamfer(0.45),
+        credits: 240, materials: [(Ferrit, 3.0), (Solarit, 1.0)], parts: 1,
+    ),
+]

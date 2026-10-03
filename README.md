@@ -31,7 +31,9 @@ eigener Name, eigener Look, alle Grafiken und Klänge werden beim Start prozedur
 | ![Schiff auf Kredit](docs/screenshots/werft_kredit.jpg) | ![Markt mit Preistrend und Nachfrage](docs/screenshots/markt_trend.jpg) |
 | ![Abrechnung nach dem Auftrag](docs/screenshots/abrechnung.jpg) | ![Triebwerk im Takt flicken](docs/screenshots/takt_triebwerk.jpg) |
 | ![Notreparatur der Hülle](docs/screenshots/notreparatur.jpg) | ![Andockport hacken](docs/screenshots/port_hacken.jpg) |
-| ![Ersatzteil mit dem Kran einsetzen](docs/screenshots/kran_ersatzteil.jpg) | |
+| ![Ersatzteil mit dem Kran einsetzen](docs/screenshots/kran_ersatzteil.jpg) | ![Werft-Editor: Bauplätze](docs/screenshots/werft_bau.jpg) |
+| ![Module für einen Bauplatz](docs/screenshots/bauplatz_module.jpg) | ![Umgebauter Driftkutter](docs/screenshots/umbau.jpg) |
+| ![Upgrades pro Schiffsteil](docs/screenshots/upgrades_teile.jpg) | |
 
 *(Screenshots aus dem automatischen Vorführmodus, gerendert mit Software-Vulkan.)*
 
@@ -274,6 +276,26 @@ Medaille einmal pro Spielstand) und eine **Bestenliste** mit den fünf besten L�
 Schiff, Crewgröße). Weit vom Kurs abkommen, woanders andocken oder „Parcours abbrechen“ im
 Pausemenü beendet den Lauf ohne Wertung; durch das eigene Starttor fliegen startet neu.
 
+### Werkstatt: Crew-Lager, Bauplätze, Upgrades
+
+- **Crew-Lager:** Erz, Schrott und Bauteile aus Wracks lassen sich an jeder Station einlagern
+  (Markt oder Werft: „Ins Crew-Lager einlagern“). Das Lager gehört der Crew wie die Kasse und
+  ist in jeder Werft verbaubar.
+- **Bauplätze (Reiter „Bau“ in der Werft):** Jeder Rumpf hat feste Bauplätze (Seite, Heck,
+  Bug, Ausleger …). Dort lassen sich Module anbauen: Zusatztriebwerk (eigener Slot), Frachtmodul,
+  Panzerplatte, Zusatzkran oder -bohrer – bezahlt mit Credits, Material und Bauteilen. Masse,
+  Schwerpunkt und Trägheit rechnen sich aus den Teilen: Ein einseitiges Frachtmodul zieht den
+  Schwerpunkt zur Seite, ein Triebwerk am Heck links dreht das Schiff mit. Am Schiff sind die
+  Bauplätze markiert; neue Slots heißen „Slots neu verteilen“. Abbauen gibt die Hälfte des
+  Materials zurück.
+- **Bauplan exportieren:** schreibt das Schiff mit allen Modulen als RON-Datei (`bauplaene/`
+  neben dem Spielstand) – lässt sich in `ships.ron` als neuer Rumpf übernehmen.
+- **Upgrades pro Schiffsteil** (Triebwerke, Hülle, Schild, Fracht, Kran, Bohrer, Kanone,
+  Scanner, Tank, Bordsysteme) in bis zu drei Stufen. Jedes hat einen Nachteil: Zusatzmasse am
+  betroffenen Teil (Panzerung macht träge, der Zusatztank zieht den Schwerpunkt nach hinten).
+  Kosten: Credits plus Material aus dem Lager, höhere Stufen auch Bauteile, die stärkste Stufe
+  ein Artefakt. Gekauft wird über die Abstimmung.
+
 ### Geld: Gebühren, Versicherung, Kredit, Markt
 
 - **Dockgebühr** an Stationen (je Ort verschieden, Ruf senkt sie um 20 % pro Stufe). Wer kurz
@@ -369,6 +391,8 @@ in die Binärdatei eingebettet; liegt `assets/data/` im Arbeitsverzeichnis (z. B
   `bulky` beschreibt sperrige Bergungsobjekte (Länge, Dicke, Masse).
 - `npcs.ron` – Auftraggeber: Name, Rolle, Ort, welche Aufträge sie vergeben, Porträtfarben, Sprüche.
 - `radio.ron` – Funksprüche beim Anflug, Andocken und Abdocken, allgemein und pro Ort.
+- `modules.ron` – Module für die Bauplätze (Teil, Größe, Masse, Kosten, passende Bauplatzart).
+  Die Bauplätze selbst stehen in `ships.ron` (`mounts`).
 - `courses.ron` – Parcours aus Schritten (`Gate`, `Pass`, `Face`, `Hold`, `Dock`) mit Hinweisen,
   Medaillenzeiten und Prämien, Strafzeiten und die Orte für Messflüge.
 
@@ -412,7 +436,7 @@ Damit ist der Weg zu Rollback-Netcode vorbereitet.
 
 **Vorführmodus:** `DRIFTCREW_DEMO=<ordner> DRIFTCREW_SCENE=<szene> cargo run` fliegt ein
 Skript ab, speichert Screenshots und beendet sich. Szenen: `tour`, `ui`, `systems`, `progress`,
-`coop`, `sectors`, `rules`, `rebuild`, `courses`, `finance`, `minigames`.
+`coop`, `sectors`, `rules`, `rebuild`, `courses`, `finance`, `minigames`, `workshop`.
 
 ---
 
@@ -421,7 +445,7 @@ Skript ab, speichert Screenshots und beendet sich. Szenen: `tour`, `ui`, `system
 - Online-Koop mit Rollback-Netcode (z. B. `ggrs` / `bevy_ggrs`)
 - Simulation auf Fixed-Point umstellen, damit nur Eingaben übers Netz gehen
 - Spielstand online beim Host
-- Schiffseditor und Modulbau (geplant, siehe WORKLOG), Abstimmung auch für Missionen
+- Abstimmung auch für Missionen
 - mehr Sektoren, Stationen und Missionstypen
 
 ---

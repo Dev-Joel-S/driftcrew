@@ -20,6 +20,7 @@ pub struct StationPlugin;
 impl Plugin for StationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<StationTab>()
+            .init_resource::<BuildView>()
             .add_systems(OnEnter(AppState::Playing), spawn_roots)
             .add_systems(OnExit(AppState::Playing), despawn_roots)
             .add_systems(
@@ -48,6 +49,7 @@ enum Tab {
     Ships,
     Project,
     Courses,
+    Build,
 }
 
 impl Tab {
@@ -61,6 +63,7 @@ impl Tab {
             Tab::Ships => "Werft",
             Tab::Project => "Aufbau",
             Tab::Courses => "Parcours",
+            Tab::Build => "Bau",
         }
     }
 }
@@ -77,6 +80,161 @@ enum Act {
     Undock,
     Course(usize),
     AbortCourse,
+    /// Werft-Editor: Bauplatz wählen (None = zurück zur Übersicht), Bauplan exportieren.
+    SelectMount(Option<String>),
+    Export,
+    Store,
+}
+
+/// Welcher Bauplatz im Werft-Editor gerade gewählt ist (reine Anzeige) und ob der Editor offen
+/// ist – das Overlay markiert dann die Bauplätze am Schiff.
+#[derive(Resource, Default, Clone, Debug)]
+pub struct BuildView {
+    pub open: bool,
+    pub selected: Option<String>,
+}
+
+/// Inhalt des Crew-Lagers in einer Zeile.
+pub fn storage_line(sim: &SimState) -> String {
+    let mut v: Vec<String> = crate::sim::data::Ore::ALL
+        .iter()
+        .filter(|o| sim.stored(**o) > 0.05)
+        .map(|o| format!("{} {:.0}", o.label(), sim.stored(*o)))
+        .collect();
+    if v.is_empty() {
+        v.push("kein Material".into());
+    }
+    v.push(format!("{} Teile", sim.crew.storage_parts));
+    if !sim.crew.artifacts.is_empty() {
+        v.push(format!("{} Artefakte", sim.crew.artifacts.len()));
+    }
+    format!("Lager (t): {}", v.join(" · "))
+}
+
+/// Einlagern: was ginge gerade ins Lager?
+fn store_item(sim: &SimState) -> Option<Item<Act>> {
+    let ore: f32 = crate::sim::data::Ore::ALL
+        .iter()
+        .map(|o| sim.ship.ore_amount(*o))
+        .sum();
+    let parts = sim
+        .ship
+        .cargo
+        .iter()
+        .filter(|c| matches!(c.kind, crate::sim::ship::CargoKind::Salvage { .. }))
+        .count();
+    if ore < 0.05 && parts == 0 {
+        return None;
+    }
+    Some(
+        Item::new("Ins Crew-Lager einlagern", Act::Store)
+            .right(format!("{ore:.1} t · {parts} Teile"))
+            .detail("Material und Bauteile für Module und Upgrades – in jeder Werft verbaubar"),
+    )
+}
+
+/// Bauplan des aktuellen Schiffs (mit Modulen) als RON-Datei neben den Spielstand schreiben.
+fn export_layout(sim: &SimState) -> String {
+    let mut def = sim.current_def();
+    let n = sim.build_of(&sim.crew.current_ship).len();
+    if n > 0 {
+        def.id = format!("{}_umbau", def.id);
+        def.name = format!("{} (Umbau)", def.name);
+    }
+    let text = match ron::ser::to_string_pretty(&def, ron::ser::PrettyConfig::default()) {
+        Ok(t) => t,
+        Err(e) => return format!("Export fehlgeschlagen: {e}"),
+    };
+    let dir = crate::game::save_path()
+        .parent()
+        .map(|p| p.join("bauplaene"))
+        .unwrap_or_else(|| std::path::PathBuf::from("bauplaene"));
+    let path = dir.join(format!("{}.ron", def.id));
+    let header = format!(
+        "// Bauplan aus DriftCrew: {} mit {n} Modulen. In ships.ron als neuen Eintrag einfügen.\n",
+        def.name
+    );
+    match std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, header + &text)) {
+        Ok(()) => format!("Bauplan gespeichert: {}", path.display()),
+        Err(e) => format!("Export fehlgeschlagen: {e}"),
+    }
+}
+
+/// Reiter „Bau“ (Werft): Bauplätze des Schiffs, Module, Werte, Export.
+fn build_items(sim: &SimState, sel: &Option<String>, v: &mut Vec<Item<Act>>) {
+    let base = sim.data.ship(&sim.crew.current_ship);
+    let build = sim.build_of(&sim.crew.current_ship);
+    let module_at = |mount: &str| {
+        build
+            .iter()
+            .find(|(m, _)| m == mount)
+            .and_then(|(_, md)| sim.data.module(md))
+    };
+    if let Some(it) = store_item(sim) {
+        v.push(it);
+    }
+    if base.mounts.is_empty() {
+        v.push(Item::new("Dieser Rumpf hat keine Bauplätze", Act::Undock).enabled(false));
+        return;
+    }
+    match sel
+        .as_ref()
+        .and_then(|id| base.mounts.iter().find(|m| &m.id == id))
+    {
+        None => {
+            for m in &base.mounts {
+                let now = module_at(&m.id).map_or("leer".to_string(), |md| md.name.clone());
+                let fits: Vec<&str> = m.accepts.iter().map(|a| a.label()).collect();
+                v.push(
+                    Item::new(
+                        format!("{}: {now}", m.name),
+                        Act::SelectMount(Some(m.id.clone())),
+                    )
+                    .right("wählen")
+                    .detail(format!("passt: {}", fits.join(", "))),
+                );
+            }
+            v.push(
+                Item::new("Bauplan exportieren", Act::Export)
+                    .detail("Schiff mit allen Modulen als RON-Datei – lässt sich in ships.ron als neuer Rumpf übernehmen"),
+            );
+        }
+        Some(m) => {
+            v.push(
+                Item::new(format!("← {}", m.name), Act::SelectMount(None))
+                    .detail("zurück zur Übersicht"),
+            );
+            if let Some(md) = module_at(&m.id) {
+                let p = Purchase::RemoveModule {
+                    mount: m.id.clone(),
+                };
+                v.push(
+                    Item::new(format!("{} abbauen", md.name), Act::Buy(p))
+                        .right("0 Cr")
+                        .detail("Die Hälfte des Materials kommt ins Crew-Lager zurück"),
+                );
+            }
+            for md in sim
+                .data
+                .modules
+                .iter()
+                .filter(|md| m.accepts.contains(&md.slot))
+            {
+                let p = Purchase::Module {
+                    mount: m.id.clone(),
+                    module: md.id.clone(),
+                };
+                let cost = crate::sim::economy::module_cost(md);
+                let detail = format!("{} · +{:.1} t · {}", cost.label(), md.mass, md.description);
+                let it = Item::new(format!("{} anbauen", md.name), Act::Buy(p.clone()))
+                    .right(format!("{} Cr", md.credits));
+                v.push(match sim.purchase_info(&p) {
+                    Ok(_) => it.detail(detail),
+                    Err(reason) => it.detail(format!("{detail} – {reason}")).enabled(false),
+                });
+            }
+        }
+    }
 }
 
 /// Parcours, die an dieser Station angeboten werden.
@@ -293,6 +451,7 @@ fn tabs_for(sim: &SimState) -> Vec<Tab> {
             }
             if st.has(Service::Ships) {
                 v.push(Tab::Ships);
+                v.push(Tab::Build);
             }
             if st.has(Service::Upgrades) {
                 v.push(Tab::Upgrades);
@@ -313,7 +472,7 @@ fn tabs_for(sim: &SimState) -> Vec<Tab> {
     }
 }
 
-fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
+fn items_for(sim: &SimState, tab: Tab, sel: &Option<String>) -> Vec<Item<Act>> {
     let mut v: Vec<Item<Act>> = Vec::new();
     let price_or = |p: &Purchase| sim.purchase_info(p);
     match tab {
@@ -376,19 +535,28 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
             for u in &sim.data.shop.upgrades {
                 let p = Purchase::Upgrade(u.id.clone());
                 let owned = sim.crew.upgrades.contains(&u.id);
+                let tier = ["", "I", "II", "III"][u.tier.min(3) as usize];
+                let name = format!("{} · {}", u.part.label(), u.name);
+                let cost = crate::sim::economy::upgrade_cost(u);
+                let info = if u.drawback.is_empty() {
+                    format!("Stufe {tier} · {}", u.description)
+                } else {
+                    format!(
+                        "Stufe {tier} · {} · Nachteil: {}",
+                        u.description, u.drawback
+                    )
+                };
                 let it = if owned {
-                    Item::new(u.name.clone(), Act::Buy(p))
+                    Item::new(name, Act::Buy(p))
                         .right("✓ eingebaut")
                         .enabled(false)
-                        .detail(u.description.clone())
+                        .detail(info)
                 } else {
+                    let it = Item::new(name, Act::Buy(p.clone())).right(format!("{} Cr", u.price));
                     match price_or(&p) {
-                        Ok(_) => Item::new(u.name.clone(), Act::Buy(p))
-                            .right(format!("{} Cr", u.price))
-                            .detail(u.description.clone()),
-                        Err(reason) => Item::new(u.name.clone(), Act::Buy(p))
-                            .right(format!("{} Cr", u.price))
-                            .detail(format!("{} – {}", u.description, reason))
+                        Ok(_) => it.detail(format!("{info}\nKosten: {}", cost.label())),
+                        Err(reason) => it
+                            .detail(format!("{info}\nKosten: {} – {reason}", cost.label()))
                             .enabled(false),
                     }
                 };
@@ -497,6 +665,7 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
         }
         Tab::Project => project_items(sim, &mut v),
         Tab::Courses => course_items(sim, &mut v),
+        Tab::Build => build_items(sim, sel, &mut v),
         Tab::Paint => {
             use crate::render::srgb;
             use crate::sim::data::hex;
@@ -696,6 +865,9 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
             } else {
                 format!("{total:.1} t an Bord")
             };
+            if let Some(it) = store_item(sim) {
+                v.push(it);
+            }
             let it = Item::new("Fracht verkaufen", Act::Sell)
                 .right(format!("+{credits} Cr"))
                 .detail(what)
@@ -837,6 +1009,8 @@ fn station_menu(
     tab_buttons: Query<(&Interaction, &TabButton), Changed<Interaction>>,
     mut last_owner: Local<Option<Owner>>,
     mut scroll: ResMut<super::MenuScroll>,
+    mut view: ResMut<BuildView>,
+    mut toasts: ResMut<super::Toasts>,
 ) {
     let Ok((root, mut sig)) = root.single_mut() else {
         return;
@@ -878,7 +1052,11 @@ fn station_menu(
     }
     tab.0 = tab.0.min(tabs.len() - 1);
     let current = tabs[tab.0];
-    let items = items_for(s, current);
+    view.open = current == Tab::Build;
+    if !view.open {
+        view.selected = None;
+    }
+    let items = items_for(s, current, &view.selected);
 
     let mut f = focus.0[MENU_STATION];
     // Bestätigen nur per Enter/Start (Gesichtstasten könnten Triebwerke sein).
@@ -913,6 +1091,15 @@ fn station_menu(
             Some(Act::Undock) => pending.0.push(Command::Undock),
             Some(Act::Course(course)) => pending.0.push(Command::StartCourse { course }),
             Some(Act::AbortCourse) => pending.0.push(Command::AbortCourse),
+            Some(Act::SelectMount(m)) => {
+                view.selected = m;
+                focus.0[MENU_STATION] = 0;
+            }
+            Some(Act::Store) => pending.0.push(Command::StoreCargo),
+            Some(Act::Export) => {
+                let msg = export_layout(s);
+                toasts.push(msg, crate::sim::ToastKind::Info);
+            }
             None => {}
         }
     }
@@ -960,6 +1147,26 @@ fn station_menu(
             ));
             if let Some(si) = s.docked_station() {
                 p.spawn(text(reputation_line(s, si), 13.0, MUTED));
+            }
+            // Werkstatt: was im Crew-Lager liegt und wie das Schiff gerade dasteht.
+            if matches!(current, Tab::Build | Tab::Upgrades) {
+                p.spawn(text(storage_line(s), 12.0, TEAL));
+            }
+            if current == Tab::Build {
+                let sh = &s.ship;
+                p.spawn(text(
+                    format!(
+                        "{:.1} t · Schwerpunkt {:+.2}/{:+.2} · Trägheit {:.0} · Hülle {:.0} · Fracht {:.0} t",
+                        sh.mass,
+                        sh.com.x + 0.0,
+                        sh.com.y + 0.0,
+                        sh.inertia,
+                        sh.max_hull,
+                        sh.cargo_capacity()
+                    ),
+                    12.0,
+                    MUTED,
+                ));
             }
             if current == Tab::Missions
                 && let Some(owner) = s.docked_owner()

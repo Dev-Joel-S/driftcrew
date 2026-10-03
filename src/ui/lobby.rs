@@ -49,7 +49,7 @@ fn hot_join(
     if paused.0 {
         return;
     }
-    let def = sim.0.data.ship(&sim.0.crew.current_ship).clone();
+    let def = sim.0.current_def();
     let ts = targets(&def);
     for btn in fresh_claimable(&keys, &mouse, &pads) {
         let device = btn.device();
@@ -159,7 +159,7 @@ fn enter_lobby(
     sim: Res<Sim>,
     mut state: ResMut<LobbyState>,
 ) {
-    let def = sim.0.data.ship(&sim.0.crew.current_ship).clone();
+    let def = sim.0.current_def();
     let ts = targets(&def);
     state.cursor = first_free(&crew, &ts);
     state.backup = (*mode == LobbyMode::Redistribute).then(|| crew.clone());
@@ -212,7 +212,7 @@ fn lobby_input(
     mut active: ResMut<ActiveBindings>,
     mut next: ResMut<NextState<AppState>>,
 ) {
-    let def = sim.0.data.ship(&sim.0.crew.current_ship).clone();
+    let def = sim.0.current_def();
     let ts = targets(&def);
     if ts.is_empty() {
         return;
@@ -358,7 +358,7 @@ fn draw_lobby(
     let Ok((root, mut sig)) = root.single_mut() else {
         return;
     };
-    let def = sim.0.data.ship(&sim.0.crew.current_ship).clone();
+    let def = sim.0.current_def();
     let ts = targets(&def);
     let msg = state
         .message

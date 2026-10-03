@@ -5,6 +5,8 @@
 // symmetrisch neu angeordnet.
 // shield_regen/shield_delay = Schild lädt nach so vielen Sekunden ohne Treffer (Standard 4/4),
 // crew = empfohlene Crewgröße (von, bis), fuel_capacity = Tank, fuel_burn = Verbrauch pro Schubeinheit und Sekunde (Standard 0.0065).
+// mounts = Bauplätze: feste Stellen, an die in der Werft Module (modules.ron) angebaut werden;
+// accepts sagt, welche Modularten passen (Engine, Cargo, Tool, Armor).
 [
     (
         id: "driftkutter",
@@ -42,6 +44,12 @@
             (count: 4, xs: [-1.45, -0.5, 0.5, 1.45]),
             (count: 5, xs: [-1.45, -0.6, 0.0, 0.6, 1.45]),
         ],
+        mounts: [
+            (id: "seite_l", name: "Seite links",  pos: (-2.15, 0.2),   accepts: [Cargo, Armor, Tool]),
+            (id: "seite_r", name: "Seite rechts", pos: (2.15, 0.2),    accepts: [Cargo, Armor, Tool]),
+            (id: "heck_l",  name: "Heck links",   pos: (-2.15, -1.25), accepts: [Engine, Armor]),
+            (id: "heck_r",  name: "Heck rechts",  pos: (2.15, -1.25),  accepts: [Engine, Armor]),
+        ],
     ),
     (
         id: "kolibri",
@@ -75,6 +83,12 @@
         thruster_layouts: [
             (count: 2, xs: [-0.55, 0.55]),
             (count: 3, xs: [-0.55, 0.0, 0.55]),
+        ],
+        mounts: [
+            (id: "seite_l", name: "Seite links",  pos: (-1.2, 0.0),   accepts: [Cargo, Armor]),
+            (id: "seite_r", name: "Seite rechts", pos: (1.2, 0.0),    accepts: [Cargo, Armor]),
+            (id: "heck_l",  name: "Heck links",   pos: (-1.05, -1.0), accepts: [Engine]),
+            (id: "heck_r",  name: "Heck rechts",  pos: (1.05, -1.0),  accepts: [Engine]),
         ],
     ),
     (
@@ -113,6 +127,11 @@
             (count: 2, xs: [-0.5, 0.5]),
             (count: 3, xs: [-1.25, 0.0, 1.25]),
             (count: 4, xs: [-1.25, -0.5, 0.5, 1.25]),
+        ],
+        mounts: [
+            (id: "fluegel_l", name: "Flügel links",  pos: (-2.05, 0.3), accepts: [Armor, Cargo, Tool]),
+            (id: "fluegel_r", name: "Flügel rechts", pos: (2.05, 0.3),  accepts: [Armor, Cargo, Tool]),
+            (id: "heck_m",    name: "Heck Mitte",    pos: (0.0, -1.55), accepts: [Engine]),
         ],
     ),
     (
@@ -160,6 +179,12 @@
             (count: 6, xs: [-2.0, -1.2, -0.4, 0.4, 1.2, 2.0]),
             (count: 7, xs: [-2.0, -1.3, -0.6, 0.0, 0.6, 1.3, 2.0]),
         ],
+        mounts: [
+            (id: "seite_l", name: "Seite links",  pos: (-2.95, 0.05), accepts: [Cargo, Armor, Tool]),
+            (id: "seite_r", name: "Seite rechts", pos: (2.95, 0.05),  accepts: [Cargo, Armor, Tool]),
+            (id: "bug_l",   name: "Bug links",    pos: (-2.0, 1.95),  accepts: [Tool, Armor]),
+            (id: "bug_r",   name: "Bug rechts",   pos: (2.0, 1.95),   accepts: [Tool, Armor]),
+        ],
     ),
     (
         id: "pelikan",
@@ -201,6 +226,11 @@
             (count: 4, xs: [-1.6, -0.6, 0.6, 1.6]),
             (count: 5, xs: [-2.45, -1.2, 0.0, 1.2, 2.45]),
             (count: 6, xs: [-2.45, -1.6, -0.6, 0.6, 1.6, 2.45]),
+        ],
+        mounts: [
+            (id: "ausleger_l", name: "Ausleger links",  pos: (-2.3, 0.45), accepts: [Cargo, Armor, Tool]),
+            (id: "ausleger_r", name: "Ausleger rechts", pos: (2.3, 0.45),  accepts: [Cargo, Armor, Tool]),
+            (id: "heck_m",     name: "Heck Mitte",      pos: (0.0, -1.45), accepts: [Engine]),
         ],
     ),
 ]

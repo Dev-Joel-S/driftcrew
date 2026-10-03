@@ -1254,6 +1254,47 @@ fn minigame_scene() -> Vec<(f32, Act)> {
     ]
 }
 
+/// Phase 11: Crew-Lager, Werft-Editor mit Bauplätzen, Module, umgebautes Schiff, Upgrades
+/// pro Teil mit Nachteil und Materialkosten.
+fn workshop_scene() -> Vec<(f32, Act)> {
+    vec![
+        (0.5, |c| {
+            keyboard_crew(c, false);
+            c.next.set(AppState::Playing);
+        }),
+        (2.0, |c| {
+            let orion = station(c, "werft");
+            let s = &mut c.sim.0;
+            s.crew.credits = 2400;
+            s.crew.storage = [18.0, 6.0, 3.0, 2.0, 5.0];
+            s.crew.storage_parts = 3;
+            s.ship.docked = None;
+            s.dock_at_station(orion);
+        }),
+        (3.0, |c| c.menu.right = true),
+        (3.3, |c| c.menu.right = true),
+        (4.6, |c| shot(c, "werft_bau")),
+        (5.3, |c| c.menu.enter = true),
+        (5.8, |c| c.menu.down = true),
+        (6.1, |c| c.menu.down = true),
+        (6.4, |c| c.menu.down = true),
+        (7.0, |c| shot(c, "bauplatz_module")),
+        (7.4, |c| {
+            // Umbau: Frachtmodul links, Zusatztriebwerk hinten links, Panzerplatte hinten rechts.
+            let s = &mut c.sim.0;
+            s.set_module("seite_l", Some("frachtmodul"));
+            s.set_module("heck_l", Some("triebwerk"));
+            s.set_module("heck_r", Some("panzerplatte"));
+            let def = s.current_def();
+            s.rebuild_ship(crate::sim::ship::Loadout::full(&def));
+        }),
+        (8.8, |c| shot(c, "umbau")),
+        (9.4, |c| c.menu.right = true),
+        (10.8, |c| shot(c, "upgrades_teile")),
+        (11.8, |_| {}),
+    ]
+}
+
 fn ui_scene() -> Vec<(f32, Act)> {
     vec![
         (2.5, |c| shot(c, "titel")),
@@ -1323,6 +1364,7 @@ fn demo_script(
         "courses" => courses_scene(),
         "finance" => finance_scene(),
         "minigames" => minigame_scene(),
+        "workshop" => workshop_scene(),
         _ => tour(),
     };
     let mut pad = pads.iter().next();

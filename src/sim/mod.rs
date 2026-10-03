@@ -37,6 +37,9 @@ pub mod stats;
 #[cfg(test)]
 mod systems_tests;
 pub mod tools;
+pub mod workshop;
+#[cfg(test)]
+mod workshop_tests;
 pub mod world;
 
 use std::sync::Arc;
@@ -102,6 +105,8 @@ pub enum Command {
     SellCharts,
     /// Material und Bauteile für den Wiederaufbau der angedockten Station abgeben.
     DeliverProject,
+    /// Erz, Schrott und Bauteile aus dem Frachtraum ins Crew-Lager bringen.
+    StoreCargo,
     /// Parcours wählen (der Lauf beginnt am Starttor) bzw. den laufenden abbrechen.
     StartCourse {
         course: usize,
@@ -417,6 +422,12 @@ pub struct Crew {
     pub insured: bool,
     /// Laufender Schiffskredit.
     pub loan: Option<finance::Loan>,
+    /// Crew-Lager: Material pro Erzsorte (Reihenfolge wie `Ore::ALL`), Bauteile, Artefakte.
+    pub storage: [f32; 5],
+    pub storage_parts: u32,
+    pub artifacts: Vec<String>,
+    /// Angebaute Module pro Schiff: (Schiff, [(Bauplatz, Modul)]).
+    pub builds: Vec<(String, Vec<(String, String)>)>,
 }
 
 impl Crew {
@@ -536,9 +547,20 @@ impl SimState {
             liveries: save.liveries.clone(),
             insured: false,
             loan: None,
+            storage: [0.0; 5],
+            storage_parts: 0,
+            artifacts: Vec::new(),
+            builds: save.builds.clone(),
         };
         let stats = economy::stats_for(&data, &crew.upgrades);
-        let ship = Ship::build(data.ship(&crew.current_ship), &loadout, &stats);
+        let build: Vec<(String, String)> = crew
+            .builds
+            .iter()
+            .find(|(sh, _)| *sh == crew.current_ship)
+            .map(|(_, b)| b.clone())
+            .unwrap_or_default();
+        let def = data.built_ship(&crew.current_ship, &build);
+        let ship = Ship::build(&def, &loadout, &stats);
         let n_zones = data.world.meteor_zones.len();
         let n_stations = data.world.stations.len();
         let n_fields = data.world.asteroid_fields.len();
@@ -595,6 +617,7 @@ impl SimState {
         s.load_projects(save);
         s.load_records(save);
         s.load_finance(save);
+        s.load_workshop(save);
         s.populate_fields();
         s.populate_wrecks();
         s.refresh_offers();
@@ -619,7 +642,7 @@ impl SimState {
     /// Schiff mit neuer Slot-Belegung neu bauen (nach der Lobby). Zustand bleibt erhalten.
     pub fn rebuild_ship(&mut self, loadout: Loadout) {
         let stats = economy::stats_for(&self.data, &self.crew.upgrades);
-        let def = self.data.ship(&self.crew.current_ship).clone();
+        let def = self.current_def();
         let old = self.ship.clone();
         let mut ship = Ship::build(&def, &loadout, &stats);
         let same_ship = old.def_id == ship.def_id;
@@ -686,8 +709,13 @@ impl SimState {
             loan: None,
             market: Vec::new(),
             demand: None,
+            storage: Vec::new(),
+            storage_parts: 0,
+            artifacts: Vec::new(),
+            builds: Vec::new(),
         };
         self.save_finance(&mut save);
+        self.save_workshop(&mut save);
         save
     }
 

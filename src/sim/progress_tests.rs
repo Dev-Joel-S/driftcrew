@@ -557,7 +557,9 @@ fn shield_recharges_but_hull_needs_drones() {
     }
     assert!(s.ship.shield > 5.0, "lädt nach: {}", s.ship.shield);
     assert_eq!(s.ship.hull, 50.0, "Hülle heilt nicht von selbst");
-    // Reparaturdrohnen kaufen → Hülle flickt sich langsam.
+    // Reparaturdrohnen kaufen → Hülle flickt sich langsam (Material liegt im Crew-Lager).
+    s.crew.storage = [20.0; 5];
+    s.crew.storage_parts = 5;
     s.dock_at_station(0);
     cmd(
         &mut s,

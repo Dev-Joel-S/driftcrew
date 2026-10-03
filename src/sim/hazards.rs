@@ -313,6 +313,7 @@ impl SimState {
     }
 
     pub(crate) fn update_projectiles(&mut self) {
+        let cannon_damage = self.ship.cannon_damage;
         for pi in 0..self.projectiles.len() {
             let (from, vel) = (self.projectiles[pi].pos, self.projectiles[pi].vel);
             let to = from + vel * DT;
@@ -374,7 +375,7 @@ impl SimState {
                 let b = &mut self.bodies[bi];
                 b.vel += vel * (0.6 / b.mass);
                 match &mut b.kind {
-                    BodyKind::Asteroid { hp, .. } => *hp -= 25.0,
+                    BodyKind::Asteroid { hp, .. } => *hp -= 25.0 * cannon_damage,
                     BodyKind::Wreck { scrap, .. } => *scrap = (*scrap - 0.3).max(0.0),
                     BodyKind::Meteor => {
                         b.alive = false;

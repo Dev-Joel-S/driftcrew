@@ -28,6 +28,7 @@ impl Plugin for OverlayPlugin {
                 draw_courses,
                 draw_survey_and_sockets,
                 draw_repair_marks,
+                draw_mounts,
             )
                 .run_if(in_state(AppState::Playing)),
         );
@@ -601,6 +602,49 @@ fn draw_repair_marks(
             && ti == i
         {
             arc(&mut gizmos, p, 0.95, prog, Color::srgb(0.35, 1.0, 0.55));
+        }
+    }
+}
+
+/// Werft-Editor: Bauplätze am Schiff markieren (leer gestrichelt, belegt doppelt, gewählt hell).
+fn draw_mounts(
+    sim: Res<Sim>,
+    time: Res<Time>,
+    fixed: Res<Time<Fixed>>,
+    view: Res<crate::ui::station::BuildView>,
+    mut gizmos: Gizmos,
+) {
+    if !view.open {
+        return;
+    }
+    let s = &sim.0;
+    let t = time.elapsed_secs();
+    let (origin, angle) = ship_pose(s, fixed.overstep_fraction());
+    let base = s.data.ship(&s.crew.current_ship);
+    let build = s.build_of(&s.crew.current_ship);
+    for m in &base.mounts {
+        let p = origin + rot(Vec2::new(m.pos.0, m.pos.1), angle);
+        let used = build.iter().any(|(id, _)| *id == m.id);
+        let chosen = view.selected.as_deref() == Some(m.id.as_str());
+        let iso = Isometry3d::from_translation(p.extend(Z + 0.4));
+        if chosen {
+            let pulse = 0.6 + 0.4 * (t * 5.0).sin();
+            gizmos.circle(iso, 0.75, Color::srgba(1.0, 0.75, 0.15, pulse));
+            gizmos.circle(iso, 0.95, Color::srgba(1.0, 0.75, 0.15, pulse * 0.6));
+        } else if used {
+            gizmos.circle(iso, 0.6, Color::srgba(0.25, 0.95, 0.85, 0.9));
+            gizmos.circle(iso, 0.45, Color::srgba(0.25, 0.95, 0.85, 0.6));
+        } else {
+            let n = 16;
+            for k in (0..n).step_by(2) {
+                let a0 = std::f32::consts::TAU * k as f32 / n as f32;
+                let a1 = std::f32::consts::TAU * (k + 1) as f32 / n as f32;
+                gizmos.line(
+                    (p + Vec2::from_angle(a0) * 0.55).extend(Z + 0.4),
+                    (p + Vec2::from_angle(a1) * 0.55).extend(Z + 0.4),
+                    Color::srgba(1.0, 1.0, 1.0, 0.75),
+                );
+            }
         }
     }
 }

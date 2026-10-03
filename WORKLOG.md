@@ -153,7 +153,7 @@ online funktionieren.
 | 36 | Präzisionsarbeit | Bohren: Ertrag hängt von ruhiger Zielhand ab (Zielwinkel-Schwankung), Kran: weiches Anheben gibt Bonus, Ruck kostet |
 | 38 | Andockport hacken | kurzes Tastenmuster an Piraten-/Schmugglerstationen, Fehler lösen Alarm aus |
 
-### Phase 11 – Upgrades, Modulbau, Schiffseditor (Architektur, Rückfrage)
+### Phase 11 – Upgrades, Modulbau, Schiffseditor (erledigt, siehe Protokoll)
 
 | Nr. | Punkt | Umsetzung |
 |---|---|---|
@@ -250,6 +250,52 @@ Der Rest wird in die bestehenden Phasen einsortiert bzw. bekommt eigene Phasen.
 ---
 
 ## Protokoll
+
+### Runde 3 – Phase 11: Crew-Lager, Bauplätze, Werft-Editor, Upgrades pro Teil (erledigt)
+
+Wie in der Rückfrage entschieden: feste Bauplätze pro Rumpf, gemeinsames Crew-Lager.
+
+- **Crew-Lager** (`sim/workshop.rs`): `Crew::storage` (t pro Erzsorte), `storage_parts`
+  (Bauteile aus Wracks), `artifacts` (vorbereitet für Phase 13). `Command::StoreCargo` bringt an
+  jeder Station Erz, Schrott und Bauteile aus dem Frachtraum ins Lager – was Abbau-Aufträge
+  brauchen, bleibt an Bord. Alles im Spielstand.
+- **Bauplätze (33):** `ShipDef::mounts` – feste Stellen am Rumpf mit erlaubten Modularten
+  (Engine, Cargo, Tool, Armor), für alle fünf Schiffe. `modules.ron`: Zusatztriebwerk,
+  Frachtmodul, Panzerplatte, Zusatzkran, Zusatzbohrer mit Masse, Form, Kosten (Credits, Material,
+  Bauteile). `GameData::built_ship` setzt Grundschiff und Module zu einem normalen `ShipDef`
+  zusammen (ein Modul = ein Teil mit `fixed: true`), `SimState::current_def` liefert das für das
+  aktuelle Schiff. Schiffsbau, Lobby, Umbau und Schiffswechsel nutzen jetzt diesen Bauplan –
+  deshalb erscheinen Modul-Triebwerke und -Werkzeuge als eigene Slots, und Masse, Schwerpunkt
+  und Trägheit folgen wie immer aus den Teilen.
+- **Feste Triebwerke:** `thruster_layouts` ordnet nur die Grundtriebwerke symmetrisch an;
+  angebaute (feste) Triebwerke behalten ihre Position und hängen in der Slot-Reihenfolge hinten
+  an. Ein Triebwerk am Heck links dreht das Schiff, wenn es allein schiebt – Absicht.
+- **Werft-Editor (34):** Reiter „Bau“ in Werften. Übersicht der Bauplätze (belegt/leer, was
+  passt), Auswahl eines Bauplatzes → Module mit Kosten und Wirkung, Abbauen (die Hälfte des
+  Materials zurück). Kopfzeilen zeigen das Lager und Masse/Schwerpunkt/Trägheit/Hülle/Fracht des
+  Schiffs. Am Schiff markiert das Overlay die Bauplätze (leer gestrichelt, belegt doppelt,
+  gewählt pulsierend). Neue oder entfernte Slots lösen `ShipChanged` aus → Lobby zum
+  Neuverteilen, Fracht- und Panzermodule nicht. „Bauplan exportieren“ schreibt den
+  zusammengesetzten `ShipDef` als RON nach `bauplaene/<schiff>_umbau.ron` neben dem Spielstand
+  (dafür sind die Schiffsdatentypen jetzt auch serialisierbar).
+- **Upgrades pro Teil (55–57):** `UpgradeDef` hat jetzt `part` (Triebwerke, Hülle, Schild,
+  Fracht, Kran, Bohrer, Kanone, Scanner, Tank, Bordsysteme), `tier`, `mass`, `drawback`,
+  `materials`, `parts`, `artifact`. Neue Wirkungen: Treibstoffverbrauch, Feuerrate und Schaden
+  der Kanone, Tragkraft des Krans (Seilgrenze). Nachteil: die Masse sitzt am betroffenen Teil
+  (je Triebwerk, je Frachtmodul, je Werkzeug; Hülle/Schild/Systeme im Rumpf; der Tank verteilt
+  sich auf die Triebwerke am Heck und zieht den Schwerpunkt nach hinten). Stufe 3 braucht ein
+  Artefakt, das dabei verbraucht wird. Upgrades bleiben crew-weit (wandern beim Schiffswechsel
+  mit) – vereinfachte Entscheidung, damit alte Spielstände ohne Umbau weiterlaufen; Module
+  gehören dagegen zum Rumpf.
+- **Nebenbei:** Die Upgrade-Liste zeigt Teil, Stufe, Wirkung, Nachteil und Kosten. Bestehende
+  Tests, die Upgrades kaufen, füllen jetzt das Crew-Lager auf.
+- Vorführszene `DRIFTCREW_SCENE=workshop`.
+- Tests: 101 grün, neu in `workshop_tests.rs`: Einlagern (Auftragserz bleibt, Spielstand),
+  Frachtmodul (ohne Material nicht, Schwerpunkt wandert, Kosten, keine Lobby, Spielstand),
+  Triebwerksmodul (eigener Slot, feste Position, Grundlayout bleibt, dreht allein das Schiff),
+  Passprüfung und Abbau mit halber Rückgabe, nur in Werften, Upgrade-Masse und Material (Panzerung
+  schwerer und träger, Tank verschiebt den Schwerpunkt, Feuerrate, Tragkraft), Stufe 3 braucht
+  und verbraucht ein Artefakt, exportierter Bauplan ist wieder als `ShipDef` lesbar.
 
 ### Runde 3 – Phase 10: Minispiele für einzelne Slots (erledigt)
 

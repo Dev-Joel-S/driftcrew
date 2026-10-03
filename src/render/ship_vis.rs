@@ -138,6 +138,11 @@ pub struct VisMaps {
 
 pub fn ship_signature(ship: &Ship) -> String {
     let mut s = ship.def_id.clone();
+    // Angebaute Module ändern die Teile: dann das Modell neu bauen.
+    s.push_str(&format!("|p{}", ship.parts.len()));
+    for p in &ship.parts {
+        s.push_str(&format!("|{:.1},{:.1}", p.pos.x, p.pos.y));
+    }
     for t in &ship.thrusters {
         s.push_str(&format!("|t{:.2}", t.pos.x));
     }
