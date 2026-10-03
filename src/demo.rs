@@ -1,6 +1,6 @@
 //! Automatischer Vorführmodus für Screenshots und Rauchtests:
 //! `DRIFTCREW_DEMO=<ordner>` fliegt ein Skript ab, speichert Bildschirmfotos und
-//! beendet sich danach. `DRIFTCREW_SCENE=tour|ui|systems|progress|coop` wählt das Skript.
+//! beendet sich danach. `DRIFTCREW_SCENE=tour|ui|systems|progress|coop|sectors` wählt das Skript.
 
 use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
@@ -107,6 +107,7 @@ fn keyboard_crew(c: &mut Ctx, with_pad: bool) {
         KeyCode::Space,
         KeyCode::KeyF,
         KeyCode::KeyG,
+        KeyCode::KeyH,
     ];
     c.crew.players = vec![Player {
         device: Device::Keyboard,
@@ -445,6 +446,67 @@ fn coop_scene() -> Vec<(f32, Act)> {
     ]
 }
 
+fn region_center(c: &Ctx, name: &str) -> Vec2 {
+    c.sim
+        .0
+        .data
+        .world
+        .regions
+        .iter()
+        .find(|r| r.name == name)
+        .map(|r| Vec2::new(r.center.0, r.center.1))
+        .unwrap_or(Vec2::ZERO)
+}
+
+/// Phase 6: Sektoreffekte, Scanner, Ereignisse, Kartendaten.
+fn sectors_scene() -> Vec<(f32, Act)> {
+    vec![
+        (0.5, |c| {
+            keyboard_crew(c, false);
+            c.next.set(AppState::Playing);
+        }),
+        (2.0, |c| {
+            let p = region_center(c, "Sonnenwind-Korridor");
+            teleport(c, p, 0.0, 0.0);
+        }),
+        (4.5, |c| shot(c, "sonnenwind")),
+        (6.0, |c| {
+            let p = region_center(c, "Schleiernebel");
+            teleport(c, p, 0.0, 0.0);
+        }),
+        (8.0, |c| shot(c, "nebel")),
+        (9.5, |c| {
+            let p = region_center(c, "Splitterzone");
+            teleport(c, p + Vec2::new(-250.0, -380.0), 0.0, 0.0);
+        }),
+        (13.0, |c| shot(c, "truemmer")),
+        (14.5, |c| {
+            teleport(c, Vec2::new(-1240.0, 1560.0), 60.0, 0.2);
+        }),
+        (16.0, |c| c.slots.0 = 1 << 8),
+        (16.3, |c| c.slots.0 = 0),
+        (16.9, |c| shot(c, "scanner_impuls")),
+        (19.0, |c| shot(c, "scanner_funde")),
+        (20.5, |c| {
+            c.sim.0.event = Some(crate::sim::sector::WorldEvent {
+                kind: crate::sim::sector::EventKind::SolarFlare,
+                time_left: 20.0,
+                dir: Vec2::ZERO,
+                spawn_timer: 0.0,
+            });
+        }),
+        (22.5, |c| shot(c, "sonneneruption")),
+        (23.0, |c| {
+            c.sim.0.event = None;
+            c.sim.0.ship.docked = None;
+            c.sim.0.dock_at_station(0);
+        }),
+        (24.5, |c| c.menu.left = true),
+        (26.5, |c| shot(c, "kartendaten")),
+        (28.0, |_| {}),
+    ]
+}
+
 fn ui_scene() -> Vec<(f32, Act)> {
     vec![
         (2.5, |c| shot(c, "titel")),
@@ -508,6 +570,7 @@ fn demo_script(
         "systems" => systems_scene(),
         "progress" => progress_scene(),
         "coop" => coop_scene(),
+        "sectors" => sectors_scene(),
         _ => tour(),
     };
     let mut pad = pads.iter().next();

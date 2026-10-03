@@ -25,6 +25,7 @@
         (id: "crane1",  name: "Langer Kranarm",      description: "+40 % Kranreichweite.",            price: 240, effect: CraneRange(1.4)),
         (id: "drill1",  name: "Diamantbohrkopf",     description: "Doppelt so schnell abbauen.",      price: 380, effect: DrillRate(2.0)),
         (id: "tank1",   name: "Zusatztank",          description: "+50 % Treibstoff.",               price: 260, effect: FuelTank(0.5)),
+        (id: "scan1",   name: "Weitbereichsscanner", description: "+60 % Scanner-Reichweite.",       price: 300, effect: ScanRange(1.6)),
     ],
     ore_prices: [
         (Ferrit, 9),
@@ -59,4 +60,6 @@
     // Bauteile, die der Kran aus Wracks reißt (Wert in Credits).
     salvage_names: ["Steuerdüse", "Navigationsrechner", "Reaktorspule", "Funkmodul", "Lebenserhaltung", "Gyroskop", "Schildemitter"],
     salvage_value: (40, 120),
+    // Kartendaten: Preis pro neu kartierter Rasterzelle (100 × 100 m).
+    chart_price: 3,
 )

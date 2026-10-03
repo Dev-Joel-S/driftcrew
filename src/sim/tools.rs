@@ -108,6 +108,7 @@ impl SimState {
                 ToolKind::Cannon => self.update_cannon(i),
                 ToolKind::Crane => self.update_crane(i),
                 ToolKind::Drill => self.update_drill(i),
+                ToolKind::Scanner => self.update_scanner(i),
             }
         }
     }
@@ -127,6 +128,17 @@ impl SimState {
         } else if frac < 0.2 && self.fuel_warned < 1 {
             self.fuel_warned = 1;
             self.toast("Treibstoff knapp (unter 20 %)", ToastKind::Warn);
+        }
+    }
+
+    fn update_scanner(&mut self, i: usize) {
+        let t = &self.ship.tools[i];
+        if !t.just_pressed() || t.cooldown > 0.0 {
+            return;
+        }
+        let origin = self.ship.tool_world_pos(i);
+        if self.start_scan(origin) {
+            self.ship.tools[i].cooldown = 3.0;
         }
     }
 

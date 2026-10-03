@@ -221,6 +221,34 @@ online funktionieren.
 
 ## Protokoll
 
+### Runde 3 – Phase 6: Welt, Ereignisse, Erkunden (erledigt)
+
+- **14** Sektoren mit Effekten: `effect` an Regionen in `world.ron`, wirkt mit weichem Rand
+  (voll bis 70 % des Radius, `SimState::sector_at`). **Trümmer** (Splitterzone,
+  Schiffsfriedhof): die Simulation hält um das Schiff herum treibende Schrottteile
+  (`BodyKind::Debris`, echte Körper mit Kollision), dazu reine Anzeige-Splitter hinter der
+  Spielebene, die fest im Weltraster liegen. **Nebel** (neuer Schleiernebel): Bildschirm getönt,
+  Radar sieht nur noch die Nähe und rauscht, Erkundungs- und Scannerreichweite sinken.
+  **Sonnenwind** (neuer Sonnenwind-Korridor): seitliche Beschleunigung auf Schiff und lose
+  Körper, Schlieren in Windrichtung. HUD-Zeile nennt den Effekt, die Karte beschriftet die
+  Sektoren, sobald sie entdeckt sind.
+- **16** Zufallsereignisse (`events` in `world.ron`, nur im Flug, Takt per geseedetem RNG):
+  **Meteoritenschauer** mit 3 s Vorwarnung und Himmelsrichtung, Meteore zielen grob aufs Schiff;
+  **spontanes Notsignal** 260–480 m entfernt, 30 % besser bezahlt, auf der Karte annehmbar;
+  **Sonneneruption** (Schild auf 40 %, Radar und Scanner 20 s gestört, Bildschirm orange).
+- **37** Scanner als neues Werkzeug (`ToolKind::Scanner`, eigener Slot) an Driftkutter, Kolibri,
+  Lastesel und Pelikan: Sonar-Impuls läuft mit 320 m/s bis zur Reichweite (450 m, Upgrade
+  „Weitbereichsscanner“ +60 %, im Nebel weniger). Markiert 30 s lang Wracks, erzhaltige
+  Asteroiden, Planetenvorkommen, Kapseln und Fracht (Rauten im Bild, Punkte im Radar,
+  Beschriftung für Wracks und Vorkommen).
+- **42** Kartografie: Am Ende des Impulses wird das Gebiet aufgedeckt und in einem zweiten
+  Raster als kartiert vermerkt (`surveyed`, im Spielstand). Neue Zellen sind Kartendaten, die
+  man an Stationen verkauft (3 Cr pro Zelle, +10 % pro Rufstufe). Dieselbe Gegend zweimal zu
+  scannen bringt nichts.
+- Vorführszene `DRIFTCREW_SCENE=sectors`.
+- Tests: 59 grün (neu `solar_wind_pushes_and_nebula_hides`, `debris_drifts_in_the_debris_zone`,
+  `scanner_finds_wrecks_and_charts_sell`, `random_events_cover_all_kinds`, `compass_names`).
+
 ### Runde 3 – Phase 5: Koop und Crew (erledigt)
 
 - **24** Ping: feste, nicht belegbare Tasten – Tastatur `^` (`KeyCode::Backquote`, markiert die

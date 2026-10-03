@@ -67,6 +67,7 @@ enum Act {
     Accept(u32),
     Abandon(u32),
     Sell,
+    SellCharts,
     Switch(String),
     Undock,
 }
@@ -427,6 +428,16 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                 .detail(what)
                 .enabled((total > 0.05 || parts > 0) && sim.can_sell_here());
             v.push(it);
+            if sim.docked_station().is_some() && sim.charts_unsold > 0 {
+                v.push(
+                    Item::new("Kartendaten verkaufen", Act::SellCharts)
+                        .right(format!("+{} Cr", sim.charts_value()))
+                        .detail(format!(
+                            "{} neu kartierte Sektorzellen (Scanner)",
+                            sim.charts_unsold
+                        )),
+                );
+            }
             // Preistafel: hier, und wo es am meisten gibt.
             for ore in crate::sim::data::Ore::ALL {
                 let p = price(ore);
@@ -584,6 +595,7 @@ fn station_menu(
             Some(Act::Accept(id)) => pending.0.push(Command::AcceptMission { id }),
             Some(Act::Abandon(id)) => pending.0.push(Command::AbandonMission { id }),
             Some(Act::Sell) => pending.0.push(Command::SellOre),
+            Some(Act::SellCharts) => pending.0.push(Command::SellCharts),
             Some(Act::Switch(id)) => pending.0.push(Command::SwitchShip { id }),
             Some(Act::Undock) => pending.0.push(Command::Undock),
             None => {}

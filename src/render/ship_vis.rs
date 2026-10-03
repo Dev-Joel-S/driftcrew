@@ -479,6 +479,40 @@ pub fn spawn_ship_model(
                     );
                 }
             }
+            ToolKind::Scanner => {
+                // Kleine Sonarschüssel auf einem Sockel.
+                let base = art.bevel_box(meshes, Vec3::new(0.3, 0.3, 0.3));
+                parts.push(
+                    commands
+                        .spawn((
+                            Mesh3d(base),
+                            MeshMaterial3d(hull_mat.clone()),
+                            Transform::from_xyz(0.0, 0.0, 0.1),
+                        ))
+                        .id(),
+                );
+                parts.push(
+                    commands
+                        .spawn((
+                            Mesh3d(art.sphere.clone()),
+                            MeshMaterial3d(dark_mat.clone()),
+                            Transform::from_xyz(0.0, 0.12, 0.42)
+                                .with_scale(Vec3::new(0.32, 0.32, 0.1)),
+                        ))
+                        .id(),
+                );
+                parts.push(
+                    commands
+                        .spawn((
+                            Mesh3d(art.cylinder.clone()),
+                            MeshMaterial3d(accent_mat.clone()),
+                            Transform::from_xyz(0.0, 0.12, 0.62)
+                                .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
+                                .with_scale(Vec3::new(0.03, 0.25, 0.03)),
+                        ))
+                        .id(),
+                );
+            }
             ToolKind::Drill => {
                 parts.push(
                     commands
@@ -1020,6 +1054,30 @@ pub fn sync_bodies(
                 commands.entity(holder).add_child(model);
                 kids.push(holder);
             }
+            BodyKind::Debris => {
+                let metal = mats.add(art.panel_mat(Color::srgb(0.5, 0.5, 0.52), 0.5, 0.7));
+                let edge = mats.add(art.emissive_mat(Color::srgb(1.0, 0.5, 0.2), 2.0));
+                let k = 1.0 + (b.seed % 5) as f32 * 0.2;
+                let shard = art.bevel_box(&mut meshes, Vec3::new(1.6 * k, 0.7, 0.35));
+                let strip = art.bevel_box(&mut meshes, Vec3::new(1.2 * k, 0.06, 0.37));
+                let holder = commands
+                    .spawn((Transform::default(), Visibility::default(), BodyMesh(b.id)))
+                    .with_children(|h| {
+                        h.spawn((
+                            Mesh3d(shard),
+                            MeshMaterial3d(metal),
+                            Transform::from_scale(Vec3::splat(b.radius)),
+                        ));
+                        h.spawn((
+                            Mesh3d(strip),
+                            MeshMaterial3d(edge),
+                            Transform::from_xyz(0.0, 0.3 * b.radius, 0.0)
+                                .with_scale(Vec3::splat(b.radius)),
+                        ));
+                    })
+                    .id();
+                kids.push(holder);
+            }
             BodyKind::Salvage { .. } => {
                 let shell = mats.add(art.panel_mat(Color::srgb(0.32, 0.34, 0.37), 0.4, 0.7));
                 let band = mats.add(art.panel_mat(Color::srgb(0.85, 0.55, 0.15), 0.5, 0.3));
@@ -1082,7 +1140,7 @@ pub fn sync_bodies(
         let a = b.prev_angle + angle_diff(b.angle, b.prev_angle) * alpha;
         let tilt = (b.seed % 1000) as f32 / 1000.0 * std::f32::consts::TAU;
         t.rotation = match b.kind {
-            BodyKind::Asteroid { .. } | BodyKind::Meteor => {
+            BodyKind::Asteroid { .. } | BodyKind::Meteor | BodyKind::Debris => {
                 Quat::from_rotation_z(a)
                     * Quat::from_rotation_x(tilt + a * 0.6)
                     * Quat::from_rotation_y(tilt * 0.5)

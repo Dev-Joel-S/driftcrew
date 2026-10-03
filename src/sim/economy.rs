@@ -69,6 +69,7 @@ pub fn stats_for(data: &GameData, upgrades: &[String]) -> ShipStats {
             UpgradeEffect::CraneRange(m) => s.crane_mul *= m,
             UpgradeEffect::DrillRate(m) => s.drill_mul *= m,
             UpgradeEffect::FuelTank(f) => s.fuel_mul += f,
+            UpgradeEffect::ScanRange(m) => s.scan_mul *= m,
         }
     }
     s
@@ -298,6 +299,7 @@ impl SimState {
                 Command::SellOre => self.sell_ore(),
                 Command::SwitchShip { id } => self.switch_ship(id),
                 Command::Ping { player, pos } => self.add_ping(*player, *pos),
+                Command::SellCharts => self.sell_charts(),
                 Command::SetLoadout {
                     thrusters,
                     tools,

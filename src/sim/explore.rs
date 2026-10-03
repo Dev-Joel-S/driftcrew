@@ -64,15 +64,15 @@ impl Exploration {
         )
     }
 
-    /// Alle Zellen aufdecken, deren Mitte im Kreis liegt.
-    pub fn reveal(&mut self, p: Vec2, radius: f32) {
+    /// Alle Zellen aufdecken, deren Mitte im Kreis liegt. Gibt die Zahl neuer Zellen zurück.
+    pub fn reveal(&mut self, p: Vec2, radius: f32) -> u32 {
         let r = (radius / CELL).ceil() as i32 + 1;
         let Some((cx, cy)) =
             self.cell_of(p.clamp(Vec2::splat(-self.half + 1.0), Vec2::splat(self.half - 1.0)))
         else {
-            return;
+            return 0;
         };
-        let mut changed = false;
+        let mut new = 0;
         for dy in -r..=r {
             for dx in -r..=r {
                 let (x, y) = (cx as i32 + dx, cy as i32 + dy);
@@ -80,14 +80,15 @@ impl Exploration {
                     continue;
                 }
                 let (x, y) = (x as usize, y as usize);
-                if (self.cell_center(x, y) - p).length() <= radius {
-                    changed |= self.set(x, y);
+                if (self.cell_center(x, y) - p).length() <= radius && self.set(x, y) {
+                    new += 1;
                 }
             }
         }
-        if changed {
+        if new > 0 {
             self.version = self.version.wrapping_add(1);
         }
+        new
     }
 
     /// Anteil der aufgedeckten Fläche (0..1).

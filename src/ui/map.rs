@@ -301,6 +301,31 @@ fn draw_map(
                 let at = to_map(Vec2::new(reg.center.0, reg.center.1));
                 dot(m, at, reg.radius * scale * 2.0, c, true);
             }
+            // Sektoren mit Effekten (sichtbar, sobald entdeckt).
+            for reg in &s.data.world.regions {
+                let Some(e) = reg.effect else { continue };
+                let c = Vec2::new(reg.center.0, reg.center.1);
+                if !s.discovered(c) {
+                    continue;
+                }
+                let (tag, col) = match e {
+                    crate::sim::data::SectorEffect::Debris(_) => {
+                        ("✦ Trümmer", Color::srgb(0.85, 0.75, 0.65))
+                    }
+                    crate::sim::data::SectorEffect::Nebula(_) => {
+                        ("≋ Nebel", Color::srgb(0.75, 0.65, 1.0))
+                    }
+                    crate::sim::data::SectorEffect::SolarWind(..) => {
+                        ("➜ Sonnenwind", Color::srgb(1.0, 0.8, 0.4))
+                    }
+                };
+                label(
+                    m,
+                    to_map(c) + Vec2::new(0.0, 14.0),
+                    format!("{tag}: {}", reg.name),
+                    col,
+                );
+            }
             // Nebel über allem, was noch niemand gesehen hat.
             let span = s.explored.half * scale;
             m.spawn((

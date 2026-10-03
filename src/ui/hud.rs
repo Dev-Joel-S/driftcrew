@@ -20,6 +20,7 @@ impl Plugin for HudPlugin {
                 (
                     update_info,
                     update_bars,
+                    update_tint,
                     update_slots,
                     update_radar,
                     update_markers,
@@ -61,6 +62,9 @@ struct RadarDot;
 struct MarkerLayer;
 #[derive(Component)]
 struct CenterText;
+/// Bildschirmtönung bei Nebel und Sonneneruption.
+#[derive(Component)]
+struct SectorTint;
 /// Kleinere zweite Zeile unter dem großen Mittel-Text.
 #[derive(Component)]
 struct CenterSub;
@@ -106,6 +110,17 @@ fn spawn_hud(mut commands: Commands) {
             Pickable::IGNORE,
         ))
         .with_children(|root| {
+            root.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                SectorTint,
+                Pickable::IGNORE,
+            ));
             // Oben links: Kasse und Aufträge
             root.spawn((
                 Node {
@@ -386,6 +401,51 @@ fn update_info(
             MUTED,
         ),
     ];
+    // Besondere Bedingungen im Sektor und laufende Ereignisse.
+    let sec = s.sector_at(s.ship.pos);
+    if s.flare() {
+        let left = s.event.as_ref().map_or(0.0, |e| e.time_left);
+        lines.push((
+            format!("☀ Sonneneruption – Radar und Scanner gestört ({left:.0} s)"),
+            13.0,
+            WARN,
+        ));
+    }
+    if sec.nebula > 0.1 {
+        lines.push((
+            "≋ Nebel – Sicht, Radar und Scanner eingeschränkt".into(),
+            13.0,
+            Color::srgb(0.75, 0.65, 1.0),
+        ));
+    }
+    if sec.wind.length() > 0.1 {
+        lines.push((
+            format!(
+                "➜ Sonnenwind nach {} ({:.1} m/s²)",
+                crate::sim::sector::compass(sec.wind),
+                sec.wind.length()
+            ),
+            13.0,
+            Color::srgb(1.0, 0.8, 0.4),
+        ));
+    }
+    if sec.debris > 0.1 {
+        lines.push((
+            "✦ Trümmerzone – treibender Schrott".into(),
+            13.0,
+            Color::srgb(0.85, 0.75, 0.65),
+        ));
+    }
+    if s.charts_unsold > 0 {
+        lines.push((
+            format!(
+                "Kartendaten: {} Zellen – an einer Station verkaufen",
+                s.charts_unsold
+            ),
+            12.0,
+            TEAL,
+        ));
+    }
     if s.active.is_empty() {
         lines.push((
             "Keine Aufträge – an einer Station annehmen".into(),
@@ -422,6 +482,28 @@ fn update_info(
             p.spawn((text(t, size, c), Pickable::IGNORE));
         }
     });
+}
+
+fn update_tint(
+    sim: Res<Sim>,
+    time: Res<Time>,
+    mut q: Query<&mut BackgroundColor, With<SectorTint>>,
+) {
+    let Ok(mut bg) = q.single_mut() else { return };
+    let s = &sim.0;
+    let sec = s.sector_at(s.ship.pos);
+    let t = time.elapsed_secs();
+    let c = if s.flare() {
+        let k = 0.12 + 0.06 * (t * 3.0).sin().abs();
+        Color::srgba(1.0, 0.55, 0.2, k)
+    } else if sec.nebula > 0.02 {
+        Color::srgba(0.35, 0.25, 0.55, 0.42 * sec.nebula)
+    } else {
+        Color::NONE
+    };
+    if bg.0 != c {
+        bg.0 = c;
+    }
 }
 
 fn update_bars(
@@ -729,8 +811,42 @@ fn update_radar(
             .id();
         c.entity(radar).add_child(e);
     };
+    // Nebel und Sonneneruption: Radar sieht nur noch die Nähe und rauscht.
+    let sec = s.sector_at(me);
+    let disturb = if s.flare() { 0.8 } else { sec.nebula };
+    let reach = RADAR_RANGE * (1.0 - 0.75 * disturb);
     for p in pois(s) {
+        if (p.pos - me).length() > reach && disturb > 0.05 {
+            continue;
+        }
         spawn_dot(&mut commands, place(p.pos), p.size, p.color, p.round);
+    }
+    for b in &s.blips {
+        spawn_dot(
+            &mut commands,
+            place(b.pos),
+            5.0,
+            Color::srgb(0.35, 0.95, 0.9),
+            false,
+        );
+    }
+    if disturb > 0.05 {
+        let n = (disturb * 26.0) as u32;
+        let seed = (time.elapsed_secs() * 12.0) as u32;
+        for k in 0..n {
+            let h = crate::sim::rng::hash32(seed.wrapping_mul(31).wrapping_add(k));
+            let x = (h % 1000) as f32 / 1000.0 * RADAR;
+            let y = ((h / 1000) % 1000) as f32 / 1000.0 * RADAR;
+            if (Vec2::new(x, y) - Vec2::splat(half)).length() < half - 6.0 {
+                spawn_dot(
+                    &mut commands,
+                    Vec2::new(x, y),
+                    2.0,
+                    Color::srgba(0.8, 0.85, 1.0, 0.5),
+                    true,
+                );
+            }
+        }
     }
     let blink = (time.elapsed_secs() * 3.0).sin() > 0.0;
     for m in &s.active {
@@ -915,6 +1031,25 @@ fn update_markers(
         if let Some(t) = m.nav_target(s) {
             let label = if m.is_distress() { "Notruf" } else { "Ziel" };
             add(&mut commands, t, label.to_string(), ACCENT, true);
+        }
+    }
+    // Scanner-Funde im Bild beschriften (nur Wracks und Vorkommen, sonst wird es zu voll).
+    for b in &s.blips {
+        use crate::sim::sector::BlipKind;
+        if !matches!(b.kind, BlipKind::Wreck | BlipKind::Deposit(_)) {
+            continue;
+        }
+        let on_screen = cam
+            .world_to_viewport(cam_t, b.pos.extend(0.0))
+            .is_ok_and(|v| v.x > 0.0 && v.y > 0.0 && v.x < size.x && v.y < size.y);
+        if on_screen {
+            add(
+                &mut commands,
+                b.pos,
+                b.kind.label(),
+                Color::srgb(0.35, 0.95, 0.9),
+                false,
+            );
         }
     }
     // Pings der Crew in Spielerfarbe.

@@ -40,6 +40,7 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - Jedes Werkzeug liegt auf einer eigenen Taste. Beispiel: Spieler A hat Triebwerk 2 + Waffe, Spieler B Triebwerk 1 + Kran
 - Eingabegeräte: Tastatur, Maus, Gamepads inkl. Switch Joy-Cons (jeder Joy-Con einzeln als eigenes Gerät)
 - Joystick oder Maus zum Zielen von Werkzeugen (Waffe, Kranarm, Bohrer)
+- **Ping** pro Spieler (feste Taste), **Hot-Join** mitten im Flug, empfohlene Crewgröße pro Schiff und Auftrag. Slots belegen nur Menschen, keine Bots
 - Solo: z. B. zwei Joy-Cons, linker steuert die linke Seite, rechter die rechte
 - Slots können während des Spiels neu verteilt werden (z. B. wenn jemand ausfällt)
 
@@ -61,6 +62,9 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - Gefahren: Meteoriten, Asteroidenfelder, Anomalien, Schwarze Löcher
 - **Wracks** zum Ausschlachten: Bohrer gewinnt Schrott, Kran reißt Bauteile ab
 - **Fog of War:** Karte und Radar zeigen nur Erkundetes, gespeichert im Spielstand
+- **Sektoren mit Effekten:** Trümmer, Nebel (Sicht/Radar/Scanner gestört), Sonnenwind (seitliche Kraft)
+- **Zufallsereignisse:** Meteoritenschauer, spontane Notsignale, Sonneneruptionen
+- **Scanner/Sonar** als Werkzeug-Slot: markiert Wracks und Rohstoffe, kartiert Gebiete; Kartendaten sind verkaufbar
 - **Lackiererei:** Rumpf-, Akzent- und Flammenfarben; Slotfarben bleiben an Kern, Ringen und HUD erkennbar
 
 ## Wirtschaft

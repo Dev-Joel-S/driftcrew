@@ -20,6 +20,7 @@ pub mod physics;
 #[cfg(test)]
 mod progress_tests;
 pub mod rng;
+pub mod sector;
 pub mod ship;
 pub mod stats;
 #[cfg(test)]
@@ -86,6 +87,8 @@ pub enum Command {
         player: u8,
         pos: Vec2,
     },
+    /// Kartendaten an der Station verkaufen.
+    SellCharts,
     /// Slots neu verteilt (z. B. Hot-Join mitten im Flug): Schiff umbauen.
     SetLoadout {
         thrusters: u8,
@@ -174,6 +177,10 @@ pub enum SimEvent {
         player: u8,
         pos: Vec2,
     },
+    ScanPulse {
+        pos: Vec2,
+        range: f32,
+    },
 }
 
 /// Markierung eines Crewmitglieds (Ping), verblasst nach [`PING_SECONDS`].
@@ -225,6 +232,8 @@ pub enum BodyKind {
         name: String,
         value: u32,
     },
+    /// Treibender Schrott in Trümmerzonen.
+    Debris,
 }
 
 #[derive(Clone, Debug)]
@@ -341,6 +350,15 @@ pub struct SimState {
     pub stats: stats::CrewStats,
     pub report: Option<stats::MissionReport>,
     pub pings: Vec<Ping>,
+    /// Laufendes Zufallsereignis und Zeit bis zum nächsten.
+    pub event: Option<sector::WorldEvent>,
+    pub event_timer: f32,
+    /// Scanner: laufender Impuls und gefundene Dinge.
+    pub scan: Option<sector::ScanPulse>,
+    pub blips: Vec<sector::ScanBlip>,
+    /// Kartografie: mit dem Scanner erfasste Zellen und noch nicht verkaufte Daten.
+    pub surveyed: explore::Exploration,
+    pub charts_unsold: u32,
 }
 
 impl SimState {
@@ -360,6 +378,9 @@ impl SimState {
             .collect();
         let mut explored = explore::Exploration::new(world.radius);
         explored.load_hex(&save.explored);
+        let mut surveyed = explore::Exploration::new(world.radius);
+        surveyed.load_hex(&save.surveyed);
+        let first_event = data.world.events.interval.0;
         // Bekannte Stationen sind von Anfang an aufgedeckt.
         for (st, sd) in world.stations.iter().zip(&data.world.stations) {
             if sd.known {
@@ -410,6 +431,12 @@ impl SimState {
             stats: stats::CrewStats::default(),
             report: None,
             pings: Vec::new(),
+            event: None,
+            event_timer: first_event,
+            scan: None,
+            blips: Vec::new(),
+            surveyed,
+            charts_unsold: save.charts_unsold,
         };
         s.populate_fields();
         s.populate_wrecks();
@@ -494,6 +521,8 @@ impl SimState {
                 .collect(),
             explored: self.explored.to_hex(),
             liveries: self.crew.liveries.clone(),
+            surveyed: self.surveyed.to_hex(),
+            charts_unsold: self.charts_unsold,
         }
     }
 
@@ -533,6 +562,7 @@ impl SimState {
             self.update_docking(input);
         }
         self.update_hazards();
+        self.update_sectors();
         self.update_missions();
         self.update_tracking();
         self.check_ship_health();
@@ -578,6 +608,7 @@ impl SimState {
                 BodyKind::Crate { name, .. } => name.clone(),
                 BodyKind::Wreck { idx, .. } => self.data.world.wrecks[*idx].name.clone(),
                 BodyKind::Salvage { name, .. } => name.clone(),
+                BodyKind::Debris => "Trümmer".into(),
             };
         }
         if let Some(st) = self
@@ -605,7 +636,10 @@ impl SimState {
             return;
         }
         if self.tick.is_multiple_of(15) {
-            self.explored.reveal(self.ship.pos, explore::SIGHT);
+            // Im Nebel sieht die Crew weniger weit.
+            let fog = self.sector_at(self.ship.pos).nebula;
+            self.explored
+                .reveal(self.ship.pos, explore::SIGHT * (1.0 - 0.6 * fog));
         }
         let speed = self.ship.vel.length();
         self.stats.time += DT;

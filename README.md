@@ -21,6 +21,7 @@ eigener Name, eigener Look, alle Grafiken und Klänge werden beim Start prozedur
 | ![Landezone auf Viridia](docs/screenshots/landezone.jpg) | ![Schwerlast am Kran](docs/screenshots/schwerlast.jpg) |
 | ![Auftraggeber im Stationsmenü](docs/screenshots/auftraggeber.jpg) | ![Auswertung nach dem Auftrag](docs/screenshots/auswertung.jpg) |
 | ![Wrack ausschlachten](docs/screenshots/wrack.jpg) | ![Karte mit Fog of War](docs/screenshots/karte_nebel.jpg) |
+| ![Trümmerzone](docs/screenshots/truemmer.jpg) | ![Schleiernebel](docs/screenshots/nebel.jpg) |
 
 *(Screenshots aus dem automatischen Vorführmodus, gerendert mit Software-Vulkan.)*
 
@@ -129,6 +130,9 @@ Getankt wird an Stationen.
   Schiff. Ein zu harter Ruck reißt es. Nochmal drücken = loslassen.
 - **Bohrer** – baut Erz an den leuchtenden Kristallvorkommen der Mini-Planeten und an erzhaltigen
   Asteroiden ab. Der Bohrer drückt das Schiff dabei leicht zurück.
+- **Scanner** – sendet einen Sonar-Impuls rundum (450 m, Upgrade: mehr). Wracks, Erz, Vorkommen,
+  Kapseln und Fracht werden 30 s lang markiert (Radar und im Bild), das Gebiet wird aufgedeckt
+  und **kartiert**. Neue Kartendaten verkauft man an Stationen (Markt).
 
 ### Andocken
 
@@ -148,6 +152,13 @@ Slot-Leiste bleiben in Slotfarbe, damit man weiter sieht, wer schiebt.
 **Wracks ausschlachten:** Im Schiffsfriedhof (und vereinzelt anderswo) treiben Wracks. Der Bohrer
 holt **Schrott** heraus (wird wie Erz verkauft), der Kran reißt mit einem kräftigen Ruck
 **Bauteile** ab, die man einholt und am Markt verkauft.
+
+**Sektoren und Ereignisse:** Manche Gegenden haben eigene Bedingungen – in der **Trümmerzone**
+treibt Schrott, im **Schleiernebel** sind Sicht, Radar und Scanner gestört, im
+**Sonnenwind-Korridor** schiebt es das Schiff seitlich. Unterwegs passieren ab und zu Dinge:
+**Meteoritenschauer** (mit Vorwarnung und Himmelsrichtung), **spontane Notsignale** in der Nähe
+(besser bezahlt, auf der Karte annehmbar) und **Sonneneruptionen** (Schild geschwächt, Radar und
+Scanner gestört).
 
 **Fog of War:** Karte und Radar zeigen nur, was die Crew schon gesehen hat. Bekannte Stationen
 sind von Anfang an eingetragen, Planeten, Felder, Wracks und manche Stationen (Werft Vega) muss
@@ -237,7 +248,9 @@ in die Binärdatei eingebettet; liegt `assets/data/` im Arbeitsverzeichnis (z. B
   (`auto_chamfer: false` schaltet das ab). `prices` setzt Preisfaktoren je Ort (Erz je Sorte,
   Treibstoff, Service), `ships_for_sale` das Angebot einer Werft. Planeten haben
   `landing_zones` (Winkel in Grad; daneben liegt jeweils ein Erzvorkommen). Anomalien mit
-  `kind: BlackHole` sind Schwarze Löcher (`core_radius` = Ereignishorizont). `known: false`
+  `kind: BlackHole` sind Schwarze Löcher (`core_radius` = Ereignishorizont). Regionen können
+  einen `effect` haben (`Debris(dichte)`, `Nebula(stärke)`, `SolarWind((x, y), m/s²)`), `events`
+  steuert die Zufallsereignisse. `known: false`
   versteckt eine Station, bis sie entdeckt ist. `wrecks` legt Wracks fest (Modell, Schrott,
   Bauteile). Dazu Asteroidenfelder, Meteoritenzonen, Rotoren, Nebelregionen und Notruf-Orte.
 - `shop.ron` – Services (inkl. Tanken und Triebwerksreparatur), Upgrades, Grundpreise für Erz und
@@ -263,6 +276,7 @@ src/
     economy.rs  Kasse, Käufe, Abstimmung, Upgrades, Lack, Ortspreise, Werftangebot
     explore.rs  Fog of War (Raster, im Spielstand als Hex-Bitfeld)
     stats.rs    Spaßstatistik pro Slot, Auswertung mit Auszeichnungen
+    sector.rs   Sektoreffekte, Zufallsereignisse, Scanner-Impulse, Kartendaten
     world.rs    Stationen aus Rastern, Planeten, Plattformen, Landezonen, Anomalien
     rng.rs      PCG32 – kein Zufall ohne Seed
   input.rs    Geräte → Slots, reservierte Tasten, Zielen

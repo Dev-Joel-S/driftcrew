@@ -1340,3 +1340,79 @@ pub fn update_dynamic_world(
         }
     }
 }
+
+/// Splitter-Staub in Trümmerzonen: reine Anzeige hinter der Spielebene, fest im Raster der
+/// Welt verankert (gleicher Ort = gleicher Splitter). Die Simulation kennt ihn nicht.
+#[derive(Component)]
+pub struct DustShard(pub usize);
+
+const DUST_GRID: i32 = 8;
+const DUST_CELL: f32 = 11.0;
+
+pub fn spawn_dust(
+    mut commands: Commands,
+    mut art: ResMut<Art>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut mats: ResMut<Assets<StandardMaterial>>,
+) {
+    let metal = mats.add(art.panel_mat(Color::srgb(0.42, 0.42, 0.45), 0.55, 0.7));
+    let rust = mats.add(art.panel_mat(Color::srgb(0.45, 0.28, 0.18), 0.7, 0.4));
+    let shapes = [
+        art.bevel_box(&mut meshes, Vec3::new(1.4, 0.5, 0.25)),
+        art.bevel_box(&mut meshes, Vec3::new(0.8, 0.8, 0.3)),
+        art.bevel_box(&mut meshes, Vec3::new(2.0, 0.3, 0.3)),
+    ];
+    for i in 0..(DUST_GRID * DUST_GRID) as usize {
+        commands.spawn((
+            Mesh3d(shapes[i % shapes.len()].clone()),
+            MeshMaterial3d(if i % 3 == 0 {
+                rust.clone()
+            } else {
+                metal.clone()
+            }),
+            Transform::default(),
+            Visibility::Hidden,
+            DustShard(i),
+            NotShadowCaster,
+        ));
+    }
+}
+
+pub fn update_dust(
+    time: Res<Time>,
+    sim: Res<Sim>,
+    cam: Query<&Transform, (With<GameCamera>, Without<DustShard>)>,
+    mut q: Query<(&DustShard, &mut Transform, &mut Visibility)>,
+) {
+    let Ok(cam) = cam.single() else { return };
+    let c = cam.translation.truncate();
+    let density = sim.0.sector_at(c).debris;
+    let base = (c / DUST_CELL).floor();
+    let t = time.elapsed_secs();
+    for (d, mut tr, mut vis) in &mut q {
+        let gx = base.x as i32 + (d.0 as i32 % DUST_GRID) - DUST_GRID / 2;
+        let gy = base.y as i32 + (d.0 as i32 / DUST_GRID) - DUST_GRID / 2;
+        let h = crate::sim::rng::hash32(
+            (gx as u32).wrapping_mul(73_856_093) ^ (gy as u32).wrapping_mul(19_349_663),
+        );
+        let f = |k: u32| ((h >> k) & 0xff) as f32 / 255.0;
+        let show = density > 0.05 && f(0) < density * 0.85;
+        let want = if show {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
+        if !show {
+            continue;
+        }
+        let pos = Vec2::new(gx as f32 + f(8), gy as f32 + f(16)) * DUST_CELL;
+        let spin = (f(24) - 0.5) * 0.8;
+        tr.translation = pos.extend(-2.0 - f(4) * 5.0);
+        tr.rotation = Quat::from_rotation_z(f(12) * std::f32::consts::TAU + t * spin)
+            * Quat::from_rotation_x(f(20) * std::f32::consts::TAU + t * spin * 0.7);
+        tr.scale = Vec3::splat(0.6 + f(2) * 1.1);
+    }
+}

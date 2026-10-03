@@ -399,3 +399,140 @@ fn every_ship_and_mission_type_has_a_crew_size() {
     let lastesel = s.data.ship("lastesel");
     assert!(lastesel.crew.0 >= 4, "Frachter für große Crews");
 }
+
+fn free_at(s: &mut SimState, pos: Vec2) {
+    s.ship.docked = None;
+    s.ship.pos = pos;
+    s.ship.prev_pos = pos;
+    s.ship.vel = Vec2::ZERO;
+    s.ship.ang_vel = 0.0;
+    s.ship.angle = 0.0;
+}
+
+fn region(s: &SimState, name: &str) -> Vec2 {
+    let r = s
+        .data
+        .world
+        .regions
+        .iter()
+        .find(|r| r.name == name)
+        .unwrap();
+    Vec2::new(r.center.0, r.center.1)
+}
+
+#[test]
+fn solar_wind_pushes_and_nebula_hides() {
+    let mut s = sim();
+    let corridor = region(&s, "Sonnenwind-Korridor");
+    free_at(&mut s, corridor);
+    for _ in 0..60 {
+        s.step(&TickInput::default());
+    }
+    assert!(s.ship.vel.x > 1.0, "Wind schiebt: {:?}", s.ship.vel);
+    let neb = region(&s, "Schleiernebel");
+    assert!(s.sector_at(neb).nebula > 0.5);
+    assert!(s.sector_at(Vec2::ZERO).nebula < 1e-3);
+}
+
+#[test]
+fn debris_drifts_in_the_debris_zone() {
+    let mut s = sim();
+    let zone = region(&s, "Splitterzone");
+    free_at(&mut s, zone + Vec2::new(0.0, -300.0));
+    for _ in 0..240 {
+        s.step(&TickInput::default());
+    }
+    let n = s
+        .bodies
+        .iter()
+        .filter(|b| b.alive && matches!(b.kind, BodyKind::Debris))
+        .count();
+    assert!(n >= 4, "Trümmer: {n}");
+}
+
+#[test]
+fn scanner_finds_wrecks_and_charts_sell() {
+    let mut s = sim();
+    let wreck = s
+        .bodies
+        .iter()
+        .find(|b| matches!(b.kind, BodyKind::Wreck { .. }))
+        .map(|b| b.pos)
+        .unwrap();
+    free_at(&mut s, wreck + Vec2::new(200.0, 0.0));
+    let si = s
+        .ship
+        .tools
+        .iter()
+        .position(|t| t.kind == ToolKind::Scanner)
+        .expect("Scanner am Driftkutter");
+    let slot = s.ship.tools[si].slot;
+    s.step(&TickInput {
+        slots: 1 << slot,
+        aims: vec![0.0; MAX_SLOTS],
+        commands: vec![],
+    });
+    for _ in 0..120 {
+        s.step(&TickInput::default());
+    }
+    assert!(
+        s.blips
+            .iter()
+            .any(|b| b.kind == super::sector::BlipKind::Wreck),
+        "Wrack gefunden"
+    );
+    assert!(s.charts_unsold > 10);
+    let n = s.charts_unsold;
+    // Zweiter Scan an derselben Stelle bringt keine neuen Daten.
+    s.step(&TickInput {
+        slots: 0,
+        ..Default::default()
+    });
+    for _ in 0..200 {
+        s.step(&TickInput::default());
+    }
+    s.step(&TickInput {
+        slots: 1 << slot,
+        aims: vec![0.0; MAX_SLOTS],
+        commands: vec![],
+    });
+    for _ in 0..120 {
+        s.step(&TickInput::default());
+    }
+    assert_eq!(s.charts_unsold, n);
+    s.dock_at_station(0);
+    let before = s.crew.credits;
+    cmd(&mut s, Command::SellCharts);
+    assert!(s.crew.credits > before);
+    assert_eq!(s.charts_unsold, 0);
+    // Gespeichert: dieselben Zellen gelten als kartiert.
+    let t = sim_from(&s.to_save());
+    assert_eq!(t.surveyed.to_hex(), s.surveyed.to_hex());
+}
+
+#[test]
+fn random_events_cover_all_kinds() {
+    use super::sector::EventKind;
+    let mut s = sim();
+    free_at(&mut s, Vec2::new(0.0, 500.0));
+    let offers_before = s.offers.iter().filter(|m| m.is_distress()).count();
+    let (mut shower, mut flare) = (false, false);
+    for _ in 0..40 {
+        s.event = None;
+        s.event_timer = 0.0;
+        s.ship.shield = s.ship.max_shield;
+        s.update_events();
+        match s.event.as_ref().map(|e| e.kind) {
+            Some(EventKind::MeteorShower) => shower = true,
+            Some(EventKind::SolarFlare) => {
+                flare = true;
+                assert!(s.ship.shield < s.ship.max_shield * 0.5);
+                assert!(s.flare());
+            }
+            None => {}
+        }
+    }
+    let offers_after = s.offers.iter().filter(|m| m.is_distress()).count();
+    assert!(shower && flare);
+    assert!(offers_after > offers_before, "spontane Notsignale");
+}

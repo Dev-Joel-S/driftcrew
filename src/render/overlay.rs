@@ -22,6 +22,7 @@ impl Plugin for OverlayPlugin {
                 draw_aim_markers,
                 draw_no_return,
                 draw_pings,
+                draw_scan,
             )
                 .run_if(in_state(AppState::Playing)),
         );
@@ -118,6 +119,8 @@ fn draw_aim_markers(
             ToolKind::Cannon => 10.0,
             ToolKind::Crane => s.ship.crane_range * 0.6,
             ToolKind::Drill => 5.5,
+            // Der Scanner strahlt rundum, keine Ziellinie.
+            ToolKind::Scanner => continue,
         };
         let c = slot_color(t.slot).with_alpha(if t.pressed { 0.9 } else { 0.45 });
         // Gestrichelte Ziellinie in Slotfarbe – nur der Besitzer des Slots bewegt sie.
@@ -200,6 +203,39 @@ fn draw_pings(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mut gizmos: Giz
                 (p.pos - d * 3.4).extend(Z),
                 c.with_alpha(fade),
             );
+        }
+    }
+}
+
+/// Scanner: Welle des laufenden Impulses und Rauten an allem, was gefunden wurde.
+fn draw_scan(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mut gizmos: Gizmos) {
+    if map.0 {
+        return;
+    }
+    let s = &sim.0;
+    if let Some(p) = &s.scan {
+        let a = 0.7 * (1.0 - p.radius / p.max.max(1.0)) + 0.15;
+        gizmos.circle(
+            Isometry3d::from_translation(p.origin.extend(Z)),
+            p.radius,
+            Color::srgba(0.35, 0.95, 0.9, a),
+        );
+    }
+    let t = time.elapsed_secs();
+    for b in &s.blips {
+        let fade = (b.life / 4.0).min(1.0);
+        let c = match &b.kind {
+            crate::sim::sector::BlipKind::Ore(o) | crate::sim::sector::BlipKind::Deposit(o) => {
+                super::srgb(o.color())
+            }
+            crate::sim::sector::BlipKind::Wreck => Color::srgb(0.85, 0.8, 0.7),
+            _ => Color::srgb(0.35, 0.95, 0.9),
+        }
+        .with_alpha(0.8 * fade);
+        let r = 1.4 + 0.3 * (t * 3.0).sin();
+        let pts = [Vec2::X, Vec2::Y, -Vec2::X, -Vec2::Y].map(|d| b.pos + d * r);
+        for i in 0..4 {
+            gizmos.line(pts[i].extend(Z), pts[(i + 1) % 4].extend(Z), c);
         }
     }
 }

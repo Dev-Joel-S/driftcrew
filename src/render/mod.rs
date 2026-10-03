@@ -41,6 +41,7 @@ impl Plugin for RenderPlugin {
                     setup_camera,
                     world_vis::spawn_world,
                     world_vis::spawn_background,
+                    world_vis::spawn_dust,
                 ),
             )
             .add_systems(
@@ -48,6 +49,7 @@ impl Plugin for RenderPlugin {
                 (
                     camera_follow,
                     world_vis::update_stars,
+                    world_vis::update_dust,
                     world_vis::update_dynamic_world,
                     ship_vis::sync_ship,
                     ship_vis::sync_bodies,

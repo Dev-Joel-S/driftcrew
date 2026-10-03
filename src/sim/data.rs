@@ -31,6 +31,8 @@ pub enum ToolKind {
     Cannon,
     Crane,
     Drill,
+    /// Sonar: ein Impuls zeigt Wracks, Erz und Kapseln und erfasst Kartendaten.
+    Scanner,
 }
 
 impl ToolKind {
@@ -39,6 +41,7 @@ impl ToolKind {
             ToolKind::Cannon => "Kanone",
             ToolKind::Crane => "Kran",
             ToolKind::Drill => "Bohrer",
+            ToolKind::Scanner => "Scanner",
         }
     }
 }
@@ -486,12 +489,48 @@ pub struct WreckDef {
     pub parts: u32,
 }
 
+/// Besondere Bedingungen in einem Sektor (wirken mit weichem Rand).
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq)]
+pub enum SectorEffect {
+    /// Treibende Trümmer, Dichte 0..1.
+    Debris(f32),
+    /// Nebel: Sicht, Radar und Scanner gestört, Stärke 0..1.
+    Nebula(f32),
+    /// Sonnenwind: Richtung und Beschleunigung in m/s².
+    SolarWind(P, f32),
+}
+
 #[derive(Deserialize, Clone, Debug)]
 pub struct RegionDef {
     pub name: String,
     pub center: P,
     pub radius: f32,
     pub colors: (String, String),
+    #[serde(default)]
+    pub effect: Option<SectorEffect>,
+}
+
+/// Zufallsereignisse im Flug.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct EventsDef {
+    /// Abstand zwischen zwei Ereignissen in Sekunden (von, bis).
+    pub interval: P,
+    pub flare_seconds: f32,
+    pub shower_meteors: u32,
+    /// Belohnungsfaktor für spontane Notsignale.
+    pub distress_bonus: f32,
+}
+
+impl Default for EventsDef {
+    fn default() -> Self {
+        EventsDef {
+            interval: (110.0, 220.0),
+            flare_seconds: 20.0,
+            shower_meteors: 14,
+            distress_bonus: 1.3,
+        }
+    }
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -520,6 +559,8 @@ pub struct WorldDef {
     pub distress_sites: Vec<P>,
     #[serde(default)]
     pub wrecks: Vec<WreckDef>,
+    #[serde(default)]
+    pub events: EventsDef,
 }
 
 // ---------------------------------------------------------------------------
@@ -557,6 +598,8 @@ pub enum UpgradeEffect {
     DrillRate(f32),
     /// Tank vergrößern (Anteil).
     FuelTank(f32),
+    /// Scanner-Reichweite (Faktor).
+    ScanRange(f32),
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -606,6 +649,13 @@ pub struct ShopDef {
     pub salvage_names: Vec<String>,
     #[serde(default)]
     pub salvage_value: (u32, u32),
+    /// Preis pro neu kartierter Rasterzelle (Kartendaten).
+    #[serde(default = "default_chart_price")]
+    pub chart_price: u32,
+}
+
+fn default_chart_price() -> u32 {
+    3
 }
 
 impl ShopDef {
@@ -731,6 +781,11 @@ pub struct CrewSave {
     /// Lackierung pro Schiff.
     #[serde(default)]
     pub liveries: Vec<(String, Livery)>,
+    /// Mit dem Scanner kartierte Gebiete (Hex-Bitfeld) und noch nicht verkaufte Zellen.
+    #[serde(default)]
+    pub surveyed: String,
+    #[serde(default)]
+    pub charts_unsold: u32,
 }
 
 impl CrewSave {
@@ -747,6 +802,8 @@ impl CrewSave {
             reputation: Vec::new(),
             explored: String::new(),
             liveries: Vec::new(),
+            surveyed: String::new(),
+            charts_unsold: 0,
         }
     }
 }

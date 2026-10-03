@@ -33,6 +33,7 @@ pub struct ShipStats {
     pub crane_mul: f32,
     pub drill_mul: f32,
     pub fuel_mul: f32,
+    pub scan_mul: f32,
 }
 
 impl Default for ShipStats {
@@ -47,6 +48,7 @@ impl Default for ShipStats {
             crane_mul: 1.0,
             drill_mul: 1.0,
             fuel_mul: 1.0,
+            scan_mul: 1.0,
         }
     }
 }
@@ -199,6 +201,7 @@ pub struct Ship {
     pub fuel: f32,
     pub max_fuel: f32,
     pub fuel_burn: f32,
+    pub scan_range: f32,
 
     pub docked: Option<usize>,
     pub dock_timer: f32,
@@ -336,6 +339,7 @@ impl Ship {
             fuel: max_fuel,
             max_fuel,
             fuel_burn: def.fuel_burn,
+            scan_range: 450.0 * stats.scan_mul,
             docked: None,
             dock_timer: 0.0,
             dock_cooldown: 0.0,
@@ -550,7 +554,7 @@ mod tests {
         let def = data.ship("driftkutter");
         let ship = Ship::build(def, &Loadout::full(def), &ShipStats::default());
         assert_eq!(ship.thrusters.len(), 5);
-        assert_eq!(ship.tools.len(), 3);
+        assert_eq!(ship.tools.len(), 4);
         assert!(
             ship.com.x.abs() < 1e-4,
             "symmetrisches Schiff, Schwerpunkt mittig"

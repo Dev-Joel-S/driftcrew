@@ -436,11 +436,16 @@ impl SimState {
     }
 
     fn generate_distress(&mut self) -> Mission {
-        let id = self.next_id();
-        let md = self.data.missions.clone();
         let sites = self.data.world.distress_sites.clone();
         let site = v(sites[self.rng.index(sites.len())])
             + Vec2::new(self.rng.range(-30.0, 30.0), self.rng.range(-30.0, 30.0));
+        self.generate_distress_at(site)
+    }
+
+    /// Notruf an einem bestimmten Ort (auch für spontane Notsignale).
+    pub(crate) fn generate_distress_at(&mut self, site: Vec2) -> Mission {
+        let id = self.next_id();
+        let md = self.data.missions.clone();
         // Zielstation: die nächstgelegene Station mit Reparaturdock.
         let to = (0..self.world.stations.len())
             .min_by(|a, b| {

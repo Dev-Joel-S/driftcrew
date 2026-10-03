@@ -419,6 +419,30 @@ fn emit_continuous(
                 }
             }
         }
+        // Sonnenwind: feine Schlieren in Windrichtung rund um das Schiff.
+        let wind = sim.0.sector_at(ship.pos).wind;
+        for _ in 0..4 {
+            if wind.length() <= 0.2 || !rng.0.chance((wind.length() * 0.35).min(0.9)) {
+                continue;
+            }
+            let dir = wind.normalize();
+            let side = Vec2::new(-dir.y, dir.x);
+            let p = ship.pos - dir * 45.0
+                + side * rng.0.range(-40.0, 40.0)
+                + dir * rng.0.range(0.0, 50.0);
+            spawn_particle(
+                &mut commands,
+                &mut art,
+                &mut mats,
+                p.extend(rng.0.range(-2.0, 2.0)),
+                (dir * rng.0.range(30.0, 45.0)).extend(0.0),
+                Color::srgb(1.0, 0.85, 0.55),
+                2.6,
+                rng.0.range(0.8, 1.4),
+                (0.75, 0.2),
+                0.0,
+            );
+        }
         for b in &sim.0.bodies {
             if !matches!(b.kind, BodyKind::Meteor) || (b.pos - ship.pos).length() > 140.0 {
                 continue;
