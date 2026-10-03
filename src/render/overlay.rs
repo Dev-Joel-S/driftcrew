@@ -47,12 +47,12 @@ fn draw_flight_aids(
     if speed < 0.3 {
         return;
     }
-    // Geschwindigkeitsvektor: wohin das Schiff in einer Sekunde treibt.
-    let tip = com + s.ship.vel.clamp_length_max(30.0);
+    // Geschwindigkeitsvektor: wohin das Schiff in 0,6 s treibt.
+    let tip = com + (s.ship.vel * 0.6).clamp_length_max(18.0);
     gizmos.arrow(
         com.extend(Z),
         tip.extend(Z),
-        Color::srgba(0.85, 0.95, 1.0, 0.75),
+        Color::srgba(0.85, 0.95, 1.0, 0.55),
     );
 
     // Flugbahn-Vorschau (ohne Eingabe), gestrichelt und zum Ende hin blasser.

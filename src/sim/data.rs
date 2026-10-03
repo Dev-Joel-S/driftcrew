@@ -64,6 +64,92 @@ pub struct PartDef {
     /// Schubrichtung in Grad relativ zur Schiffsnase (0 = schiebt nach vorne).
     #[serde(default)]
     pub dir: f32,
+    /// Umriss des Teils (Optik und Kollision).
+    #[serde(default)]
+    pub shape: PartShape,
+}
+
+/// Umriss eines Schiffsteils. „Oben“ = Richtung Schiffsnase.
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Default)]
+pub enum PartShape {
+    #[default]
+    Box,
+    /// Trapez: (Breite oben, Breite unten) als Anteil der vollen Breite.
+    Taper(f32, f32),
+    /// Abgeschrägte Ecken; Anteil der kürzeren Halbachse.
+    Chamfer(f32),
+    /// Spitze nach vorne; Anteil der Höhe, den die Spitze einnimmt.
+    Nose(f32),
+    /// Spitze nach hinten.
+    Tail(f32),
+    /// Keil zur Seite: (Höhe links, Höhe rechts) als Anteil – für Flügel und Flossen.
+    Wing(f32, f32),
+}
+
+impl PartShape {
+    /// Umrisspunkte gegen den Uhrzeigersinn, zentriert, für die halbe Größe `half`.
+    pub fn outline(&self, half: Vec2) -> Vec<Vec2> {
+        let (hx, hy) = (half.x, half.y);
+        let mut pts = match *self {
+            PartShape::Box => vec![
+                Vec2::new(-hx, -hy),
+                Vec2::new(hx, -hy),
+                Vec2::new(hx, hy),
+                Vec2::new(-hx, hy),
+            ],
+            PartShape::Taper(top, bottom) => vec![
+                Vec2::new(-hx * bottom, -hy),
+                Vec2::new(hx * bottom, -hy),
+                Vec2::new(hx * top, hy),
+                Vec2::new(-hx * top, hy),
+            ],
+            PartShape::Chamfer(c) => {
+                let k = c.clamp(0.0, 0.9) * hx.min(hy);
+                vec![
+                    Vec2::new(-hx + k, -hy),
+                    Vec2::new(hx - k, -hy),
+                    Vec2::new(hx, -hy + k),
+                    Vec2::new(hx, hy - k),
+                    Vec2::new(hx - k, hy),
+                    Vec2::new(-hx + k, hy),
+                    Vec2::new(-hx, hy - k),
+                    Vec2::new(-hx, -hy + k),
+                ]
+            }
+            PartShape::Nose(f) => {
+                let y = hy - 2.0 * hy * f.clamp(0.05, 0.95);
+                vec![
+                    Vec2::new(-hx, -hy),
+                    Vec2::new(hx, -hy),
+                    Vec2::new(hx, y),
+                    Vec2::new(0.0, hy),
+                    Vec2::new(-hx, y),
+                ]
+            }
+            PartShape::Tail(f) => {
+                let y = -hy + 2.0 * hy * f.clamp(0.05, 0.95);
+                vec![
+                    Vec2::new(0.0, -hy),
+                    Vec2::new(hx, y),
+                    Vec2::new(hx, hy),
+                    Vec2::new(-hx, hy),
+                    Vec2::new(-hx, y),
+                ]
+            }
+            PartShape::Wing(left, right) => vec![
+                Vec2::new(-hx, -hy),
+                Vec2::new(hx, -hy),
+                Vec2::new(hx, -hy + 2.0 * hy * right.clamp(0.05, 1.0)),
+                Vec2::new(-hx, -hy + 2.0 * hy * left.clamp(0.05, 1.0)),
+            ],
+        };
+        // Doppelte Punkte (z. B. Trapez mit Spitze 0) entfernen.
+        pts.dedup_by(|a, b| (*a - *b).length() < 1e-4);
+        if pts.len() > 3 && (pts[0] - *pts.last().unwrap()).length() < 1e-4 {
+            pts.pop();
+        }
+        pts
+    }
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -224,9 +310,18 @@ pub struct StationDef {
     pub services: Vec<Service>,
     /// Raster: `#` Block, `X` Akzentblock, `W` Fensterblock, `^ v < >` Landeplattform
     /// (Pfeil = Richtung, in die die Plattform zeigt), `L` Leuchtfeuer, `.` leer.
+    /// Schrägen (halbe Zelle, Zeichen zeigt die volle Ecke): `/` unten rechts,
+    /// `\` unten links, `7` oben rechts, `r` oben links.
     pub layout: Vec<String>,
     #[serde(default)]
     pub decor_ships: Vec<DecorShip>,
+    /// Freiliegende Ecken von `#`-Blöcken automatisch abschrägen.
+    #[serde(default = "default_true")]
+    pub auto_chamfer: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Deserialize, Clone, Debug)]

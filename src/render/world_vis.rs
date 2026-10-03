@@ -60,6 +60,14 @@ pub fn spawn_world(
     mut images: ResMut<Assets<Image>>,
 ) {
     let world = &sim.0.world;
+    let pad_lights = PadLightMats {
+        off: mats.add(art.emissive_mat(Color::srgb(0.05, 0.05, 0.05), 0.0)),
+        idle: mats.add(art.emissive_mat(Color::srgb(0.9, 0.55, 0.1), 0.6)),
+        green: mats.add(art.emissive_mat(Color::srgb(0.2, 1.0, 0.45), 5.0)),
+        yellow: mats.add(art.emissive_mat(Color::srgb(1.0, 0.75, 0.1), 5.0)),
+        red: mats.add(art.emissive_mat(Color::srgb(1.0, 0.15, 0.1), 5.0)),
+    };
+    commands.insert_resource(pad_lights.clone());
 
     // --- Stationen -------------------------------------------------------
     for (si, st) in world.stations.iter().enumerate() {
@@ -75,7 +83,7 @@ pub fn spawn_world(
             base_color: srgb(darker(main, 0.55)),
             base_color_texture: Some(art.window_alb.clone()),
             emissive_texture: Some(art.window_emi.clone()),
-            emissive: LinearRgba::rgb(5.0, 5.0, 5.0),
+            emissive: LinearRgba::rgb(3.2, 3.2, 3.2),
             perceptual_roughness: 0.25,
             metallic: 0.3,
             ..default()
@@ -101,6 +109,19 @@ pub fn spawn_world(
                     let e = commands
                         .spawn((
                             Mesh3d(block.clone()),
+                            MeshMaterial3d(mat),
+                            Transform::from_translation(pos),
+                        ))
+                        .id();
+                    commands.entity(root).add_child(e);
+                }
+                CellKind::Slope(ch) => {
+                    let outline = crate::sim::world::slope_outline(ch, st.cell * 0.5);
+                    let mesh = art.prism(&mut meshes, &outline, st.cell, 0.42, Some((0.3, 0.22)));
+                    let mat = variants[rng.index(variants.len())].clone();
+                    let e = commands
+                        .spawn((
+                            Mesh3d(mesh),
                             MeshMaterial3d(mat),
                             Transform::from_translation(pos),
                         ))
@@ -149,6 +170,19 @@ pub fn spawn_world(
                         Quat::from_rotation_z(if dir > 0.0 { 0.0 } else { std::f32::consts::PI });
                     let mut parts: Vec<(Handle<Mesh>, Handle<StandardMaterial>, Transform)> =
                         Vec::new();
+                    if rng.chance(0.18) {
+                        let up = Vec2::Y * dir;
+                        spawn_containers(
+                            &mut commands,
+                            &mut art,
+                            &mut meshes,
+                            &mut mats,
+                            top,
+                            up,
+                            &mut rng,
+                        );
+                        continue;
+                    }
                     match rng.index(4) {
                         0 => {
                             let h = rng.range(1.0, 1.8);
@@ -213,10 +247,38 @@ pub fn spawn_world(
                 &mut art,
                 &mut meshes,
                 &mut mats,
+                &pad_lights,
                 &sim.0,
                 pad,
                 srgb(accent),
             );
+            // Kran oder Containerstapel an einem Ende der Plattform (Deko, hinter der Ebene).
+            let pd = sim.0.world.pads[pad].clone();
+            let side = if rng.chance(0.5) { 1.0 } else { -1.0 };
+            let end = pd.center + pd.tangent() * side * (pd.half_width + 0.9);
+            if rng.chance(0.6) {
+                spawn_crane(
+                    &mut commands,
+                    &mut art,
+                    &mut meshes,
+                    &mut mats,
+                    end,
+                    pd.normal,
+                    -side * (pd.half_width * 0.9 + 0.9),
+                    4.6,
+                    srgb(darker(accent, 0.8)),
+                );
+            } else {
+                spawn_containers(
+                    &mut commands,
+                    &mut art,
+                    &mut meshes,
+                    &mut mats,
+                    end,
+                    pd.normal,
+                    &mut rng,
+                );
+            }
         }
         // Ausgestellte Schiffe in der Werft (hinter der Spielebene, ohne Kollision).
         let sd = &data.0.world.stations[si];
@@ -372,6 +434,7 @@ pub fn spawn_world(
                 &mut art,
                 &mut meshes,
                 &mut mats,
+                &pad_lights,
                 &sim.0,
                 pad,
                 srgb([1.0, 0.75, 0.15]),
@@ -381,7 +444,7 @@ pub fn spawn_world(
     // Stützblöcke der Planeten-Außenposten
     let outpost_mat = mats.add(art.panel_mat(srgb([0.85, 0.87, 0.92]), 0.5, 0.2));
     for col in &world.colliders {
-        if let (Shape::Quad(q), Surface::Structure) = (col.shape, col.surface) {
+        if let (Shape::Poly(q), Surface::Structure) = (col.shape, col.surface) {
             let e = q.v[1] - q.v[0];
             let ang = e.y.atan2(e.x);
             let c = q.center();
@@ -566,11 +629,151 @@ fn spawn_beacon(
     }
 }
 
+/// Ein Lauflicht an der Vorderkante einer Landeplattform.
+#[derive(Component)]
+pub struct PadLight {
+    pub pad: usize,
+    pub index: usize,
+    pub count: usize,
+}
+
+/// Gemeinsame Materialien für die Plattform-Lauflichter.
+#[derive(Resource, Clone)]
+pub struct PadLightMats {
+    pub off: Handle<StandardMaterial>,
+    pub idle: Handle<StandardMaterial>,
+    pub green: Handle<StandardMaterial>,
+    pub yellow: Handle<StandardMaterial>,
+    pub red: Handle<StandardMaterial>,
+}
+
+const CONTAINER_COLORS: [[f32; 3]; 5] = [
+    [0.54, 0.29, 0.18],
+    [0.25, 0.37, 0.48],
+    [0.36, 0.42, 0.23],
+    [0.43, 0.44, 0.46],
+    [0.6, 0.48, 0.18],
+];
+
+/// Kran: Mast, Ausleger, Seil und Haken (Deko, hinter der Spielebene).
+fn spawn_crane(
+    commands: &mut Commands,
+    art: &mut Art,
+    meshes: &mut Assets<Mesh>,
+    mats: &mut Assets<StandardMaterial>,
+    base: Vec2,
+    up: Vec2,
+    reach: f32,
+    height: f32,
+    color: Color,
+) {
+    let angle = f32::atan2(-up.x, up.y);
+    let frame = mats.add(art.panel_mat(color, 0.5, 0.4));
+    let dark = mats.add(art.panel_mat(Color::srgb(0.12, 0.13, 0.15), 0.4, 0.7));
+    let mast = art.bevel_box(meshes, Vec3::new(0.35, height, 0.35));
+    let boom = art.bevel_box(meshes, Vec3::new(reach, 0.28, 0.3));
+    let hook = art.bevel_box(meshes, Vec3::new(0.45, 0.35, 0.35));
+    let root = commands
+        .spawn((
+            Transform::from_xyz(base.x, base.y, -1.5).with_rotation(Quat::from_rotation_z(angle)),
+            Visibility::default(),
+        ))
+        .id();
+    let s = reach.signum();
+    let parts = [
+        commands
+            .spawn((
+                Mesh3d(mast),
+                MeshMaterial3d(frame.clone()),
+                Transform::from_xyz(0.0, height * 0.5, 0.0),
+            ))
+            .id(),
+        commands
+            .spawn((
+                Mesh3d(boom),
+                MeshMaterial3d(frame.clone()),
+                Transform::from_xyz(reach * 0.45, height, 0.0),
+            ))
+            .id(),
+        // Gegengewicht
+        commands
+            .spawn((
+                Mesh3d(art.bevel_box(meshes, Vec3::new(0.7, 0.55, 0.45))),
+                MeshMaterial3d(dark.clone()),
+                Transform::from_xyz(-s * 0.55, height, 0.0),
+            ))
+            .id(),
+        commands
+            .spawn((
+                Mesh3d(art.cylinder.clone()),
+                MeshMaterial3d(dark.clone()),
+                Transform::from_xyz(reach * 0.85, height - 0.9, 0.0)
+                    .with_scale(Vec3::new(0.03, 1.8, 0.03)),
+            ))
+            .id(),
+        commands
+            .spawn((
+                Mesh3d(hook),
+                MeshMaterial3d(dark),
+                Transform::from_xyz(reach * 0.85, height - 1.9, 0.0),
+            ))
+            .id(),
+    ];
+    commands.entity(root).add_children(&parts);
+}
+
+/// Stapel aus Frachtcontainern (Deko, hinter der Spielebene).
+fn spawn_containers(
+    commands: &mut Commands,
+    art: &mut Art,
+    meshes: &mut Assets<Mesh>,
+    mats: &mut Assets<StandardMaterial>,
+    base: Vec2,
+    up: Vec2,
+    rng: &mut Rng,
+) {
+    let angle = f32::atan2(-up.x, up.y);
+    let root = commands
+        .spawn((
+            Transform::from_xyz(base.x, base.y, -1.2).with_rotation(Quat::from_rotation_z(angle)),
+            Visibility::default(),
+        ))
+        .id();
+    let box_mesh = art.prism(
+        meshes,
+        &crate::sim::data::PartShape::Box.outline(Vec2::new(0.8, 0.42)),
+        1.0,
+        0.06,
+        Some((0.08, 0.04)),
+    );
+    let layers = 1 + rng.index(3);
+    let mut kids = Vec::new();
+    for l in 0..layers {
+        let n = 2 - (l / 2).min(1);
+        for k in 0..n {
+            let c = CONTAINER_COLORS[rng.index(CONTAINER_COLORS.len())];
+            let m = mats.add(art.panel_mat(srgb(c), 0.6, 0.3));
+            let x = (k as f32 - (n - 1) as f32 * 0.5) * 1.68 + if l % 2 == 1 { 0.4 } else { 0.0 };
+            kids.push(
+                commands
+                    .spawn((
+                        Mesh3d(box_mesh.clone()),
+                        MeshMaterial3d(m),
+                        Transform::from_xyz(x, 0.42 + l as f32 * 0.86, 0.0),
+                    ))
+                    .id(),
+            );
+        }
+    }
+    commands.entity(root).add_children(&kids);
+}
+
 fn spawn_pad(
     commands: &mut Commands,
     art: &mut Art,
     meshes: &mut Assets<Mesh>,
     mats: &mut Assets<StandardMaterial>,
+    lights: &PadLightMats,
     sim: &crate::sim::SimState,
     pad: usize,
     color: Color,
@@ -578,23 +781,110 @@ fn spawn_pad(
     let p = &sim.world.pads[pad];
     let angle = p.ship_angle();
     let width = p.half_width * 2.0 / 0.92;
-    let plate_mesh = art.bevel_box(meshes, Vec3::new(width, 0.35, 3.4));
+    let rot = Quat::from_rotation_z(angle);
+    let to_world = |local: Vec2, z: f32| -> Transform {
+        let w = p.center + crate::sim::geom::rot(local, angle);
+        Transform::from_xyz(w.x, w.y, z).with_rotation(rot)
+    };
+    // Gehäuse (dunkles Metall) und darauf die eigentliche Druckplatte in Warnfarbe.
+    let housing = art.prism(
+        meshes,
+        &crate::sim::data::PartShape::Chamfer(0.6).outline(Vec2::new(width * 0.5, 0.13)),
+        3.6,
+        0.08,
+        None,
+    );
+    let housing_mat = mats.add(art.panel_mat(Color::srgb(0.16, 0.17, 0.19), 0.45, 0.6));
+    commands.spawn((
+        Mesh3d(housing),
+        MeshMaterial3d(housing_mat),
+        to_world(Vec2::new(0.0, -0.22), 0.0),
+    ));
+    let plate = art.prism(
+        meshes,
+        &crate::sim::data::PartShape::Taper(0.96, 1.0).outline(Vec2::new(width * 0.5 - 0.3, 0.06)),
+        3.0,
+        0.04,
+        None,
+    );
     let plate_mat = mats.add(StandardMaterial {
         base_color: color,
-        base_color_texture: Some(art.panel.clone()),
-        emissive: color.to_linear() * 1.2,
-        emissive_texture: Some(art.stripes.clone()),
-        perceptual_roughness: 0.35,
-        metallic: 0.25,
+        base_color_texture: Some(art.stripes.clone()),
+        perceptual_roughness: 0.55,
+        metallic: 0.2,
         ..default()
     });
-    let c = p.center - p.normal * 0.175;
     commands.spawn((
-        Mesh3d(plate_mesh),
+        Mesh3d(plate),
         MeshMaterial3d(plate_mat),
-        Transform::from_xyz(c.x, c.y, 0.0).with_rotation(Quat::from_rotation_z(angle)),
+        to_world(Vec2::new(0.0, -0.06), 0.0),
     ));
-    // Leuchtende Andockzone (zeigt grün, wenn alles passt).
+
+    // Lauflichter an der Vorderkante.
+    let count = ((width / 1.1) as usize).clamp(3, 14);
+    let bulb = art.bevel_box(meshes, Vec3::new(0.32, 0.1, 0.08));
+    for i in 0..count {
+        let x = (i as f32 + 0.5) / count as f32 * (width - 0.8) - (width - 0.8) * 0.5;
+        commands.spawn((
+            Mesh3d(bulb.clone()),
+            MeshMaterial3d(lights.idle.clone()),
+            to_world(Vec2::new(x, -0.24), 1.84),
+            PadLight {
+                pad,
+                index: i,
+                count,
+            },
+        ));
+    }
+    // Andockmarkierungen: Winkel an beiden Enden, die nach oben zeigen.
+    let chevron = art.prism(
+        meshes,
+        &[
+            Vec2::new(-0.35, -0.18),
+            Vec2::new(0.35, -0.18),
+            Vec2::new(0.0, 0.2),
+        ],
+        0.06,
+        0.02,
+        None,
+    );
+    let white = mats.add(art.panel_mat(Color::srgb(0.85, 0.86, 0.84), 0.5, 0.1));
+    for side in [-1.0f32, 1.0] {
+        commands.spawn((
+            Mesh3d(chevron.clone()),
+            MeshMaterial3d(white.clone()),
+            to_world(Vec2::new(side * (width * 0.5 - 0.45), -0.2), 1.83),
+        ));
+        // Lichtmast hinter der Spielebene
+        let mast_h = 2.4;
+        let pole = to_world(
+            Vec2::new(side * (width * 0.5 + 0.35), mast_h * 0.5 - 0.3),
+            -1.6,
+        );
+        commands.spawn((
+            Mesh3d(art.cylinder.clone()),
+            MeshMaterial3d(white.clone()),
+            pole.with_scale(Vec3::new(0.07, mast_h, 0.07)),
+        ));
+        let lamp = mats.add(art.emissive_mat(color, 5.0));
+        commands.spawn((
+            Mesh3d(art.sphere.clone()),
+            MeshMaterial3d(lamp),
+            to_world(Vec2::new(side * (width * 0.5 + 0.35), mast_h - 0.3), -1.6)
+                .with_scale(Vec3::splat(0.16)),
+        ));
+    }
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(1.0, 0.92, 0.8),
+            intensity: 90_000.0,
+            range: 14.0,
+            shadow_maps_enabled: false,
+            ..default()
+        },
+        to_world(Vec2::new(0.0, 3.0), 3.5),
+    ));
+    // Leuchtende Andockzone (Ampelfarbe).
     let glow = mats.add(StandardMaterial {
         base_color: Color::srgba(0.2, 1.0, 0.5, 0.0),
         base_color_texture: Some(art.glow.clone()),
@@ -607,11 +897,46 @@ fn spawn_pad(
         Mesh3d(art.quad.clone()),
         MeshMaterial3d(glow),
         Transform::from_xyz(gc.x, gc.y, 1.9)
-            .with_rotation(Quat::from_rotation_z(angle))
+            .with_rotation(rot)
             .with_scale(Vec3::new(width * 1.1, 4.0, 1.0)),
         PadGlow(pad),
         NotShadowCaster,
     ));
+}
+
+/// Lauflichter: im Ruhezustand gedimmt, beim Anflug ein Lauflicht in Ampelfarbe,
+/// angedockt durchgehend grün.
+pub fn update_pad_lights(
+    time: Res<Time>,
+    sim: Res<Sim>,
+    mats: Option<Res<PadLightMats>>,
+    mut q: Query<(&PadLight, &mut MeshMaterial3d<StandardMaterial>)>,
+) {
+    let Some(mats) = mats else { return };
+    let t = time.elapsed_secs();
+    let guide = sim.0.dock_guide();
+    for (l, mut m) in &mut q {
+        let want = if sim.0.ship.docked == Some(l.pad) {
+            &mats.green
+        } else if let Some(g) = guide.filter(|g| g.pad == l.pad && g.distance < 22.0) {
+            let head = ((t * 9.0) as usize) % l.count;
+            let lit = (l.index + l.count - head) % l.count < 2;
+            if !lit {
+                &mats.off
+            } else {
+                match g.overall() {
+                    crate::sim::dock::Light::Green => &mats.green,
+                    crate::sim::dock::Light::Yellow => &mats.yellow,
+                    crate::sim::dock::Light::Red => &mats.red,
+                }
+            }
+        } else {
+            &mats.idle
+        };
+        if m.0 != *want {
+            m.0 = want.clone();
+        }
+    }
 }
 
 pub fn spawn_background(

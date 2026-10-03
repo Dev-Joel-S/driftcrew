@@ -2,8 +2,8 @@
 
 use bevy::math::Vec2;
 
-use super::data::{Ore, PartKind, ShipDef, ToolKind, v};
-use super::geom::{Quad, rot};
+use super::data::{Ore, PartKind, PartShape, ShipDef, ToolKind, v};
+use super::geom::{Poly, rot};
 
 /// Was die Lobby belegt hat: Anzahl Triebwerke und welche Werkzeuge (Index in `tool_parts`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -56,6 +56,7 @@ pub struct ShipPart {
     pub pos: Vec2,
     pub half: Vec2,
     pub mass: f32,
+    pub shape: PartShape,
 }
 
 #[derive(Clone, Debug)]
@@ -178,15 +179,15 @@ impl Ship {
             def.min_thrusters.min(def.max_thrusters()),
             def.max_thrusters(),
         );
-        let mut claimed: Vec<(f32, f32, f32, f32, Vec2, f32)> = def
+        let mut claimed: Vec<(f32, f32, f32, f32, Vec2, f32, PartShape)> = def
             .thruster_parts()
             .take(n as usize)
-            .map(|(_, p, t)| (p.pos.0, p.pos.1, t, p.dir, v(p.size), p.mass))
+            .map(|(_, p, t)| (p.pos.0, p.pos.1, t, p.dir, v(p.size), p.mass, p.shape))
             .collect();
         claimed.sort_by(|a, b| a.0.total_cmp(&b.0));
         let xs = def.thruster_xs(n);
         let mut thrusters = Vec::new();
-        for (i, (_, y, thrust, dir, size, mass)) in claimed.into_iter().enumerate() {
+        for (i, (_, y, thrust, dir, size, mass, shape)) in claimed.into_iter().enumerate() {
             let x = xs.get(i).copied().unwrap_or(0.0);
             let pos = Vec2::new(x, y);
             parts.push(ShipPart {
@@ -194,6 +195,7 @@ impl Ship {
                 pos,
                 half: size * 0.5,
                 mass,
+                shape,
             });
             thrusters.push(Thruster {
                 slot: i as u8,
@@ -216,6 +218,7 @@ impl Ship {
                 pos: v(p.pos),
                 half: v(p.size) * 0.5,
                 mass: p.mass,
+                shape: p.shape,
             });
             tools.push(Tool {
                 slot,
@@ -245,6 +248,7 @@ impl Ship {
                         pos: v(p.pos),
                         half: v(p.size) * 0.5,
                         mass: p.mass,
+                        shape: p.shape,
                     });
                 }
                 _ => parts.push(ShipPart {
@@ -252,6 +256,7 @@ impl Ship {
                     pos: v(p.pos),
                     half: v(p.size) * 0.5,
                     mass: p.mass,
+                    shape: p.shape,
                 }),
             }
         }
@@ -349,10 +354,10 @@ impl Ship {
         self.ang_vel += super::geom::cross(at - self.pos, impulse) / self.inertia;
     }
 
-    pub fn quads(&self) -> Vec<Quad> {
+    pub fn quads(&self) -> Vec<Poly> {
         self.parts
             .iter()
-            .map(|p| Quad::obb(self.to_world(p.pos), p.half, self.angle))
+            .map(|p| Poly::transformed(&p.shape.outline(p.half), self.to_world(p.pos), self.angle))
             .collect()
     }
 

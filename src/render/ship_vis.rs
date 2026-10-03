@@ -125,23 +125,25 @@ pub fn spawn_ship_model(
     } else {
         (hex(&def.hull_color), hex(&def.accent_color))
     };
-    let hull_mat = mats.add(art.panel_mat(srgb(hull_c), 0.42, 0.12));
-    let accent_mat = mats.add(art.panel_mat(srgb(accent_c), 0.38, 0.15));
-    let dark_mat = mats.add(art.panel_mat(srgb([0.16, 0.17, 0.2]), 0.35, 0.6));
+    // Lackierter Stahl statt Spielzeugplastik: etwas Metall, gedeckte Töne.
+    let hull_mat = mats.add(art.panel_mat(srgb(hull_c), 0.48, 0.35));
+    let accent_mat = mats.add(art.panel_mat(srgb(accent_c), 0.45, 0.3));
+    let dark_mat = mats.add(art.panel_mat(srgb([0.12, 0.13, 0.15]), 0.4, 0.7));
+    // Getöntes Cockpitglas mit Spiegelung, kaum Eigenleuchten.
     let glass_mat = mats.add(StandardMaterial {
-        base_color: Color::srgb(0.03, 0.12, 0.16),
+        base_color: Color::srgb(0.02, 0.04, 0.06),
         emissive: if opts.derelict {
             LinearRgba::BLACK
         } else {
-            LinearRgba::rgb(0.12, 0.9, 1.1)
+            LinearRgba::rgb(0.01, 0.05, 0.07)
         },
-        perceptual_roughness: 0.06,
-        metallic: 0.7,
-        reflectance: 0.9,
+        perceptual_roughness: 0.08,
+        metallic: 0.85,
+        reflectance: 1.0,
         ..default()
     });
-    let stripe_mat =
-        mats.add(art.emissive_mat(srgb(accent_c), if opts.derelict { 0.0 } else { 1.6 }));
+    // Akzentstreifen als Lack, nicht leuchtend.
+    let stripe_mat = mats.add(art.panel_mat(srgb(accent_c), 0.4, 0.3));
 
     let root = commands
         .spawn((
@@ -155,7 +157,15 @@ pub fn spawn_ship_model(
     for p in &ship.parts {
         let depth = part_depth(&p.kind);
         let size = Vec3::new(p.half.x * 2.0, p.half.y * 2.0, depth);
-        let mesh = art.bevel_box(meshes, size);
+        let outline = p.shape.outline(p.half);
+        let bevel = (p.half.min_element() * 0.3).min(0.2);
+        // Rumpf und Panzer bekommen eingelassene Paneele, kleine Teile nur eine Fase.
+        let panel = matches!(
+            p.kind,
+            PartKind::Hull | PartKind::Armor | PartKind::CargoPod(_)
+        )
+        .then_some((0.14, 0.07));
+        let mesh = art.prism(meshes, &outline, depth, bevel, panel);
         let (mat, z) = match &p.kind {
             PartKind::Hull => (hull_mat.clone(), 0.0),
             PartKind::Cockpit => (hull_mat.clone(), 0.1),
@@ -175,8 +185,8 @@ pub fn spawn_ship_model(
         );
         match &p.kind {
             PartKind::Hull => {
-                // Leuchtender Akzentstreifen und Lüftungsschlitze für mehr Detail.
-                let stripe = art.bevel_box(meshes, Vec3::new(size.x * 0.82, 0.16, 0.12));
+                // Lackierter Akzentstreifen und Lüftungsschlitze für mehr Detail.
+                let stripe = art.bevel_box(meshes, Vec3::new(size.x * 0.7, 0.12, 0.1));
                 children.push(
                     commands
                         .spawn((
@@ -209,21 +219,20 @@ pub fn spawn_ship_model(
                 }
             }
             PartKind::Cockpit => {
+                // Verglasung als flaches, abgeschrägtes Visier in der Form des Cockpits.
+                let glass_outline: Vec<Vec2> =
+                    outline.iter().map(|v| *v * Vec2::new(0.78, 0.62)).collect();
+                let visor = art.prism(meshes, &glass_outline, 0.22, 0.08, None);
                 children.push(
                     commands
                         .spawn((
-                            Mesh3d(art.sphere.clone()),
+                            Mesh3d(visor),
                             MeshMaterial3d(glass_mat.clone()),
                             Transform::from_xyz(
                                 p.pos.x,
-                                p.pos.y + p.half.y * 0.15,
-                                depth * 0.5 + 0.05,
-                            )
-                            .with_scale(Vec3::new(
-                                p.half.x * 0.75,
-                                p.half.y * 0.8,
-                                0.35,
-                            )),
+                                p.pos.y + p.half.y * 0.12,
+                                depth * 0.5 + 0.12,
+                            ),
                         ))
                         .id(),
                 );
@@ -274,8 +283,9 @@ pub fn spawn_ship_model(
                 .id(),
         );
         if opts.slot_colors {
-            let ring_mat = mats.add(art.emissive_mat(col, 3.5));
-            let ring = art.bevel_box(meshes, Vec3::new(half.x * 2.1, 0.12, 1.06));
+            // Schmaler Kennring in Slotfarbe (das einzige Leuchten am Rumpf).
+            let ring_mat = mats.add(art.emissive_mat(col, 1.4));
+            let ring = art.bevel_box(meshes, Vec3::new(half.x * 2.04, 0.07, 1.04));
             children.push(
                 commands
                     .spawn((
@@ -350,7 +360,7 @@ pub fn spawn_ship_model(
         } else {
             srgb([0.5, 0.5, 0.55])
         };
-        let ring_mat = mats.add(art.emissive_mat(col, if opts.slot_colors { 3.0 } else { 0.0 }));
+        let ring_mat = mats.add(art.emissive_mat(col, if opts.slot_colors { 1.2 } else { 0.0 }));
         let head = commands
             .spawn((
                 Transform::from_xyz(t.pos.x, t.pos.y, 0.7),
@@ -363,8 +373,9 @@ pub fn spawn_ship_model(
                 .spawn((
                     Mesh3d(art.cylinder.clone()),
                     MeshMaterial3d(ring_mat),
-                    Transform::from_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
-                        .with_scale(Vec3::new(0.3, 0.12, 0.3)),
+                    Transform::from_xyz(0.0, 0.0, -0.02)
+                        .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
+                        .with_scale(Vec3::new(0.22, 0.05, 0.22)),
                 ))
                 .id(),
         ];
@@ -420,7 +431,7 @@ pub fn spawn_ship_model(
                     commands
                         .spawn((
                             Mesh3d(art.cone.clone()),
-                            MeshMaterial3d(accent_mat.clone()),
+                            MeshMaterial3d(dark_mat.clone()),
                             Transform::from_xyz(0.0, 0.45, 0.1)
                                 .with_scale(Vec3::new(0.2, 0.7, 0.2)),
                         ))
@@ -481,7 +492,7 @@ pub fn spawn_ship_model(
                         c.spawn((
                             Mesh3d(art.quad.clone()),
                             MeshMaterial3d(halo),
-                            Transform::from_xyz(0.0, 0.0, 0.1).with_scale(Vec3::splat(1.1)),
+                            Transform::from_xyz(0.0, 0.0, 0.1).with_scale(Vec3::splat(0.55)),
                             NotShadowCaster,
                         ));
                     })

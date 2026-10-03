@@ -1,4 +1,4 @@
-//! 2D-Geometrie und Kontakterzeugung: konvexe Vierecke (OBB) und Kreise.
+//! 2D-Geometrie und Kontakterzeugung: konvexe Polygone (bis 8 Ecken) und Kreise.
 //! Bewusst klein gehalten, damit ein späterer Umstieg auf Fixed-Point leicht fällt.
 
 use bevy::math::Vec2;
@@ -54,38 +54,57 @@ impl Aabb {
     }
 }
 
-/// Konvexes Viereck, Ecken gegen den Uhrzeigersinn.
+pub const MAX_VERTS: usize = 8;
+
+/// Konvexes Polygon (3–8 Ecken), Ecken gegen den Uhrzeigersinn.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Quad {
-    pub v: [Vec2; 4],
-    pub n: [Vec2; 4],
+pub struct Poly {
+    pub v: [Vec2; MAX_VERTS],
+    pub n: [Vec2; MAX_VERTS],
+    pub count: usize,
 }
 
-impl Quad {
-    pub fn obb(center: Vec2, half: Vec2, angle: f32) -> Quad {
+impl Poly {
+    pub fn obb(center: Vec2, half: Vec2, angle: f32) -> Poly {
         let local = [
             Vec2::new(-half.x, -half.y),
             Vec2::new(half.x, -half.y),
             Vec2::new(half.x, half.y),
             Vec2::new(-half.x, half.y),
         ];
-        let v = local.map(|p| center + rot(p, angle));
-        Quad::from_verts(v)
+        Poly::transformed(&local, center, angle)
     }
 
-    pub fn from_verts(v: [Vec2; 4]) -> Quad {
-        let mut n = [Vec2::ZERO; 4];
-        for i in 0..4 {
-            let e = v[(i + 1) % 4] - v[i];
+    /// Lokale Umrisspunkte (CCW) drehen und verschieben.
+    pub fn transformed(local: &[Vec2], center: Vec2, angle: f32) -> Poly {
+        let mut pts = [Vec2::ZERO; MAX_VERTS];
+        let n = local.len().min(MAX_VERTS);
+        for i in 0..n {
+            pts[i] = center + rot(local[i], angle);
+        }
+        Poly::from_points(&pts[..n])
+    }
+
+    pub fn from_points(pts: &[Vec2]) -> Poly {
+        let count = pts.len().clamp(3, MAX_VERTS).min(pts.len());
+        let mut v = [Vec2::ZERO; MAX_VERTS];
+        v[..count].copy_from_slice(&pts[..count]);
+        let mut n = [Vec2::ZERO; MAX_VERTS];
+        for i in 0..count {
+            let e = v[(i + 1) % count] - v[i];
             n[i] = Vec2::new(e.y, -e.x).normalize_or_zero();
         }
-        Quad { v, n }
+        Poly { v, n, count }
+    }
+
+    pub fn verts(&self) -> &[Vec2] {
+        &self.v[..self.count]
     }
 
     pub fn aabb(&self) -> Aabb {
         let mut min = self.v[0];
         let mut max = self.v[0];
-        for p in &self.v[1..] {
+        for p in &self.verts()[1..] {
             min = min.min(*p);
             max = max.max(*p);
         }
@@ -93,11 +112,11 @@ impl Quad {
     }
 
     pub fn center(&self) -> Vec2 {
-        (self.v[0] + self.v[1] + self.v[2] + self.v[3]) * 0.25
+        self.verts().iter().copied().sum::<Vec2>() / self.count as f32
     }
 
     pub fn contains(&self, p: Vec2) -> bool {
-        (0..4).all(|i| self.n[i].dot(p - self.v[i]) <= 0.0)
+        (0..self.count).all(|i| self.n[i].dot(p - self.v[i]) <= 0.0)
     }
 }
 
@@ -109,13 +128,13 @@ pub struct Contact {
     pub depth: f32,
 }
 
-fn max_separation(a: &Quad, b: &Quad) -> (usize, f32) {
+fn max_separation(a: &Poly, b: &Poly) -> (usize, f32) {
     let mut best = (0, f32::MIN);
-    for i in 0..4 {
+    for i in 0..a.count {
         let n = a.n[i];
         let vi = a.v[i];
         let mut s = f32::MAX;
-        for p in &b.v {
+        for p in b.verts() {
             s = s.min(n.dot(*p - vi));
         }
         if s > best.1 {
@@ -145,8 +164,8 @@ fn clip(points: &[(Vec2, bool)], n: Vec2, offset: f32) -> Vec<(Vec2, bool)> {
     out
 }
 
-/// Viereck gegen Viereck (SAT + Clipping, wie in Box2D). Liefert 0–2 Kontakte.
-pub fn quad_quad(a: &Quad, b: &Quad, out: &mut Vec<Contact>) {
+/// Polygon gegen Polygon (SAT + Clipping, wie in Box2D). Liefert 0–2 Kontakte.
+pub fn poly_poly(a: &Poly, b: &Poly, out: &mut Vec<Contact>) {
     let (ea, sa) = max_separation(a, b);
     if sa > 0.0 {
         return;
@@ -164,16 +183,19 @@ pub fn quad_quad(a: &Quad, b: &Quad, out: &mut Vec<Contact>) {
     // Inzidente Kante: Normale am stärksten entgegengesetzt zur Referenznormale.
     let mut inc = 0;
     let mut min_dot = f32::MAX;
-    for i in 0..4 {
+    for i in 0..incident.count {
         let d = ref_n.dot(incident.n[i]);
         if d < min_dot {
             min_dot = d;
             inc = i;
         }
     }
-    let pts = [(incident.v[inc], true), (incident.v[(inc + 1) % 4], true)];
+    let pts = [
+        (incident.v[inc], true),
+        (incident.v[(inc + 1) % incident.count], true),
+    ];
     let v1 = reference.v[edge];
-    let v2 = reference.v[(edge + 1) % 4];
+    let v2 = reference.v[(edge + 1) % reference.count];
     let t = (v2 - v1).normalize_or_zero();
     let c1 = clip(&pts, -t, -t.dot(v1));
     let c2 = clip(&c1, t, t.dot(v2));
@@ -191,11 +213,11 @@ pub fn quad_quad(a: &Quad, b: &Quad, out: &mut Vec<Contact>) {
     }
 }
 
-/// Viereck gegen Kreis. Normale zeigt vom Viereck zum Kreis.
-pub fn quad_circle(a: &Quad, c: Vec2, r: f32) -> Option<Contact> {
+/// Polygon gegen Kreis. Normale zeigt vom Polygon zum Kreis.
+pub fn poly_circle(a: &Poly, c: Vec2, r: f32) -> Option<Contact> {
     let mut edge = 0;
     let mut sep = f32::MIN;
-    for i in 0..4 {
+    for i in 0..a.count {
         let s = a.n[i].dot(c - a.v[i]);
         if s > r {
             return None;
@@ -206,7 +228,7 @@ pub fn quad_circle(a: &Quad, c: Vec2, r: f32) -> Option<Contact> {
         }
     }
     let v1 = a.v[edge];
-    let v2 = a.v[(edge + 1) % 4];
+    let v2 = a.v[(edge + 1) % a.count];
     if sep < 1e-5 {
         // Mittelpunkt im Viereck.
         let n = a.n[edge];
@@ -282,11 +304,11 @@ pub fn ray_circle(origin: Vec2, dir: Vec2, max: f32, c: Vec2, r: f32) -> Option<
     if t <= max { Some(t) } else { None }
 }
 
-/// Strahl gegen Viereck (Slab-Test über die Kanten).
-pub fn ray_quad(origin: Vec2, dir: Vec2, max: f32, q: &Quad) -> Option<f32> {
+/// Strahl gegen konvexes Polygon (Slab-Test über die Kanten).
+pub fn ray_poly(origin: Vec2, dir: Vec2, max: f32, q: &Poly) -> Option<f32> {
     let mut t_enter = 0.0f32;
     let mut t_exit = max;
-    for i in 0..4 {
+    for i in 0..q.count {
         let n = q.n[i];
         let denom = n.dot(dir);
         let dist = n.dot(q.v[i] - origin);
@@ -315,10 +337,10 @@ mod tests {
 
     #[test]
     fn resting_box_on_floor_gives_two_contacts() {
-        let floor = Quad::obb(Vec2::new(0.0, -1.0), Vec2::new(10.0, 1.0), 0.0);
-        let boxq = Quad::obb(Vec2::new(0.0, 0.45), Vec2::new(0.5, 0.5), 0.0);
+        let floor = Poly::obb(Vec2::new(0.0, -1.0), Vec2::new(10.0, 1.0), 0.0);
+        let boxq = Poly::obb(Vec2::new(0.0, 0.45), Vec2::new(0.5, 0.5), 0.0);
         let mut out = Vec::new();
-        quad_quad(&floor, &boxq, &mut out);
+        poly_poly(&floor, &boxq, &mut out);
         assert_eq!(out.len(), 2);
         for c in &out {
             assert!((c.normal - Vec2::Y).length() < 1e-4, "{:?}", c.normal);
@@ -328,27 +350,27 @@ mod tests {
 
     #[test]
     fn separated_boxes_no_contact() {
-        let a = Quad::obb(Vec2::ZERO, Vec2::splat(1.0), 0.3);
-        let b = Quad::obb(Vec2::new(5.0, 0.0), Vec2::splat(1.0), 0.0);
+        let a = Poly::obb(Vec2::ZERO, Vec2::splat(1.0), 0.3);
+        let b = Poly::obb(Vec2::new(5.0, 0.0), Vec2::splat(1.0), 0.0);
         let mut out = Vec::new();
-        quad_quad(&a, &b, &mut out);
+        poly_poly(&a, &b, &mut out);
         assert!(out.is_empty());
     }
 
     #[test]
     fn crossing_thin_bars_collide() {
         // Zwei dünne Balken, die sich kreuzen, ohne dass eine Ecke im anderen liegt.
-        let a = Quad::obb(Vec2::ZERO, Vec2::new(5.0, 0.2), 0.0);
-        let b = Quad::obb(Vec2::ZERO, Vec2::new(5.0, 0.2), 1.2);
+        let a = Poly::obb(Vec2::ZERO, Vec2::new(5.0, 0.2), 0.0);
+        let b = Poly::obb(Vec2::ZERO, Vec2::new(5.0, 0.2), 1.2);
         let mut out = Vec::new();
-        quad_quad(&a, &b, &mut out);
+        poly_poly(&a, &b, &mut out);
         assert!(!out.is_empty());
     }
 
     #[test]
     fn circle_hits_box_face() {
-        let q = Quad::obb(Vec2::ZERO, Vec2::splat(1.0), 0.0);
-        let c = quad_circle(&q, Vec2::new(0.0, 1.4), 0.5).unwrap();
+        let q = Poly::obb(Vec2::ZERO, Vec2::splat(1.0), 0.0);
+        let c = poly_circle(&q, Vec2::new(0.0, 1.4), 0.5).unwrap();
         assert!((c.normal - Vec2::Y).length() < 1e-4);
         assert!((c.depth - 0.1).abs() < 1e-4);
     }
@@ -357,8 +379,49 @@ mod tests {
     fn ray_hits() {
         let t = ray_circle(Vec2::ZERO, Vec2::X, 10.0, Vec2::new(5.0, 0.0), 1.0).unwrap();
         assert!((t - 4.0).abs() < 1e-4);
-        let q = Quad::obb(Vec2::new(5.0, 0.0), Vec2::splat(1.0), 0.0);
-        let t = ray_quad(Vec2::ZERO, Vec2::X, 10.0, &q).unwrap();
+        let q = Poly::obb(Vec2::new(5.0, 0.0), Vec2::splat(1.0), 0.0);
+        let t = ray_poly(Vec2::ZERO, Vec2::X, 10.0, &q).unwrap();
         assert!((t - 4.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn box_slides_on_slope() {
+        // Schräge: volle Ecke unten rechts, Hypotenuse zeigt nach oben links.
+        let slope = Poly::from_points(&[
+            Vec2::new(-2.0, -2.0),
+            Vec2::new(2.0, -2.0),
+            Vec2::new(2.0, 2.0),
+        ]);
+        let boxq = Poly::obb(Vec2::new(0.0, 0.55), Vec2::splat(0.5), 0.0);
+        let mut out = Vec::new();
+        poly_poly(&slope, &boxq, &mut out);
+        assert!(!out.is_empty());
+        let n = Vec2::new(-1.0, 1.0).normalize();
+        for c in &out {
+            assert!((c.normal - n).length() < 1e-3, "Normale {:?}", c.normal);
+        }
+    }
+
+    #[test]
+    fn shapes_are_convex_and_ccw() {
+        use crate::sim::data::PartShape;
+        for shape in [
+            PartShape::Box,
+            PartShape::Taper(0.5, 1.0),
+            PartShape::Taper(0.0, 1.0),
+            PartShape::Chamfer(0.4),
+            PartShape::Nose(0.3),
+            PartShape::Tail(0.3),
+            PartShape::Wing(0.5, 1.0),
+        ] {
+            let pts = shape.outline(Vec2::new(1.0, 0.8));
+            assert!(pts.len() >= 3 && pts.len() <= MAX_VERTS, "{shape:?}");
+            for i in 0..pts.len() {
+                let a = pts[i];
+                let b = pts[(i + 1) % pts.len()];
+                let c = pts[(i + 2) % pts.len()];
+                assert!(cross(b - a, c - b) >= -1e-5, "{shape:?} nicht konvex/CCW");
+            }
+        }
     }
 }

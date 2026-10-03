@@ -2,7 +2,7 @@
 //! eingelassener Platte), Kristalle, facettierte Asteroiden.
 
 use bevy::asset::RenderAssetUsages;
-use bevy::math::Vec3;
+use bevy::math::{Vec2, Vec3};
 use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
 use bevy::prelude::*;
 
@@ -251,4 +251,124 @@ pub fn planet_sphere() -> Mesh {
     };
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
     mesh
+}
+
+/// Konvexes Polygon (CCW) nach innen versetzen (Gehrung an den Ecken).
+pub fn inset_convex(pts: &[Vec2], d: f32) -> Vec<Vec2> {
+    let n = pts.len();
+    (0..n)
+        .map(|i| {
+            let prev = pts[(i + n - 1) % n];
+            let cur = pts[i];
+            let next = pts[(i + 1) % n];
+            let e1 = (cur - prev).normalize_or_zero();
+            let e2 = (next - cur).normalize_or_zero();
+            // Innennormalen eines CCW-Polygons zeigen nach links.
+            let n1 = Vec2::new(-e1.y, e1.x);
+            let n2 = Vec2::new(-e2.y, e2.x);
+            let denom = (1.0 + n1.dot(n2)).max(0.15);
+            cur + (n1 + n2) * (d / denom)
+        })
+        .collect()
+}
+
+/// Größter sinnvoller Versatz nach innen (grob: halber Inkreis).
+fn safe_inset(pts: &[Vec2], want: f32) -> f32 {
+    let c = pts.iter().copied().sum::<Vec2>() / pts.len() as f32;
+    let n = pts.len();
+    let mut min_d = f32::MAX;
+    for i in 0..n {
+        let a = pts[i];
+        let b = pts[(i + 1) % n];
+        let e = (b - a).normalize_or_zero();
+        let nrm = Vec2::new(-e.y, e.x);
+        min_d = min_d.min((c - a).dot(nrm).abs());
+    }
+    want.min(min_d * 0.35)
+}
+
+/// Abgeschrägtes Prisma aus einem konvexen Umriss (CCW): Seitenwände, Fase vorne und
+/// optional ein Rahmen mit eingelassener Platte (wie bei den Stationsblöcken).
+pub fn beveled_prism(outline: &[Vec2], depth: f32, bevel: f32, panel: Option<(f32, f32)>) -> Mesh {
+    let mut b = Builder::default();
+    let n = outline.len();
+    let min = outline
+        .iter()
+        .copied()
+        .fold(Vec2::splat(f32::MAX), Vec2::min);
+    let max = outline
+        .iter()
+        .copied()
+        .fold(Vec2::splat(f32::MIN), Vec2::max);
+    let size = (max - min).max(Vec2::splat(0.01));
+    let uvp = |p: Vec3| [(p.x - min.x) / size.x, 1.0 - (p.y - min.y) / size.y];
+    let z_back = -depth * 0.5;
+    let bevel = safe_inset(outline, bevel);
+    let z0 = depth * 0.5 - bevel;
+    let z1 = depth * 0.5;
+    let centroid = outline.iter().copied().sum::<Vec2>() / n as f32;
+
+    // Seitenwände
+    for i in 0..n {
+        let a = outline[i];
+        let c = outline[(i + 1) % n];
+        let e = c - a;
+        let out = Vec3::new(e.y, -e.x, 0.0).normalize_or_zero();
+        let len = e.length().max(0.01);
+        let q = [
+            a.extend(z_back),
+            c.extend(z_back),
+            c.extend(z0),
+            a.extend(z0),
+        ];
+        let uv = [
+            [0.0, 1.0],
+            [len / size.x.max(size.y), 1.0],
+            [len / size.x.max(size.y), 0.0],
+            [0.0, 0.0],
+        ];
+        b.quad(q, uv, out);
+    }
+    // Ring zwischen zwei Umrissen; `tilt` gibt die Richtung der Normalen vor.
+    let ring = |b: &mut Builder, outer: &[Vec2], oz: f32, inner: &[Vec2], iz: f32, tilt: f32| {
+        for i in 0..n {
+            let j = (i + 1) % n;
+            let q = [
+                outer[i].extend(oz),
+                outer[j].extend(oz),
+                inner[j].extend(iz),
+                inner[i].extend(iz),
+            ];
+            let mid = (outer[i] + outer[j]) * 0.5;
+            let side = (mid - centroid).normalize_or_zero().extend(0.0);
+            b.quad(q, q.map(uvp), (side * tilt + Vec3::Z).normalize());
+        }
+    };
+    let front = inset_convex(outline, bevel);
+    ring(&mut b, outline, z0, &front, z1, 1.0);
+    let face = |b: &mut Builder, pts: &[Vec2], z: f32| {
+        for i in 1..pts.len() - 1 {
+            let tri = [pts[0].extend(z), pts[i].extend(z), pts[i + 1].extend(z)];
+            let base = b.pos.len() as u32;
+            for p in tri {
+                b.pos.push(p.to_array());
+                b.nrm.push([0.0, 0.0, 1.0]);
+                b.uv.push(uvp(p));
+            }
+            // CCW von vorne gesehen bleibt CCW (Umriss ist CCW).
+            b.idx.extend_from_slice(&[base, base + 1, base + 2]);
+        }
+    };
+    match panel {
+        Some((frame, recess)) => {
+            let fr = safe_inset(&front, frame);
+            let inner = inset_convex(&front, fr);
+            ring(&mut b, &front, z1, &inner, z1, 0.0);
+            let deep = inset_convex(&inner, safe_inset(&inner, recess * 0.6));
+            ring(&mut b, &inner, z1, &deep, z1 - recess, -1.0);
+            face(&mut b, &deep, z1 - recess);
+        }
+        None => face(&mut b, &front, z1),
+    }
+    b.build(true)
 }

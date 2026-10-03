@@ -104,6 +104,26 @@ größerer Architekturänderung – dort wird vorher nachgefragt.
 
 ## Protokoll
 
+### Runde 2 – Phase 2: Flughilfen und erwachsener Look (erledigt)
+
+- **3** siehe Phase 1 (vorgezogen); Vektor auf 0,6 s gekürzt, damit er nicht wie ein Laser wirkt.
+- **31** Formen statt Würfel: `PartShape` in den Schiffsdaten (`Box`, `Taper`, `Chamfer`, `Nose`,
+  `Tail`, `Wing`). Kollision folgt der Form: `geom::Quad` wurde zu `geom::Poly` (konvex, bis
+  8 Ecken) verallgemeinert, SAT/Clipping unverändert. Neuer Mesh-Generator
+  `render::meshes::beveled_prism` (beliebiger konvexer Umriss, Fase, optional eingelassenes
+  Paneel). Stationen: Schrägen-Zeichen `/ \ 7 r` im Raster und `auto_chamfer` (Standard an),
+  das freiliegende Außenecken automatisch abschrägt – der Ring von Nova-Hub ist jetzt eine
+  glatte Schräge statt einer Treppe.
+- **30** Gedeckte Lackierungen (Stahlgrau/Rostorange, Sand/Blau, Anthrazit/Messing,
+  Grau/Oliv), Akzentstreifen als Lack, getöntes Cockpitvisier statt Leuchtkuppel, schmale
+  Slot-Ringe mit wenig Leuchtkraft, dunkler Bohrer, kleinere Positionslicht-Höfe, gedämpfte
+  Stationsfenster. Leuchten bleibt bei Flammen, Positionslichtern und Slotfarben.
+- **8** Landeplattformen als Druckplatten: dunkles Gehäuse + Platte in Warnfarbe mit Streifen,
+  Lauflichter an der Vorderkante (Ruhe gedimmt, beim Anflug Lauflicht in Ampelfarbe, angedockt
+  grün), Andockwinkel an den Enden, Lichtmasten, Arbeitslicht. Deko-Generator: Kräne
+  (Mast, Ausleger, Gegengewicht, Seil, Haken) und Containerstapel an Plattformenden und auf
+  freien Oberseiten, alles hinter der Spielebene (keine Kollision, kein Verdecken).
+
 ### Runde 2 – Phase 1: UI-Fixes (erledigt)
 
 - **1** Slot-Leiste: Abzeichen in Spielerfarbe mit Geräte-Kürzel (`⌨ 1`, `JC-R 2`, `◉ 3`),

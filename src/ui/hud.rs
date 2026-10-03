@@ -249,10 +249,21 @@ fn spawn_hud(mut commands: Commands) {
             ))
             .with_children(|c| {
                 c.spawn((
-                    text("", 16.0, TEXT),
-                    DockGuideText,
-                    TextLayout::justify(Justify::Center),
-                ));
+                    Node {
+                        padding: UiRect::axes(Val::Px(10.0), Val::Px(3.0)),
+                        border_radius: BorderRadius::all(Val::Px(8.0)),
+                        ..default()
+                    },
+                    BackgroundColor(BG.with_alpha(0.75)),
+                    Pickable::IGNORE,
+                ))
+                .with_children(|g| {
+                    g.spawn((
+                        text("", 16.0, TEXT),
+                        DockGuideText,
+                        TextLayout::justify(Justify::Center),
+                    ));
+                });
                 // Ampel: Tempo, Winkel, Drehung
                 c.spawn((
                     Node {

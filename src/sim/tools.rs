@@ -3,7 +3,7 @@
 use bevy::math::Vec2;
 
 use super::data::ToolKind;
-use super::geom::{cross, ray_circle, ray_quad, rot};
+use super::geom::{cross, ray_circle, ray_poly, rot};
 use super::ship::{CargoKind, CraneState, DrillHit};
 use super::world::{Shape, angle_diff};
 use super::{BodyKind, DT, Projectile, SimEvent, SimState, TickInput, ToastKind};
@@ -240,11 +240,11 @@ impl SimState {
             }
         }
         for col in &self.world.colliders {
-            if let Shape::Quad(q) = col.shape {
+            if let Shape::Poly(q) = col.shape {
                 if !col.aabb.expand(DRILL_RANGE).contains(mount) {
                     continue;
                 }
-                if let Some(t) = ray_quad(mount, dir, DRILL_RANGE, &q) {
+                if let Some(t) = ray_poly(mount, dir, DRILL_RANGE, &q) {
                     consider(t, Target::Rock, &mut best);
                 }
             }
@@ -322,7 +322,7 @@ impl SimState {
         self.world.colliders.iter().any(|c| {
             c.aabb.contains(p)
                 && match c.shape {
-                    Shape::Quad(q) => q.contains(p),
+                    Shape::Poly(q) => q.contains(p),
                     Shape::Circle { c, r } => (p - c).length_squared() < r * r,
                 }
         })

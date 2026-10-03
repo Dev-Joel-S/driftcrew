@@ -3,7 +3,7 @@
 use bevy::math::Vec2;
 
 use super::data::Ore;
-use super::geom::{ray_circle, ray_quad, rot};
+use super::geom::{ray_circle, ray_poly, rot};
 use super::rng::hash32;
 use super::world::Shape;
 use super::{Body, BodyKind, DT, SimEvent, SimState};
@@ -283,7 +283,7 @@ impl SimState {
                     continue;
                 }
                 let t = match col.shape {
-                    Shape::Quad(q) => ray_quad(from, dir, len, &q),
+                    Shape::Poly(q) => ray_poly(from, dir, len, &q),
                     Shape::Circle { c, r } => ray_circle(from, dir, len, c, r),
                 };
                 if let Some(t) = t
@@ -297,7 +297,7 @@ impl SimState {
                     continue;
                 }
                 for q in sp.quads() {
-                    if let Some(t) = ray_quad(from, dir, len, &q)
+                    if let Some(t) = ray_poly(from, dir, len, &q)
                         && hit.is_none_or(|(ht, _)| t < ht)
                     {
                         hit = Some((t, None));

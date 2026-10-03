@@ -2,7 +2,7 @@
 
 use bevy::math::Vec2;
 
-use super::geom::{Aabb, Contact, circle_circle, cross, cross_sv, quad_circle, quad_quad};
+use super::geom::{Aabb, Contact, circle_circle, cross, cross_sv, poly_circle, poly_poly};
 use super::ship::CargoKind;
 use super::world::{Shape, Surface};
 use super::{BodyKind, DT, SimEvent, SimState, ToastKind};
@@ -180,15 +180,15 @@ impl SimState {
             }
             for q in &quads {
                 match col.shape {
-                    Shape::Quad(sq) => {
+                    Shape::Poly(sq) => {
                         tmp.clear();
-                        quad_quad(&sq, q, &mut tmp);
+                        poly_poly(&sq, q, &mut tmp);
                         for c in &tmp {
                             contacts.push((*c, Vec2::ZERO, col.surface));
                         }
                     }
                     Shape::Circle { c, r } => {
-                        if let Some(ct) = quad_circle(q, c, r) {
+                        if let Some(ct) = poly_circle(q, c, r) {
                             contacts.push((
                                 Contact {
                                     point: ct.point,
@@ -210,7 +210,7 @@ impl SimState {
             for arm in sp.quads() {
                 for q in &quads {
                     tmp.clear();
-                    quad_quad(&arm, q, &mut tmp);
+                    poly_poly(&arm, q, &mut tmp);
                     for c in &tmp {
                         let v = self.world.spinner_velocity(si, c.point);
                         contacts.push((*c, v, Surface::Block));
@@ -271,7 +271,7 @@ impl SimState {
                 continue;
             }
             for q in &quads {
-                if let Some(c) = quad_circle(q, b.pos, b.radius) {
+                if let Some(c) = poly_circle(q, b.pos, b.radius) {
                     tmp.push((bi, c));
                 }
             }
@@ -344,7 +344,7 @@ impl SimState {
                     continue;
                 }
                 let c = match col.shape {
-                    Shape::Quad(q) => quad_circle(&q, pos, r),
+                    Shape::Poly(q) => poly_circle(&q, pos, r),
                     Shape::Circle { c, r: pr } => circle_circle(c, pr, pos, r),
                 };
                 if let Some(c) = c {
@@ -356,7 +356,7 @@ impl SimState {
                     continue;
                 }
                 for arm in sp.quads() {
-                    if let Some(c) = quad_circle(&arm, pos, r) {
+                    if let Some(c) = poly_circle(&arm, pos, r) {
                         contacts.push((c, self.world.spinner_velocity(si, c.point)));
                     }
                 }
@@ -551,7 +551,7 @@ impl SimState {
             let hit = self.world.colliders.iter().any(|c| {
                 c.aabb.overlaps(&bound)
                     && match c.shape {
-                        Shape::Quad(q) => quad_circle(&q, p, r).is_some(),
+                        Shape::Poly(q) => poly_circle(&q, p, r).is_some(),
                         Shape::Circle { c, r: cr } => (p - c).length() < cr + r,
                     }
             });

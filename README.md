@@ -162,12 +162,15 @@ Schiffe, Welt, Preise und Missionen stehen in RON-Dateien unter `assets/data/`. 
 in die Binärdatei eingebettet; liegt `assets/data/` im Arbeitsverzeichnis (z. B. beim Start mit
 `cargo run`), haben diese Dateien Vorrang – so lässt sich ohne Neukompilieren experimentieren.
 
-- `ships.ron` – Schiffe als Liste von Teilen (Position, Größe, Masse, Typ, Schubkraft). Die
-  Reihenfolge der Triebwerke ist die Belegungsreihenfolge, `thruster_layouts` legt die symmetrische
-  Anordnung für jede Anzahl fest.
+- `ships.ron` – Schiffe als Liste von Teilen (Position, Größe, Masse, Typ, Schubkraft, Form).
+  Formen: `Box`, `Taper(oben, unten)`, `Chamfer(anteil)`, `Nose(anteil)`, `Tail(anteil)`,
+  `Wing(links, rechts)` – Optik und Kollision folgen der Form. Die Reihenfolge der Triebwerke ist
+  die Belegungsreihenfolge, `thruster_layouts` legt die symmetrische Anordnung für jede Anzahl fest.
 - `world.ron` – Stationen als ASCII-Raster (eine Zelle = 4 m):
   `#` Block, `X` Akzentblock, `W` Fensterblock, `^ v < >` Landeplattform (Pfeil = Richtung),
-  `L` Leuchtfeuer, `.` leer. Dazu Planeten, Asteroidenfelder, Meteoritenzonen, Rotoren, Anomalien,
+  `L` Leuchtfeuer, `.` leer, Schrägen `/ \ 7 r` (Zeichen = volle Ecke: unten rechts, unten links,
+  oben rechts, oben links). Freiliegende Außenecken werden automatisch abgeschrägt
+  (`auto_chamfer: false` schaltet das ab). Dazu Planeten, Asteroidenfelder, Meteoritenzonen, Rotoren, Anomalien,
   Nebelregionen und Notruf-Orte.
 - `shop.ron` – Services, Upgrades, Erzpreise, Startkapital.
 - `missions.ron` – Vorlagen für Aufträge und Notrufe.

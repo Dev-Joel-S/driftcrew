@@ -3,7 +3,7 @@
 use bevy::math::Vec2;
 
 use super::data::{GameData, Ore, Service, StationKind, v};
-use super::geom::{Aabb, Quad};
+use super::geom::{Aabb, Poly};
 use super::rng::Rng;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -18,6 +18,62 @@ pub enum CellKind {
     Accent,
     Window,
     Light,
+    /// Schräge (halbe Zelle); das Zeichen sagt, welche Ecke voll ist: `/ \\ 7 r`.
+    Slope(char),
+}
+
+pub fn is_slope(ch: char) -> bool {
+    matches!(ch, '/' | '\\' | '7' | 'r')
+}
+
+/// Umriss (gegen den Uhrzeigersinn) einer Schrägen-Zelle, zentriert.
+pub fn slope_outline(ch: char, h: f32) -> Vec<Vec2> {
+    match ch {
+        '/' => vec![Vec2::new(-h, -h), Vec2::new(h, -h), Vec2::new(h, h)],
+        '\\' => vec![Vec2::new(-h, -h), Vec2::new(h, -h), Vec2::new(-h, h)],
+        '7' => vec![Vec2::new(h, -h), Vec2::new(h, h), Vec2::new(-h, h)],
+        _ => vec![Vec2::new(-h, -h), Vec2::new(h, h), Vec2::new(-h, h)],
+    }
+}
+
+/// Freiliegende Ecken abschrägen: Ein `#` mit zwei leeren Nachbarn über Eck (und festen
+/// Nachbarn gegenüber) wird zur Schräge. Blöcke unter Plattformen bleiben unverändert.
+pub fn auto_chamfer(rows: &[Vec<char>]) -> Vec<Vec<char>> {
+    let h = rows.len() as i32;
+    let w = rows.first().map(|r| r.len()).unwrap_or(0) as i32;
+    let at = |c: i32, r: i32| -> char {
+        if c < 0 || r < 0 || r >= h || c >= w {
+            '.'
+        } else {
+            rows[r as usize][c as usize]
+        }
+    };
+    let empty = |ch: char| matches!(ch, '.' | 'L');
+    let solid = |ch: char| matches!(ch, '#' | 'X' | 'W') || is_slope(ch);
+    let mut out = rows.to_vec();
+    for r in 0..h {
+        for c in 0..w {
+            if at(c, r) != '#' {
+                continue;
+            }
+            let (up, down, left, right) = (at(c, r - 1), at(c, r + 1), at(c - 1, r), at(c + 1, r));
+            let slope = if empty(up) && empty(left) && solid(down) && solid(right) {
+                Some('/')
+            } else if empty(up) && empty(right) && solid(down) && solid(left) {
+                Some('\\')
+            } else if empty(down) && empty(left) && solid(up) && solid(right) {
+                Some('7')
+            } else if empty(down) && empty(right) && solid(up) && solid(left) {
+                Some('r')
+            } else {
+                None
+            };
+            if let Some(s) = slope {
+                out[r as usize][c as usize] = s;
+            }
+        }
+    }
+    out
 }
 
 #[derive(Clone, Debug)]
@@ -50,7 +106,7 @@ impl Pad {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Shape {
-    Quad(Quad),
+    Poly(Poly),
     Circle { c: Vec2, r: f32 },
 }
 
@@ -140,11 +196,11 @@ pub struct Spinner {
 }
 
 impl Spinner {
-    pub fn quads(&self) -> Vec<Quad> {
+    pub fn quads(&self) -> Vec<Poly> {
         (0..self.arms)
             .map(|i| {
                 let a = self.angle + std::f32::consts::PI * i as f32 / self.arms as f32;
-                Quad::obb(
+                Poly::obb(
                     self.pos,
                     Vec2::new(self.arm_length, self.arm_width * 0.5),
                     a,
@@ -207,7 +263,10 @@ impl World {
         };
 
         for (si, sd) in wd.stations.iter().enumerate() {
-            let rows: Vec<Vec<char>> = sd.layout.iter().map(|r| r.chars().collect()).collect();
+            let mut rows: Vec<Vec<char>> = sd.layout.iter().map(|r| r.chars().collect()).collect();
+            if sd.auto_chamfer {
+                rows = auto_chamfer(&rows);
+            }
             let h = rows.len() as i32;
             let wcols = rows.first().map(|r| r.len()).unwrap_or(0) as i32;
             let pos = v(sd.pos);
@@ -254,8 +313,14 @@ impl World {
                         'X' => Some(CellKind::Accent),
                         'W' => Some(CellKind::Window),
                         'L' => Some(CellKind::Light),
+                        c if is_slope(c) => Some(CellKind::Slope(c)),
                         _ => None,
                     };
+                    if is_slope(ch) {
+                        let c = center_of(col, row);
+                        let pts = slope_outline(ch, cell * 0.5);
+                        w.push_quad(Poly::transformed(&pts, c, 0.0), Surface::Block);
+                    }
                     if let Some(k) = kind {
                         station.cells.push(Cell {
                             kind: k,
@@ -285,7 +350,7 @@ impl World {
                         let b = center_of(col - 1, row);
                         let c = (a + b) * 0.5;
                         let half = Vec2::new((b.x - a.x) * 0.5 + cell * 0.5, cell * 0.5);
-                        w.push_quad(Quad::obb(c, half, 0.0), Surface::Block);
+                        w.push_quad(Poly::obb(c, half, 0.0), Surface::Block);
                         continue;
                     }
                     col += 1;
@@ -325,7 +390,7 @@ impl World {
                         let plate_c = surface_center - normal * (PAD_THICKNESS * 0.5);
                         let angle = f32::atan2(-normal.x, normal.y);
                         w.push_quad(
-                            Quad::obb(plate_c, Vec2::new(span, PAD_THICKNESS * 0.5), angle),
+                            Poly::obb(plate_c, Vec2::new(span, PAD_THICKNESS * 0.5), angle),
                             Surface::Pad(pad_idx),
                         );
                         continue;
@@ -371,7 +436,7 @@ impl World {
                 let angle = f32::atan2(-n.x, n.y);
                 // Plattform + zwei Stützblöcke links/rechts.
                 w.push_quad(
-                    Quad::obb(
+                    Poly::obb(
                         pos + n * (pd.radius + PAD_THICKNESS * 0.5 - 0.3),
                         Vec2::new(3.0, PAD_THICKNESS * 0.5 + 0.3),
                         angle,
@@ -381,7 +446,7 @@ impl World {
                 for side in [-1.0f32, 1.0] {
                     let t = Vec2::new(n.y, -n.x);
                     let c = pos + n * (pd.radius + 0.8) + t * side * 4.2;
-                    w.push_quad(Quad::obb(c, Vec2::new(1.1, 1.6), angle), Surface::Structure);
+                    w.push_quad(Poly::obb(c, Vec2::new(1.1, 1.6), angle), Surface::Structure);
                 }
             }
             // Erzvorkommen gleichmäßig verteilt, mit etwas Zufall, nicht auf der Landestation.
@@ -429,9 +494,9 @@ impl World {
         w
     }
 
-    fn push_quad(&mut self, q: Quad, surface: Surface) {
+    fn push_quad(&mut self, q: Poly, surface: Surface) {
         self.colliders.push(StaticCollider {
-            shape: Shape::Quad(q),
+            shape: Shape::Poly(q),
             aabb: q.aabb(),
             surface,
         });

@@ -54,6 +54,7 @@ impl Plugin for RenderPlugin {
                     ship_vis::sync_projectiles,
                     ship_vis::sync_tools,
                     ship_vis::blink_nav_lights,
+                    world_vis::update_pad_lights,
                 )
                     .chain(),
             )
@@ -87,10 +88,30 @@ pub struct Art {
     pub cylinder: Handle<Mesh>,
     pub capsule: Handle<Mesh>,
     pub box_cache: HashMap<[u32; 3], Handle<Mesh>>,
+    pub prism_cache: HashMap<String, Handle<Mesh>>,
     pub glow_cache: HashMap<[u16; 4], Handle<StandardMaterial>>,
 }
 
 impl Art {
+    /// Abgeschrägtes Prisma aus einem Umriss (zwischengespeichert über einen Schlüssel).
+    pub fn prism(
+        &mut self,
+        meshes: &mut Assets<Mesh>,
+        outline: &[Vec2],
+        depth: f32,
+        bevel: f32,
+        panel: Option<(f32, f32)>,
+    ) -> Handle<Mesh> {
+        let mut key = format!("{depth:.2}|{bevel:.2}|{panel:?}");
+        for p in outline {
+            key.push_str(&format!("|{:.2},{:.2}", p.x, p.y));
+        }
+        self.prism_cache
+            .entry(key)
+            .or_insert_with(|| meshes.add(meshes::beveled_prism(outline, depth, bevel, panel)))
+            .clone()
+    }
+
     /// Abgeschrägte Box in passender Größe (zwischengespeichert).
     pub fn bevel_box(&mut self, meshes: &mut Assets<Mesh>, size: Vec3) -> Handle<Mesh> {
         let key = [
@@ -240,6 +261,7 @@ fn setup_art(
         cylinder: meshes.add(Cylinder::new(1.0, 1.0)),
         capsule: meshes.add(Capsule3d::new(0.5, 1.0)),
         box_cache: HashMap::new(),
+        prism_cache: HashMap::new(),
         glow_cache: HashMap::new(),
     };
     commands.insert_resource(art);
