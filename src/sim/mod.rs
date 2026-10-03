@@ -18,6 +18,8 @@ pub mod missions;
 pub mod physics;
 pub mod rng;
 pub mod ship;
+#[cfg(test)]
+mod systems_tests;
 pub mod tools;
 pub mod world;
 
@@ -175,6 +177,11 @@ pub enum BodyKind {
         mission: u32,
         name: String,
     },
+    /// Schwerlastkiste eines Lieferauftrags – passt in keinen Frachtraum, wird geschleppt.
+    Crate {
+        mission: u32,
+        name: String,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -219,6 +226,17 @@ pub struct Projectile {
     pub life: f32,
 }
 
+/// Rettungskapsel der Crew, nachdem das Schiff zerstört wurde (fliegt bis zur Bergung).
+#[derive(Clone, Debug)]
+pub struct EscapePod {
+    pub pos: Vec2,
+    pub vel: Vec2,
+    pub angle: f32,
+    pub spin: f32,
+    pub prev_pos: Vec2,
+    pub prev_angle: f32,
+}
+
 /// Gemeinsame Kasse und Fortschritt der Crew.
 #[derive(Clone, Debug)]
 pub struct Crew {
@@ -253,6 +271,13 @@ pub struct SimState {
     pub field_respawn: Vec<f32>,
     pub border_warn: f32,
     pub low_hull_warned: bool,
+    /// 0 = Tank ok, 1 = Warnung „knapp“ gezeigt, 2 = Warnung „leer“ gezeigt.
+    pub fuel_warned: u8,
+    /// Nach der Zerstörung: die Kapsel und die fällige Bergungsgebühr.
+    pub escape: Option<EscapePod>,
+    pub salvage_fee: u32,
+    /// Index der Anomalie, in deren Sog das Schiff zuletzt gewarnt wurde.
+    pub pull_warned: Option<usize>,
 }
 
 impl SimState {
@@ -294,6 +319,10 @@ impl SimState {
             field_respawn: vec![0.0; n_fields],
             border_warn: 0.0,
             low_hull_warned: false,
+            fuel_warned: 0,
+            escape: None,
+            salvage_fee: 0,
+            pull_warned: None,
         };
         s.populate_fields();
         s.refresh_offers();
@@ -334,6 +363,13 @@ impl SimState {
             ship.hull = old.hull.min(ship.max_hull);
             ship.shield = old.shield.min(ship.max_shield);
             ship.ammo = old.ammo.min(ship.max_ammo);
+            ship.fuel = old.fuel.min(ship.max_fuel);
+            // Schäden bleiben am jeweiligen Triebwerk, auch wenn es neu angeordnet wird.
+            for t in &mut ship.thrusters {
+                if let Some(o) = old.thrusters.iter().find(|o| o.part == t.part) {
+                    t.health = o.health;
+                }
+            }
         }
         // Fracht übernehmen, soweit Platz ist.
         for item in old.cargo {

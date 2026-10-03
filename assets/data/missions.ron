@@ -9,6 +9,11 @@
         (name: "Forschungssonde",      mass: 3.0, reward: 150),
         (name: "Pflanzensamen",        mass: 1.5, reward: 100),
         (name: "Reaktorkern",          mass: 7.0, reward: 220),
+        // Schwerlast: passt in keinen Frachtraum und wird als Kiste am Kran geschleppt.
+        // Die Masse hängt am Seil und zieht das Schiff mit – die Kiste pendelt.
+        (name: "Bohrturm-Segment",     mass: 12.0, reward: 300, towed: true),
+        (name: "Druckkessel",          mass: 9.0,  reward: 260, towed: true),
+        (name: "Antennenmast",         mass: 10.0, reward: 280, towed: true),
     ],
     // Zusätzliche Belohnung pro Meter Luftlinie.
     reward_per_distance: 0.14,

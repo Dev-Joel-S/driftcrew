@@ -258,15 +258,22 @@ fn draw_map(
             }
             for an in &s.world.anomalies {
                 let at = to_map(an.pos);
-                dot(
-                    m,
-                    at,
-                    an.radius * scale * 2.0,
-                    Color::srgba(0.6, 0.6, 0.65, 0.35),
-                    true,
-                );
-                dot(m, at, 6.0, Color::srgb(1.0, 0.2, 0.15), true);
-                label(m, at, an.name.clone(), Color::srgb(1.0, 0.4, 0.4));
+                let (area, core, name) = if an.is_black_hole() {
+                    (
+                        Color::srgba(0.45, 0.3, 0.8, 0.3),
+                        Color::srgb(0.65, 0.4, 1.0),
+                        format!("● {} (Schwarzes Loch)", an.name),
+                    )
+                } else {
+                    (
+                        Color::srgba(0.6, 0.6, 0.65, 0.35),
+                        Color::srgb(1.0, 0.2, 0.15),
+                        an.name.clone(),
+                    )
+                };
+                dot(m, at, an.radius * scale * 2.0, area, true);
+                dot(m, at, 6.0, core, true);
+                label(m, at, name, core);
             }
             for st in &s.world.stations {
                 let at = to_map(st.pos);

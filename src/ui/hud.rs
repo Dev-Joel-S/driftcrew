@@ -46,8 +46,11 @@ struct BarText(BarKind);
 enum BarKind {
     Hull,
     Shield,
+    Fuel,
     Cargo,
 }
+
+const FUEL_COLOR: Color = Color::srgb(0.95, 0.62, 0.2);
 #[derive(Component)]
 struct StatusText;
 #[derive(Component)]
@@ -58,8 +61,14 @@ struct RadarDot;
 struct MarkerLayer;
 #[derive(Component)]
 struct CenterText;
+/// Kleinere zweite Zeile unter dem großen Mittel-Text.
+#[derive(Component)]
+struct CenterSub;
 #[derive(Component)]
 struct DockGuideText;
+/// Hintergrund des Andock-Hinweises (ausgeblendet, wenn kein Text da ist).
+#[derive(Component)]
+struct DockGuideBox;
 #[derive(Component)]
 struct DockLights;
 #[derive(Clone, Copy, PartialEq)]
@@ -139,6 +148,7 @@ fn spawn_hud(mut commands: Commands) {
                 for (kind, label, color) in [
                     (BarKind::Hull, "HÜLLE", GOOD),
                     (BarKind::Shield, "SCHILD", TEAL),
+                    (BarKind::Fuel, "TREIBSTOFF", FUEL_COLOR),
                     (BarKind::Cargo, "FRACHT", ACCENT),
                 ] {
                     p.spawn(Node {
@@ -230,10 +240,19 @@ fn spawn_hud(mut commands: Commands) {
             ))
             .with_children(|c| {
                 c.spawn((
-                    text("", 40.0, BAD),
+                    text("", 36.0, BAD),
                     CenterText,
                     TextLayout::justify(Justify::Center),
-                ));
+                    TextShadow::default(),
+                ))
+                .with_children(|t| {
+                    t.spawn((
+                        TextSpan::new(""),
+                        TextFont::from_font_size(18.0),
+                        TextColor(TEXT),
+                        CenterSub,
+                    ));
+                });
             });
             root.spawn((
                 Node {
@@ -255,6 +274,7 @@ fn spawn_hud(mut commands: Commands) {
                         ..default()
                     },
                     BackgroundColor(BG.with_alpha(0.75)),
+                    DockGuideBox,
                     Pickable::IGNORE,
                 ))
                 .with_children(|g| {
@@ -414,6 +434,7 @@ fn update_bars(
     let frac = |k: BarKind| match k {
         BarKind::Hull => (s.hull / s.max_hull).clamp(0.0, 1.0),
         BarKind::Shield => (s.shield / s.max_shield.max(1.0)).clamp(0.0, 1.0),
+        BarKind::Fuel => (s.fuel / s.max_fuel.max(1.0)).clamp(0.0, 1.0),
         BarKind::Cargo => (s.cargo_mass() / s.cargo_capacity().max(0.1)).clamp(0.0, 1.0),
     };
     for (b, mut n, mut bg) in &mut bars {
@@ -428,11 +449,16 @@ fn update_bars(
                 GOOD
             };
         }
+        if b.0 == BarKind::Fuel {
+            bg.0 = if f < 0.2 { BAD } else { FUEL_COLOR };
+        }
     }
     for (b, mut t) in &mut texts {
         let v = match b.0 {
             BarKind::Hull => format!("{:.0} / {:.0}", s.hull.max(0.0), s.max_hull),
             BarKind::Shield => format!("{:.0} / {:.0}", s.shield, s.max_shield),
+            BarKind::Fuel if s.fuel_empty() => "LEER · Notreserve 25 % Schub".to_string(),
+            BarKind::Fuel => format!("{:.0} / {:.0}", s.fuel, s.max_fuel),
             BarKind::Cargo => format!(
                 "{:.1} / {:.1} t",
                 s.cargo_mass().max(0.0),
@@ -484,7 +510,13 @@ fn update_slots(
     };
     let ship = &sim.0.ship;
     let labels: Vec<String> = crew.players.iter().map(|p| p.label.clone()).collect();
-    let key = format!("{:?}|{}|{:?}", active.0, ship.slot_count, labels);
+    // Zustand der Triebwerke in groben Stufen – nur bei Änderung neu aufbauen.
+    let wear: Vec<u8> = ship
+        .thrusters
+        .iter()
+        .map(|t| if t.failed() { 2 } else { t.stuttering() as u8 })
+        .collect();
+    let key = format!("{:?}|{}|{:?}|{:?}", active.0, ship.slot_count, labels, wear);
     let h = super::sig_of(&key);
     if sig.0 != h {
         sig.0 = h;
@@ -534,6 +566,30 @@ fn update_slots(
                         },
                         Pickable::IGNORE,
                     ));
+                    if let Some(t) = ship.thrusters.iter().find(|t| t.slot == b.slot) {
+                        let status = if t.failed() {
+                            Some(("✕ AUSFALL", BAD))
+                        } else if t.stuttering() {
+                            Some(("⚠ stottert", WARN))
+                        } else {
+                            None
+                        };
+                        if let Some((label, col)) = status {
+                            bx.spawn((
+                                Node {
+                                    margin: UiRect::top(Val::Px(2.0)),
+                                    padding: UiRect::axes(Val::Px(4.0), Val::Px(0.0)),
+                                    border_radius: BorderRadius::all(Val::Px(4.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(BG),
+                                Pickable::IGNORE,
+                            ))
+                            .with_children(|st| {
+                                st.spawn((text(label, 10.0, col), Pickable::IGNORE));
+                            });
+                        }
+                    }
                     // Spieler-Abzeichen: gleiche Tasten verschiedener Geräte unterscheidbar.
                     if multi {
                         let pl = crew.players.get(b.player);
@@ -614,7 +670,11 @@ fn pois(sim: &SimState) -> Vec<Poi> {
     for an in &sim.world.anomalies {
         v.push(Poi {
             pos: an.pos,
-            color: Color::srgb(1.0, 0.2, 0.2),
+            color: if an.is_black_hole() {
+                Color::srgb(0.65, 0.4, 1.0)
+            } else {
+                Color::srgb(1.0, 0.2, 0.2)
+            },
             size: 9.0,
             round: true,
         });
@@ -716,85 +776,106 @@ fn update_markers(
     // Solange das Stationsmenü offen ist, keine Wegmarken dahinter.
     let menu_open = super::station::menu_open(s);
     let blocked = |q: Vec2| menu_open && q.x > size.x - 520.0 && q.y > 225.0 && q.y < size.y - 95.0;
-    let add = |c: &mut Commands, world: Vec2, label: String, color: Color, arrow_always: bool| {
-        let Ok(p) = cam.world_to_viewport(cam_t, world.extend(0.0)) else {
-            return;
-        };
-        let margin = 40.0;
-        let on_screen =
-            p.x > margin && p.y > margin && p.x < size.x - margin && p.y < size.y - margin;
-        let dist = (world - s.ship.pos).length();
-        if on_screen && !arrow_always {
-            if blocked(p) {
+    let mut placed: Vec<Vec2> = Vec::new();
+    let mut add =
+        |c: &mut Commands, world: Vec2, label: String, color: Color, arrow_always: bool| {
+            let Ok(p) = cam.world_to_viewport(cam_t, world.extend(0.0)) else {
                 return;
-            }
-            let e = c
-                .spawn((
-                    Node {
-                        position_type: PositionType::Absolute,
-                        left: Val::Px(p.x - 100.0),
-                        top: Val::Px(p.y - 40.0),
-                        width: Val::Px(200.0),
-                        justify_content: JustifyContent::Center,
-                        ..default()
-                    },
-                    MarkerItem,
-                    Pickable::IGNORE,
-                ))
-                .with_children(|n| {
-                    n.spawn((
-                        text(label, 14.0, color),
-                        TextLayout::justify(Justify::Center),
-                        Pickable::IGNORE,
-                    ));
-                })
-                .id();
-            c.entity(layer).add_child(e);
-        } else if !on_screen {
-            let center = size * 0.5;
-            let dir = (p - center).normalize_or_zero();
-            let t = ((size.x * 0.5 - margin) / dir.x.abs().max(1e-3))
-                .min((size.y * 0.5 - margin) / dir.y.abs().max(1e-3));
-            let mut at = center + dir * t;
-            if at.x > size.x - 250.0 && at.y < 250.0 {
-                at.y = 250.0;
-            }
-            // Nicht über die Slot-Leiste und die Balken legen.
-            at.y = at.y.min(size.y - 150.0);
-            if blocked(at) {
-                return;
-            }
-            let arrow = match (dir.x.abs() > dir.y.abs(), dir.x > 0.0, dir.y > 0.0) {
-                (true, true, _) => "▶",
-                (true, false, _) => "◀",
-                (false, _, true) => "▼",
-                (false, _, false) => "▲",
             };
-            let e = c
-                .spawn((
-                    Node {
-                        position_type: PositionType::Absolute,
-                        left: Val::Px(at.x - 90.0),
-                        top: Val::Px(at.y - 12.0),
-                        width: Val::Px(180.0),
-                        flex_direction: FlexDirection::Column,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    MarkerItem,
-                    Pickable::IGNORE,
-                ))
-                .with_children(|n| {
-                    n.spawn((text(arrow, 16.0, color), Pickable::IGNORE));
-                    n.spawn((
-                        text(format!("{label} {:.0} m", dist), 12.0, color),
+            let margin = 40.0;
+            let on_screen =
+                p.x > margin && p.y > margin && p.x < size.x - margin && p.y < size.y - margin;
+            let dist = (world - s.ship.pos).length();
+            if on_screen && !arrow_always {
+                if blocked(p) {
+                    return;
+                }
+                let e = c
+                    .spawn((
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: Val::Px(p.x - 100.0),
+                            top: Val::Px(p.y - 40.0),
+                            width: Val::Px(200.0),
+                            justify_content: JustifyContent::Center,
+                            ..default()
+                        },
+                        MarkerItem,
                         Pickable::IGNORE,
-                    ));
-                })
-                .id();
-            c.entity(layer).add_child(e);
-        }
-    };
+                    ))
+                    .with_children(|n| {
+                        n.spawn((
+                            text(label, 14.0, color),
+                            TextLayout::justify(Justify::Center),
+                            Pickable::IGNORE,
+                        ));
+                    })
+                    .id();
+                c.entity(layer).add_child(e);
+            } else if !on_screen {
+                let center = size * 0.5;
+                let dir = (p - center).normalize_or_zero();
+                let t = ((size.x * 0.5 - margin) / dir.x.abs().max(1e-3))
+                    .min((size.y * 0.5 - margin) / dir.y.abs().max(1e-3));
+                let mut at = center + dir * t;
+                if at.x > size.x - 250.0 && at.y < 250.0 {
+                    at.y = 250.0;
+                }
+                // Nicht über die Slot-Leiste und die Balken legen.
+                at.y = at.y.min(size.y - 150.0);
+                if at.x < 340.0 {
+                    at.y = at.y.min(size.y - 265.0);
+                }
+                // Am Rand stapeln, damit sich Beschriftungen nicht überlagern.
+                let along_y = at.x <= margin + 1.0 || at.x >= size.x - margin - 1.0;
+                for _ in 0..8 {
+                    if !placed
+                        .iter()
+                        .any(|q| (q.x - at.x).abs() < 150.0 && (q.y - at.y).abs() < 32.0)
+                    {
+                        break;
+                    }
+                    if along_y {
+                        at.y += 34.0;
+                    } else {
+                        at.x += 160.0;
+                    }
+                }
+                placed.push(at);
+                if blocked(at) {
+                    return;
+                }
+                let arrow = match (dir.x.abs() > dir.y.abs(), dir.x > 0.0, dir.y > 0.0) {
+                    (true, true, _) => "▶",
+                    (true, false, _) => "◀",
+                    (false, _, true) => "▼",
+                    (false, _, false) => "▲",
+                };
+                let e = c
+                    .spawn((
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: Val::Px(at.x - 90.0),
+                            top: Val::Px(at.y - 12.0),
+                            width: Val::Px(180.0),
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        MarkerItem,
+                        Pickable::IGNORE,
+                    ))
+                    .with_children(|n| {
+                        n.spawn((text(arrow, 16.0, color), Pickable::IGNORE));
+                        n.spawn((
+                            text(format!("{label} {:.0} m", dist), 12.0, color),
+                            Pickable::IGNORE,
+                        ));
+                    })
+                    .id();
+                c.entity(layer).add_child(e);
+            }
+        };
     for st in &s.world.stations {
         let c = match st.kind {
             StationKind::Shipyard => Color::srgb(1.0, 0.6, 0.2),
@@ -842,23 +923,35 @@ fn update_center(
         (&mut Text, &mut TextColor),
         (With<DockGuideText>, Without<CenterText>, Without<LightText>),
     >,
-    mut lights: Query<&mut Node, With<DockLights>>,
+    mut lights: Query<&mut Node, (With<DockLights>, Without<DockGuideBox>)>,
+    mut guide_box: Query<&mut Node, (With<DockGuideBox>, Without<DockLights>)>,
     mut dots: Query<(&LightDot, &mut BackgroundColor)>,
     mut texts: Query<(&LightText, &mut Text), (Without<CenterText>, Without<DockGuideText>)>,
+    mut sub: Query<&mut TextSpan, With<CenterSub>>,
 ) {
     let s = &sim.0;
-    if let Ok(mut t) = center.single_mut() {
-        let v = if s.ship.destroyed {
+    let (head, detail) = if s.ship.destroyed {
+        let home = &s.world.stations[s.crew.home_station].name;
+        (
+            "SCHIFF ZERSTÖRT".to_string(),
             format!(
-                "SCHIFF ZERSTÖRT – Rettungskapsel ausgestoßen\nBergung in {:.0} …",
-                s.ship.respawn_timer.max(0.0).ceil()
-            )
-        } else {
-            String::new()
-        };
-        if t.0 != v {
-            t.0 = v;
-        }
+                "\nRettungskapsel ausgestoßen · Bergung nach {home} in {:.0} s\nBergungskosten {} Cr aus der gemeinsamen Kasse",
+                s.ship.respawn_timer.max(0.0).ceil(),
+                fmt_num(s.salvage_fee)
+            ),
+        )
+    } else {
+        (String::new(), String::new())
+    };
+    if let Ok(mut t) = center.single_mut()
+        && t.0 != head
+    {
+        t.0 = head;
+    }
+    if let Ok(mut t) = sub.single_mut()
+        && t.0 != detail
+    {
+        t.0 = detail;
     }
     let guide_data = s.dock_guide().filter(|g| {
         let to_pad = s.world.pads[g.pad].center - s.ship.pos;
@@ -895,10 +988,17 @@ fn update_center(
         }
     }
     if let Ok((mut t, mut c)) = guide.single_mut() {
-        let v = if let Some(pad) = s.ship.docked {
+        let v = if super::station::menu_open(s) {
+            // Das Stationsmenü erklärt das Abdocken selbst.
+            String::new()
+        } else if let Some(pad) = s.ship.docked {
             let name = s.world.owner_name(s.world.pads[pad].owner).to_string();
             c.0 = GOOD;
-            format!("Angedockt: {name}  ·  ein Triebwerk zünden zum Abdocken")
+            if s.world.pads[pad].zone {
+                format!("Gelandet auf {name}  ·  Werkzeuge frei  ·  Triebwerk zünden = abheben")
+            } else {
+                format!("Angedockt: {name}  ·  ein Triebwerk zünden zum Abdocken")
+            }
         } else if let Some(g) = &guide_data {
             c.0 = light_color(g.overall());
             let side = if !g.in_zone && g.lateral.abs() > 1.0 {
@@ -917,6 +1017,16 @@ fn update_center(
         } else {
             String::new()
         };
+        let want = if v.is_empty() {
+            Display::None
+        } else {
+            Display::Flex
+        };
+        if let Ok(mut n) = guide_box.single_mut()
+            && n.display != want
+        {
+            n.display = want;
+        }
         if t.0 != v {
             t.0 = v;
         }

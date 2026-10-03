@@ -440,6 +440,19 @@ pub fn spawn_world(
                 srgb([1.0, 0.75, 0.15]),
             );
         }
+        // Freie Landezonen: gleiche Druckplatte, kühlere Markierung.
+        for &pad in &p.zones {
+            spawn_pad(
+                &mut commands,
+                &mut art,
+                &mut meshes,
+                &mut mats,
+                &pad_lights,
+                &sim.0,
+                pad,
+                srgb([0.55, 0.78, 0.82]),
+            );
+        }
     }
     // Stützblöcke der Planeten-Außenposten
     let outpost_mat = mats.add(art.panel_mat(srgb([0.85, 0.87, 0.92]), 0.5, 0.2));
@@ -508,6 +521,17 @@ pub fn spawn_world(
 
     // --- Anomalien ----------------------------------------------------------
     for an in &world.anomalies {
+        if an.is_black_hole() {
+            spawn_black_hole(
+                &mut commands,
+                &mut art,
+                &mut meshes,
+                &mut mats,
+                &mut images,
+                an,
+            );
+            continue;
+        }
         let tex = images.add(textures::anomaly(512, 77));
         let disk = mats.add(StandardMaterial {
             base_color: Color::srgba(0.85, 0.8, 1.0, 0.85),
@@ -582,6 +606,98 @@ pub fn spawn_world(
     }
 }
 
+/// Schwarzes Loch: schwarze Kugel (Ereignishorizont), heller Photonenring, schräg
+/// gestellte Akkretionsscheibe, dunkler Hof. Bewusst ohne Rot – sonst wie die Anomalie.
+fn spawn_black_hole(
+    commands: &mut Commands,
+    art: &mut Art,
+    meshes: &mut Assets<Mesh>,
+    mats: &mut Assets<StandardMaterial>,
+    images: &mut Assets<Image>,
+    an: &crate::sim::world::Anomaly,
+) {
+    let (p, r) = (an.pos, an.core_radius);
+    // Dunkler Hof: schluckt das Hintergrundlicht.
+    let tex = images.add(textures::anomaly(512, 91));
+    let shade = mats.add(StandardMaterial {
+        base_color: Color::srgba(0.05, 0.03, 0.09, 0.9),
+        base_color_texture: Some(tex),
+        unlit: true,
+        alpha_mode: AlphaMode::Blend,
+        ..default()
+    });
+    commands.spawn((
+        Mesh3d(art.quad.clone()),
+        MeshMaterial3d(shade),
+        Transform::from_xyz(p.x, p.y, -2.0).with_scale(Vec3::splat(r * 14.0)),
+        Swirl(Vec3::Z, 0.05),
+        NotShadowCaster,
+    ));
+    let horizon = mats.add(StandardMaterial {
+        base_color: Color::BLACK,
+        unlit: true,
+        ..default()
+    });
+    commands.spawn((
+        Mesh3d(art.sphere_hi.clone()),
+        MeshMaterial3d(horizon),
+        Transform::from_xyz(p.x, p.y, 0.0).with_scale(Vec3::splat(r)),
+        NotShadowCaster,
+    ));
+    // Photonenring knapp außerhalb des Horizonts: dünner, scharfer Lichtring.
+    let photon = mats.add(StandardMaterial {
+        base_color: Color::LinearRgba(LinearRgba::rgb(5.0, 4.0, 3.0)),
+        unlit: true,
+        ..default()
+    });
+    let torus = meshes.add(Torus::new(r * 1.08, r * 1.14));
+    commands.spawn((
+        Mesh3d(torus),
+        MeshMaterial3d(photon),
+        Transform::from_xyz(p.x, p.y, 0.0)
+            .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
+        NotShadowCaster,
+    ));
+    // Akkretionsscheibe: zwei schräge, gegenläufige Ringe in Glut- und Weißtönen.
+    for (k, (col, size, speed, tilt)) in [
+        ([1.0, 0.62, 0.25], 4.2f32, 0.9f32, 1.18f32),
+        ([1.0, 0.86, 0.6], 3.1, 1.4, 1.22),
+        ([0.75, 0.35, 0.15], 6.0, 0.5, 1.12),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let c = srgb(col).to_linear() * (1.6 - k as f32 * 0.35);
+        let ring = mats.add(StandardMaterial {
+            base_color: Color::LinearRgba(c),
+            base_color_texture: Some(art.ring.clone()),
+            unlit: true,
+            alpha_mode: AlphaMode::Add,
+            cull_mode: None,
+            ..default()
+        });
+        commands.spawn((
+            Mesh3d(art.quad.clone()),
+            MeshMaterial3d(ring),
+            Transform::from_xyz(p.x, p.y, 0.1 + k as f32 * 0.03)
+                .with_rotation(Quat::from_rotation_z(0.35) * Quat::from_rotation_x(tilt))
+                .with_scale(Vec3::splat(r * size)),
+            Swirl(Vec3::Z, speed),
+            NotShadowCaster,
+        ));
+    }
+    commands.spawn((
+        PointLight {
+            color: Color::srgb(1.0, 0.7, 0.4),
+            intensity: 2_500_000.0,
+            range: 90.0,
+            shadow_maps_enabled: false,
+            ..default()
+        },
+        Transform::from_xyz(p.x, p.y, 10.0),
+    ));
+}
+
 fn spawn_beacon(
     commands: &mut Commands,
     art: &mut Art,
@@ -647,7 +763,7 @@ pub struct PadLightMats {
     pub red: Handle<StandardMaterial>,
 }
 
-const CONTAINER_COLORS: [[f32; 3]; 5] = [
+pub const CONTAINER_COLORS: [[f32; 3]; 5] = [
     [0.54, 0.29, 0.18],
     [0.25, 0.37, 0.48],
     [0.36, 0.42, 0.23],

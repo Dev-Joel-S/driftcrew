@@ -17,6 +17,8 @@ eigener Name, eigener Look, alle Grafiken und Klänge werden beim Start prozedur
 | ![Planet Viridia](docs/screenshots/planet.jpg) | ![Asteroidenfeld](docs/screenshots/asteroiden.jpg) |
 | ![Werft Orion](docs/screenshots/werft.jpg) | ![Gravitationsanomalie](docs/screenshots/anomalie.jpg) |
 | ![Abstimmung](docs/screenshots/abstimmung.jpg) | ![Sektorkarte](docs/screenshots/karte.jpg) |
+| ![Schwarzes Loch](docs/screenshots/schwarzes_loch.jpg) | ![Rettungskapsel](docs/screenshots/rettungskapsel.jpg) |
+| ![Landezone auf Viridia](docs/screenshots/landezone.jpg) | ![Schwerlast am Kran](docs/screenshots/schwerlast.jpg) |
 
 *(Screenshots aus dem automatischen Vorführmodus, gerendert mit Software-Vulkan.)*
 
@@ -89,15 +91,31 @@ beides – ein seitlich verstauter Container oder ein Asteroid am Kranseil zieht
 in eine Richtung.
 
 Statt Sofort-Tod gibt es einen **Lebensbalken**: Schaden hängt von der Aufprallgeschwindigkeit ab,
-der Schild fängt zuerst ab. Meteoriten, Asteroiden, rotierende Balken und die Gravitationsanomalie
-sind gefährlich. Ein zerstörtes Schiff wird gegen eine Gebühr zur letzten Station geborgen.
+der Schild fängt zuerst ab. Meteoriten, Asteroiden, rotierende Balken, die Gravitationsanomalie und
+das Schwarze Loch sind gefährlich. Treffer in der Nähe eines Triebwerks beschädigen es: erst
+**stottert** es (setzt zufällig aus und schiebt schwächer), dann **fällt es aus**. Die Slot-Leiste
+zeigt das an, repariert wird im Stationsservice.
+
+Bei Hülle 0 gibt es **kein Game Over**: Die Crew wird in einer **Rettungskapsel** ausgestoßen
+(die Kamera folgt ihr), das Schiff wird zur letzten Station geborgen. Die Bergungskosten
+(fester Betrag + Anteil der Kasse) gehen von der gemeinsamen Kasse ab und werden angezeigt.
+
+**Schwerkraft** gibt es nur an Anomalien und am **Schwarzen Loch** – Planeten ziehen nicht an.
+Im Sog des Schwarzen Lochs zeigt ein roter gestrichelter Kreis, ab wo auch Vollschub nicht mehr
+reicht; wer den Ereignishorizont berührt, verliert das Schiff.
+
+**Treibstoff:** Jedes Schiff hat einen Tank, jedes feuernde Triebwerk verbraucht je nach Schub.
+Ist er leer, bleibt eine **Notreserve mit 25 % Schub** – festsitzen kann man ohne Reibung also nie.
+Getankt wird an Stationen.
 
 ### Werkzeuge
 
 - **Kanone** – schießt in Zielrichtung, mit Rückstoß. 10 Schuss, Nachschub an Stationen.
   Zerlegt Asteroiden (große zerbrechen, erzhaltige hinterlassen Erzbrocken) und Meteoriten.
 - **Kran** – feuert einen Greifer. Kleines (Erzbrocken, Rettungskapseln) wird eingeholt und verstaut,
-  Großes (Wracks, Asteroiden) hängt am Seil und wird geschleppt. Nochmal drücken = loslassen.
+  Großes (Wracks, Schwerlastkisten, Asteroiden) hängt am Seil und wird geschleppt. Das Seil ist eine
+  feste Längenbegrenzung: schlaff hängt es durch, straff zieht es – die Last pendelt und zerrt am
+  Schiff. Ein zu harter Ruck reißt es. Nochmal drücken = loslassen.
 - **Bohrer** – baut Erz an den leuchtenden Kristallvorkommen der Mini-Planeten und an erzhaltigen
   Asteroiden ab. Der Bohrer drückt das Schiff dabei leicht zurück.
 
@@ -107,12 +125,19 @@ Die zentrale Fähigkeit: **langsam (< 2,6 m/s), gerade (Nase in Plattformrichtun
 auf eine Landeplattform setzen. Die Plattform leuchtet gelb beim Anflug und grün, wenn alles passt;
 unten im HUD stehen Tempo, Ausrichtung und Drehung. Ein Triebwerk zünden = abdocken.
 
-Angedockt öffnet sich das **Stationsmenü**: Service (Munition, Schild, Reparatur), Upgrades,
-Aufträge, Markt (Erz verkaufen) und in Werften der Schiffshandel. Planeten-Außenposten nehmen Erz an.
+Angedockt öffnet sich das **Stationsmenü**: Service (Munition, Schild, Reparatur, Triebwerke,
+Tanken), Upgrades, Aufträge, Markt (Erz verkaufen, Preistafel mit dem besten Ort je Erz) und in
+Werften der Schiffshandel. **Jeder Ort hat eigene Preise**, jede Werft ihr **eigenes Angebot**.
+Planeten-Außenposten nehmen Erz an.
+
+**Landen auf Planeten:** Neben den Außenposten haben die Mini-Planeten freie **Landezonen** mit
+einem Erzvorkommen direkt daneben. Gelandet wird wie beim Andocken; dort bleiben die Werkzeuge
+aktiv – das Schiff steht still, während der Bohrer arbeitet.
 
 ### Missionen
 
 - **Liefern** – Container an Station A abholen (landet im Frachtraum), zu Station B bringen.
+- **Schwerlast** – eine Kiste, die in keinen Frachtraum passt, am Kran zu Station B schleppen.
 - **Abbauen** – bestimmtes Erz abbauen und an der Station abliefern.
 - **Notrufe** – überall annehmbar (Karte mit **Tab**): treibendes Wrack mit dem Kran zur Station
   schleppen oder Rettungskapseln einsammeln und abliefern.
@@ -143,16 +168,18 @@ Eine offene 2D-Ebene von gut 5 km Durchmesser, dargestellt in 3D (2.5D) mit Para
 
 - **Nova-Hub** – große Raumstation im Zentrum (Service, Upgrades, Aufträge, Markt)
 - **Kepler-Außenposten** – Turmstation im Osten, bewacht von einem Rotor
-- **Werft Orion** – Hangar im Westen, hier gibt es neue Schiffe
+- **Werft Orion** – Hangar im Westen (Driftkutter, Kolibri, Lastesel)
+- **Werft Vega** – Turmwerft im Osten (Driftkutter, Hornisse, Pelikan), mit Markt
 - **Mini-Planeten** Viridia (Kobalt), Ember (Solarit), Azura (Ionit, mit Ringen), Ferrox (Ferrit) –
-  mit eigener Schwerkraft, Erzvorkommen und kleinen Außenposten
+  ohne Anziehung, mit Erzvorkommen, Landezonen und kleinen Außenposten
 - **Splittergürtel** und **Kobaltschwarm** – Asteroidenfelder
 - **Glutstrom** und **Sturzfeld** – Meteoritenschauer
 - **Gravitationsanomalie** im Südosten – wer zu nah kommt, wird hineingezogen
+- **Schlund** im Südwesten – ein Schwarzes Loch mit starkem Sog und Ereignishorizont
 
 Schiffe: **Driftkutter** (Standard, 5 Triebwerke, Kanone, Kran, Bohrer), **Kolibri** (Scout,
 2–3 Triebwerke), **Hornisse** (Abfangjäger, 2 Kanonen), **Lastesel** (Frachter, 7 Triebwerke,
-2 Kräne, 4 Frachtmodule).
+2 Kräne, 4 Frachtmodule), **Pelikan** (Bergungsschlepper mit Auslegern, 6 Triebwerke, 2 Kräne).
 
 ---
 
@@ -166,14 +193,19 @@ in die Binärdatei eingebettet; liegt `assets/data/` im Arbeitsverzeichnis (z. B
   Formen: `Box`, `Taper(oben, unten)`, `Chamfer(anteil)`, `Nose(anteil)`, `Tail(anteil)`,
   `Wing(links, rechts)` – Optik und Kollision folgen der Form. Die Reihenfolge der Triebwerke ist
   die Belegungsreihenfolge, `thruster_layouts` legt die symmetrische Anordnung für jede Anzahl fest.
+  `fuel_capacity` und `fuel_burn` bestimmen Tank und Verbrauch.
 - `world.ron` – Stationen als ASCII-Raster (eine Zelle = 4 m):
   `#` Block, `X` Akzentblock, `W` Fensterblock, `^ v < >` Landeplattform (Pfeil = Richtung),
   `L` Leuchtfeuer, `.` leer, Schrägen `/ \ 7 r` (Zeichen = volle Ecke: unten rechts, unten links,
   oben rechts, oben links). Freiliegende Außenecken werden automatisch abgeschrägt
-  (`auto_chamfer: false` schaltet das ab). Dazu Planeten, Asteroidenfelder, Meteoritenzonen, Rotoren, Anomalien,
-  Nebelregionen und Notruf-Orte.
-- `shop.ron` – Services, Upgrades, Erzpreise, Startkapital.
-- `missions.ron` – Vorlagen für Aufträge und Notrufe.
+  (`auto_chamfer: false` schaltet das ab). `prices` setzt Preisfaktoren je Ort (Erz je Sorte,
+  Treibstoff, Service), `ships_for_sale` das Angebot einer Werft. Planeten haben
+  `landing_zones` (Winkel in Grad; daneben liegt jeweils ein Erzvorkommen). Anomalien mit
+  `kind: BlackHole` sind Schwarze Löcher (`core_radius` = Ereignishorizont). Dazu
+  Asteroidenfelder, Meteoritenzonen, Rotoren, Nebelregionen und Notruf-Orte.
+- `shop.ron` – Services (inkl. Tanken und Triebwerksreparatur), Upgrades, Grundpreise für Erz,
+  Startkapital, Bergungsgebühr.
+- `missions.ron` – Vorlagen für Aufträge und Notrufe; Fracht mit `towed: true` ist Schwerlast.
 
 ---
 
@@ -184,14 +216,14 @@ src/
   sim/        Deterministische Simulation, keine Abhängigkeit vom Rendering
     mod.rs      SimState, TickInput (Slot-Bitmaske + Zielwinkel + Befehle), Schritt-Reihenfolge
     physics.rs  eigene Starrkörperphysik: Kräfte an versetzten Punkten, Impuls-Kontakte
-    geom.rs     SAT/Clipping-Kontakte für Vierecke und Kreise, Strahltests
-    ship.rs     Schiff aus Daten: Masse, Schwerpunkt, Trägheit, Fracht
-    tools.rs    Triebwerke, Kanone, Kran (Seil als Feder), Bohrer
-    dock.rs     Andocken, Zerstörung, Bergung
+    geom.rs     SAT/Clipping-Kontakte für konvexe Polygone und Kreise, Strahltests
+    ship.rs     Schiff aus Daten: Masse, Schwerpunkt, Trägheit, Fracht, Tank, Triebwerkszustand
+    tools.rs    Triebwerke (Stottern, Treibstoff), Kanone, Kran (Seil als harte Grenze), Bohrer
+    dock.rs     Andocken und Landen, Zerstörung, Rettungskapsel, Bergung
     hazards.rs  Asteroidenfelder, Meteoriten, Geschosse
     missions.rs Aufträge und Notrufe
-    economy.rs  Kasse, Käufe, Abstimmung, Upgrades
-    world.rs    Stationen aus Rastern, Planeten, Plattformen, Schwerkraft
+    economy.rs  Kasse, Käufe, Abstimmung, Upgrades, Ortspreise, Werftangebot
+    world.rs    Stationen aus Rastern, Planeten, Plattformen, Landezonen, Anomalien
     rng.rs      PCG32 – kein Zufall ohne Seed
   input.rs    Geräte → Slots, reservierte Tasten, Zielen
   game.rs     Zustände, feste 60-Hz-Schleife, Spielstand
@@ -208,8 +240,8 @@ dass zwei Läufe mit gleicher Eingabe bitgleich enden; ein anderer lässt einen 
 nur mit den zwei äußeren Triebwerken von Nova-Hub zum Kepler-Außenposten fliegen und andocken.
 Damit ist der Weg zu Rollback-Netcode vorbereitet.
 
-**Vorführmodus:** `DRIFTCREW_DEMO=<ordner> DRIFTCREW_SCENE=tour|ui cargo run` fliegt ein Skript ab,
-speichert Screenshots und beendet sich.
+**Vorführmodus:** `DRIFTCREW_DEMO=<ordner> DRIFTCREW_SCENE=tour|ui|systems cargo run` fliegt ein
+Skript ab, speichert Screenshots und beendet sich.
 
 ---
 

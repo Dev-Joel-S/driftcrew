@@ -53,6 +53,7 @@ impl Plugin for RenderPlugin {
                     ship_vis::sync_bodies,
                     ship_vis::sync_projectiles,
                     ship_vis::sync_tools,
+                    ship_vis::sync_pod,
                     ship_vis::blink_nav_lights,
                     world_vis::update_pad_lights,
                 )
@@ -366,6 +367,12 @@ fn camera_follow(
             )
         }
         AppState::Lobby => Vec3::new(com.x + 5.0, com.y + 0.3, 21.0),
+        AppState::Playing if s.destroyed && sim.0.escape.is_some() => {
+            // Die Kamera folgt der Rettungskapsel.
+            let p = sim.0.escape.as_ref().unwrap();
+            let pos = p.prev_pos.lerp(p.pos, alpha);
+            Vec3::new(pos.x, pos.y, 34.0 * rig.zoom)
+        }
         AppState::Playing => {
             let speed = s.vel.length();
             let look = s.vel * 0.55;

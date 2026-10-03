@@ -3,6 +3,7 @@
 // links/rechts, dann Mitte, dann außen links/rechts.
 // Nicht belegte Triebwerke verschwinden, die belegten werden nach `thruster_layouts`
 // symmetrisch neu angeordnet.
+// fuel_capacity = Tank, fuel_burn = Verbrauch pro Schubeinheit und Sekunde (Standard 0.0065).
 [
     (
         id: "driftkutter",
@@ -15,6 +16,7 @@
         max_hull: 100.0,
         max_shield: 40.0,
         max_ammo: 10,
+        fuel_capacity: 100.0,
         angular_damping: 0.12,
         min_thrusters: 2,
         parts: [
@@ -49,6 +51,8 @@
         max_hull: 70.0,
         max_shield: 60.0,
         max_ammo: 14,
+        fuel_capacity: 70.0,
+        fuel_burn: 0.006,
         angular_damping: 0.18,
         min_thrusters: 2,
         parts: [
@@ -77,6 +81,8 @@
         max_hull: 110.0,
         max_shield: 90.0,
         max_ammo: 24,
+        fuel_capacity: 90.0,
+        fuel_burn: 0.007,
         angular_damping: 0.2,
         min_thrusters: 2,
         parts: [
@@ -110,6 +116,7 @@
         max_hull: 170.0,
         max_shield: 50.0,
         max_ammo: 10,
+        fuel_capacity: 160.0,
         angular_damping: 0.1,
         min_thrusters: 2,
         parts: [
@@ -138,6 +145,44 @@
             (count: 5, xs: [-1.3, -0.6, 0.0, 0.6, 1.3]),
             (count: 6, xs: [-2.0, -1.2, -0.4, 0.4, 1.2, 2.0]),
             (count: 7, xs: [-2.0, -1.3, -0.6, 0.0, 0.6, 1.3, 2.0]),
+        ],
+    ),
+    (
+        id: "pelikan",
+        name: "Pelikan",
+        class: "Bergungsschlepper",
+        description: "Breiter Schlepper mit Auslegern, sechs Triebwerken, zwei Kränen und Bohrer. Für Wracks und Schwerlast.",
+        price: 2300,
+        hull_color: "#b7a27a",
+        accent_color: "#355c5a",
+        max_hull: 150.0,
+        max_shield: 40.0,
+        max_ammo: 0,
+        fuel_capacity: 140.0,
+        angular_damping: 0.14,
+        min_thrusters: 2,
+        parts: [
+            (kind: Hull,           pos: (0.0, 0.2),    size: (2.4, 2.4),  mass: 7.0, shape: Chamfer(0.3)),
+            (kind: Cockpit,        pos: (0.0, 1.7),    size: (1.2, 0.6),  mass: 1.0, shape: Nose(0.5)),
+            (kind: Armor,          pos: (-1.95, -0.5), size: (1.5, 0.8),  mass: 1.2, shape: Wing(0.45, 1.0)),
+            (kind: Armor,          pos: (1.95, -0.5),  size: (1.5, 0.8),  mass: 1.2, shape: Wing(1.0, 0.45)),
+            (kind: CargoPod(14.0), pos: (0.0, -0.45),  size: (1.2, 1.0),  mass: 0.9, shape: Chamfer(0.4)),
+            (kind: Thruster(40.0), pos: (-0.6, -1.15), size: (0.46, 0.4), mass: 0.5, shape: Taper(1.0, 0.72)),
+            (kind: Thruster(40.0), pos: (0.6, -1.15),  size: (0.46, 0.4), mass: 0.5, shape: Taper(1.0, 0.72)),
+            (kind: Thruster(40.0), pos: (-1.6, -1.15), size: (0.46, 0.4), mass: 0.5, shape: Taper(1.0, 0.72)),
+            (kind: Thruster(40.0), pos: (1.6, -1.15),  size: (0.46, 0.4), mass: 0.5, shape: Taper(1.0, 0.72)),
+            (kind: Thruster(40.0), pos: (-2.45, -1.15), size: (0.46, 0.4), mass: 0.5, shape: Taper(1.0, 0.72)),
+            (kind: Thruster(40.0), pos: (2.45, -1.15),  size: (0.46, 0.4), mass: 0.5, shape: Taper(1.0, 0.72)),
+            (kind: Tool(Crane),  pos: (-1.0, 1.55), size: (0.44, 0.44), mass: 0.7, shape: Chamfer(0.45)),
+            (kind: Tool(Crane),  pos: (1.0, 1.55),  size: (0.44, 0.44), mass: 0.7, shape: Chamfer(0.45)),
+            (kind: Tool(Drill),  pos: (0.0, 2.25),  size: (0.4, 0.4),   mass: 0.5, shape: Chamfer(0.45)),
+        ],
+        thruster_layouts: [
+            (count: 2, xs: [-0.6, 0.6]),
+            (count: 3, xs: [-1.0, 0.0, 1.0]),
+            (count: 4, xs: [-1.6, -0.6, 0.6, 1.6]),
+            (count: 5, xs: [-2.45, -1.2, 0.0, 1.2, 2.45]),
+            (count: 6, xs: [-2.45, -1.6, -0.6, 0.6, 1.6, 2.45]),
         ],
     ),
 ]

@@ -2,13 +2,15 @@
 
 use bevy::math::Vec2;
 
-use super::data::{Ore, Service, v};
+use super::data::{Ore, Service, ToolKind, v};
 use super::rng::hash32;
 use super::ship::{CargoKind, CraneState};
 use super::world::Owner;
 use super::{Body, BodyKind, SimEvent, SimState, ToastKind};
 
 pub const MAX_ACTIVE: usize = 4;
+/// Kollisionsradius einer Schwerlastkiste.
+pub const CRATE_RADIUS: f32 = 1.5;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum MissionKind {
@@ -17,6 +19,14 @@ pub enum MissionKind {
         to: usize,
         cargo: String,
         mass: f32,
+    },
+    /// Schwerlast: zu schwer für den Frachtraum, wird als Kiste am Kran geschleppt.
+    Haul {
+        from: usize,
+        to: usize,
+        cargo: String,
+        mass: f32,
+        body: Option<u32>,
     },
     Mining {
         ore: Ore,
@@ -55,6 +65,7 @@ impl Mission {
         let st = |i: usize| s.world.stations[i].name.clone();
         match &self.kind {
             MissionKind::Delivery { to, cargo, .. } => format!("Liefern: {cargo} → {}", st(*to)),
+            MissionKind::Haul { to, cargo, .. } => format!("Schwerlast: {cargo} → {}", st(*to)),
             MissionKind::Mining { ore, amount, to } => {
                 format!("Abbau: {amount:.0} t {} → {}", ore.label(), st(*to))
             }
@@ -75,6 +86,10 @@ impl Mission {
                     s.world.stations[*from].name
                 )
             }
+            MissionKind::Haul { from, mass, .. } => format!(
+                "{mass:.0} t Kiste am Kran schleppen, Abholung an {}",
+                s.world.stations[*from].name
+            ),
             MissionKind::Mining { ore, .. } => {
                 let have = s.ship.ore_amount(*ore).max(0.0);
                 let source = s
@@ -134,6 +149,17 @@ impl Mission {
                             .find(|f| f.ore == *ore)
                             .map(|f| v(f.center))
                     })
+                }
+            }
+            MissionKind::Haul { from, to, body, .. } => {
+                let attached = s.ship.tools.iter().any(
+                    |t| matches!(t.crane, CraneState::Attached { body: b, .. } if Some(b) == *body),
+                );
+                if attached {
+                    Some(station(*to))
+                } else {
+                    body.and_then(|id| s.bodies.iter().find(|b| b.id == id).map(|b| b.pos))
+                        .or(Some(station(*from)))
                 }
             }
             MissionKind::Tow { site, to, body, .. } => {
@@ -219,14 +245,25 @@ impl SimState {
             }
             let t = &md.delivery_cargo[self.rng.index(md.delivery_cargo.len())];
             let dist = (self.world.stations[to].pos - self.world.stations[si].pos).length();
-            Mission {
-                id,
-                kind: MissionKind::Delivery {
+            let kind = if t.towed {
+                MissionKind::Haul {
                     from: si,
                     to,
                     cargo: t.name.clone(),
                     mass: t.mass,
-                },
+                    body: None,
+                }
+            } else {
+                MissionKind::Delivery {
+                    from: si,
+                    to,
+                    cargo: t.name.clone(),
+                    mass: t.mass,
+                }
+            };
+            Mission {
+                id,
+                kind,
                 reward: round5(t.reward as f32 + dist * md.reward_per_distance),
                 origin: Some(si),
             }
@@ -344,6 +381,50 @@ impl SimState {
                     return;
                 }
             }
+            MissionKind::Haul {
+                from,
+                cargo,
+                mass,
+                body,
+                ..
+            } => {
+                let here = self.docked_station();
+                if here != Some(*from) {
+                    let name = self.world.stations[*from].name.clone();
+                    self.toast(
+                        format!("Die Kiste steht in {name} – dort andocken"),
+                        ToastKind::Warn,
+                    );
+                    return;
+                }
+                if !self.ship.has_tool(ToolKind::Crane) {
+                    self.toast("Schwerlast braucht einen belegten Kran", ToastKind::Warn);
+                    return;
+                }
+                // Kiste schwebt über der Plattform, auf der das Schiff steht.
+                let pad = self.world.pads[self.ship.docked.unwrap_or(0)].clone();
+                let pos = pad.center + pad.normal * (self.ship.rest_height() * 2.0 + 5.5);
+                let bid = self.next_id();
+                self.bodies.push(Body {
+                    id: bid,
+                    kind: BodyKind::Crate {
+                        mission: m.id,
+                        name: cargo.clone(),
+                    },
+                    pos,
+                    vel: Vec2::ZERO,
+                    angle: pad.ship_angle(),
+                    ang_vel: 0.0,
+                    radius: CRATE_RADIUS,
+                    mass: *mass,
+                    prev_pos: pos,
+                    prev_angle: pad.ship_angle(),
+                    alive: true,
+                    seed: hash32(bid),
+                    age: 0.0,
+                });
+                *body = Some(bid);
+            }
             MissionKind::Tow {
                 site, body, name, ..
             } => {
@@ -418,7 +499,9 @@ impl SimState {
         });
         for b in &mut self.bodies {
             match &b.kind {
-                BodyKind::Capsule { mission } | BodyKind::Derelict { mission, .. }
+                BodyKind::Capsule { mission }
+                | BodyKind::Derelict { mission, .. }
+                | BodyKind::Crate { mission, .. }
                     if *mission == mid =>
                 {
                     b.alive = false;
@@ -457,35 +540,34 @@ impl SimState {
         self.cleanup_mission(&m);
     }
 
-    /// Prüfungen, die jeden Tick laufen (Abschleppen).
+    /// Prüfungen, die jeden Tick laufen: Geschlepptes (Wrack, Schwerlastkiste) ist am Ziel,
+    /// sobald es nahe genug an der Zielstation ist.
     pub(crate) fn update_missions(&mut self) {
         let mut done = None;
         for (i, m) in self.active.iter().enumerate() {
-            if let MissionKind::Tow {
-                to,
-                body: Some(bid),
-                ..
-            } = &m.kind
-            {
-                let st = &self.world.stations[*to];
-                let reach = (st.bounds.max - st.bounds.min).length() * 0.5 + 25.0;
-                if let Some(b) = self.bodies.iter().find(|b| b.id == *bid && b.alive)
-                    && (b.pos - st.pos).length() < reach
-                {
-                    done = Some(i);
+            let (to, bid) = match &m.kind {
+                MissionKind::Tow {
+                    to, body: Some(b), ..
                 }
+                | MissionKind::Haul {
+                    to, body: Some(b), ..
+                } => (*to, *b),
+                _ => continue,
+            };
+            let st = &self.world.stations[to];
+            let reach = (st.bounds.max - st.bounds.min).length() * 0.5 + 25.0;
+            if let Some(b) = self.bodies.iter().find(|b| b.id == bid && b.alive)
+                && (b.pos - st.pos).length() < reach
+            {
+                done = Some((i, bid));
+                break;
             }
         }
-        if let Some(i) = done {
-            if let MissionKind::Tow {
-                body: Some(bid), ..
-            } = self.active[i].kind
-            {
-                for t in &mut self.ship.tools {
-                    if matches!(t.crane, CraneState::Attached { body, .. } if body == bid) {
-                        t.crane = CraneState::Idle;
-                        self.events.push(SimEvent::CraneRelease);
-                    }
+        if let Some((i, bid)) = done {
+            for t in &mut self.ship.tools {
+                if matches!(t.crane, CraneState::Attached { body, .. } if body == bid) {
+                    t.crane = CraneState::Idle;
+                    self.events.push(SimEvent::CraneRelease);
                 }
             }
             self.complete_mission(i);

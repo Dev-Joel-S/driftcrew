@@ -4,7 +4,7 @@ use bevy::math::Vec2;
 
 use super::ship::{CargoKind, CraneState};
 use super::world::{Owner, angle_diff};
-use super::{Body, BodyKind, DT, SimEvent, SimState, TickInput, ToastKind};
+use super::{Body, BodyKind, DT, EscapePod, SimEvent, SimState, TickInput, ToastKind};
 
 /// Maximal erlaubte Geschwindigkeit beim Andocken.
 pub const DOCK_MAX_SPEED: f32 = 2.6;
@@ -28,6 +28,9 @@ pub struct DockGuide {
     /// Höhe über der Ruheposition.
     pub height: f32,
 }
+
+/// So lange fliegt die Rettungskapsel, bevor die Bergung das Schiff an der Heimatstation abstellt.
+pub const RESPAWN_SECONDS: f32 = 5.0;
 
 /// Maximal erlaubte Drehgeschwindigkeit beim Andocken (rad/s).
 pub const DOCK_MAX_SPIN: f32 = 0.9;
@@ -138,6 +141,13 @@ impl SimState {
         self.events.push(SimEvent::Docked { pad });
         let owner = self.world.pads[pad].owner;
         let name = self.world.owner_name(owner).to_string();
+        if self.world.pads[pad].zone {
+            self.toast(
+                format!("Gelandet auf {name} – Werkzeuge frei, Triebwerk zünden = abheben"),
+                ToastKind::Good,
+            );
+            return;
+        }
         self.toast(format!("Angedockt: {name}"), ToastKind::Good);
         if let Owner::Station(si) = owner {
             self.crew.home_station = si;
@@ -204,7 +214,17 @@ impl SimState {
     fn destroy_ship(&mut self) {
         let pos = self.ship.pos;
         self.ship.destroyed = true;
-        self.ship.respawn_timer = 3.5;
+        self.ship.respawn_timer = RESPAWN_SECONDS;
+        // Rettungskapsel: wird nach vorne ausgestoßen und treibt bis zur Bergung.
+        let nose = super::geom::rot(Vec2::Y, self.ship.angle);
+        self.escape = Some(EscapePod {
+            pos,
+            vel: self.ship.vel * 0.5 + nose * 7.0,
+            angle: self.ship.angle,
+            spin: self.rng.range(-1.2, 1.2),
+            prev_pos: pos,
+            prev_angle: self.ship.angle,
+        });
         self.ship.hull = 0.0;
         for t in &mut self.ship.tools {
             t.crane = CraneState::Idle;
@@ -251,24 +271,49 @@ impl SimState {
                 CargoKind::Ore(_) => {}
             }
         }
-        let fee = (self.crew.credits as f32 * self.data.shop.respawn_fee).round() as u32;
-        self.crew.credits -= fee.min(self.crew.credits);
+        let fee = self.salvage_fee_now();
+        self.crew.credits -= fee;
+        self.salvage_fee = fee;
         let home = self.world.stations[self.crew.home_station].name.clone();
         self.toast(
-            format!("Schiff zerstört! Bergung nach {home} (-{fee} Credits)"),
+            format!(
+                "Schiff zerstört! Rettungskapsel ausgestoßen – Bergung nach {home} (-{fee} Credits)"
+            ),
             ToastKind::Bad,
         );
     }
 
+    /// Bergungsgebühr, die bei einer Zerstörung jetzt fällig wäre (aus der gemeinsamen Kasse).
+    pub fn salvage_fee_now(&self) -> u32 {
+        let shop = &self.data.shop;
+        let fee = shop.salvage_base as f32 + self.crew.credits as f32 * shop.respawn_fee;
+        (fee.round() as u32).min(self.crew.credits)
+    }
+
     pub(crate) fn update_respawn(&mut self) {
+        if let Some(p) = &mut self.escape {
+            p.prev_pos = p.pos;
+            p.prev_angle = p.angle;
+            p.pos += p.vel * DT;
+            p.angle += p.spin * DT;
+            // Kleine Steuerdüsen bremsen die Kapsel allmählich ab.
+            p.vel *= 1.0 - 0.35 * DT;
+            p.spin *= 1.0 - 0.5 * DT;
+        }
         self.ship.respawn_timer -= DT;
         if self.ship.respawn_timer > 0.0 {
             return;
         }
+        self.escape = None;
         self.ship.destroyed = false;
         self.ship.hull = self.ship.max_hull;
         self.ship.shield = self.ship.max_shield;
         self.ship.ammo = self.ship.ammo.max(self.ship.max_ammo / 2);
+        self.ship.fuel = self.ship.fuel.max(self.ship.max_fuel * 0.5);
+        self.fuel_warned = 0;
+        for t in &mut self.ship.thrusters {
+            t.health = 1.0;
+        }
         self.ship.invulnerable = 2.0;
         self.low_hull_warned = false;
         let home = self.crew.home_station;

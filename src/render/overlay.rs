@@ -17,7 +17,8 @@ impl Plugin for OverlayPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, configure_gizmos).add_systems(
             Update,
-            (draw_flight_aids, draw_aim_markers).run_if(in_state(AppState::Playing)),
+            (draw_flight_aids, draw_aim_markers, draw_no_return)
+                .run_if(in_state(AppState::Playing)),
         );
     }
 }
@@ -123,5 +124,40 @@ fn draw_aim_markers(
         }
         let end = mount + dir * reach;
         gizmos.circle(Isometry3d::from_translation(end.extend(Z)), 0.45, c);
+    }
+}
+
+/// Im Sog eines Schwarzen Lochs: gestrichelter roter Kreis, ab dem auch Vollschub nicht
+/// mehr reicht.
+fn draw_no_return(sim: Res<Sim>, map: Res<MapOpen>, paused: Res<Paused>, mut gizmos: Gizmos) {
+    if map.0 || paused.0 {
+        return;
+    }
+    let s = &sim.0;
+    if s.ship.destroyed {
+        return;
+    }
+    let reserve = if s.ship.fuel_empty() {
+        crate::sim::tools::EMERGENCY_THRUST
+    } else {
+        1.0
+    };
+    let thrust: f32 = s.ship.thrusters.iter().map(|t| t.effective_thrust()).sum();
+    let max_accel = thrust * reserve / s.ship.mass;
+    for an in s.world.anomalies.iter().filter(|a| a.is_black_hole()) {
+        if (s.ship.pos - an.pos).length() > an.radius {
+            continue;
+        }
+        let r = an.no_return_radius(max_accel);
+        let n = 72;
+        for k in (0..n).step_by(2) {
+            let a0 = std::f32::consts::TAU * k as f32 / n as f32;
+            let a1 = std::f32::consts::TAU * (k + 1) as f32 / n as f32;
+            gizmos.line(
+                (an.pos + Vec2::from_angle(a0) * r).extend(Z),
+                (an.pos + Vec2::from_angle(a1) * r).extend(Z),
+                Color::srgba(1.0, 0.3, 0.25, 0.6),
+            );
+        }
     }
 }

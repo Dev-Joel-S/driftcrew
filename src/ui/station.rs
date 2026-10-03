@@ -69,6 +69,33 @@ enum Act {
     Undock,
 }
 
+/// Zustand der Triebwerke in einer Zeile, z. B. „Links 40 % stottert · Mitte ausgefallen“.
+fn engine_status(sim: &SimState) -> String {
+    let n = sim.ship.thrusters.len();
+    let bad: Vec<String> = sim
+        .ship
+        .thrusters
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| t.health < 0.995)
+        .map(|(i, t)| {
+            let name = crate::sim::thruster_label(i, n);
+            if t.failed() {
+                format!("{name} ausgefallen")
+            } else if t.stuttering() {
+                format!("{name} {:.0} % stottert", t.health * 100.0)
+            } else {
+                format!("{name} {:.0} %", t.health * 100.0)
+            }
+        })
+        .collect();
+    if bad.is_empty() {
+        "Alle Triebwerke in Ordnung".into()
+    } else {
+        bad.join(" · ")
+    }
+}
+
 /// Ist das Stationsmenü gerade sichtbar (angedockt an einem Ort mit Menü)?
 pub fn menu_open(sim: &SimState) -> bool {
     sim.ship.docked.is_some() && !sim.ship.destroyed && !tabs_for(sim).is_empty()
@@ -79,7 +106,11 @@ fn tabs_for(sim: &SimState) -> Vec<Tab> {
         Some(Owner::Station(si)) => {
             let st = &sim.world.stations[si];
             let mut v = Vec::new();
-            if st.has(Service::Ammo) || st.has(Service::Shield) || st.has(Service::Repair) {
+            if st.has(Service::Ammo)
+                || st.has(Service::Shield)
+                || st.has(Service::Repair)
+                || st.has(Service::Fuel)
+            {
                 v.push(Tab::Service);
             }
             if st.has(Service::Ships) {
@@ -94,6 +125,7 @@ fn tabs_for(sim: &SimState) -> Vec<Tab> {
             }
             v
         }
+        Some(Owner::Planet(_)) if sim.landed_in_zone() => Vec::new(),
         Some(Owner::Planet(_)) => vec![Tab::Market, Tab::Missions],
         None => Vec::new(),
     }
@@ -127,6 +159,11 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                         "Hülle {:.0}/{:.0}",
                         sim.ship.hull, sim.ship.max_hull
                     )),
+                    ServiceEffect::RepairThrusters => it.detail(engine_status(sim)),
+                    ServiceEffect::Refuel => it.detail(format!(
+                        "Tank {:.0}/{:.0}",
+                        sim.ship.fuel, sim.ship.max_fuel
+                    )),
                 };
                 v.push(it);
             }
@@ -155,16 +192,24 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
             }
         }
         Tab::Ships => {
+            let stock: &[String] = match sim.docked_station() {
+                Some(si) => &sim.world.stations[si].ships_for_sale,
+                None => &[],
+            };
             for d in &sim.data.ships {
                 let owned = sim.crew.owned_ships.contains(&d.id);
                 let current = sim.crew.current_ship == d.id;
+                if !owned && !stock.contains(&d.id) {
+                    continue;
+                }
                 let stats = format!(
-                    "{} · {} Triebwerke · {} Werkzeuge · Hülle {:.0} · Fracht {:.0} t",
+                    "{} · {} Triebwerke · {} Werkzeuge · Hülle {:.0} · Fracht {:.0} t · Tank {:.0}",
                     d.class,
                     d.max_thrusters(),
                     d.tool_parts().count(),
                     d.max_hull,
-                    d.cargo_capacity()
+                    d.cargo_capacity(),
+                    d.fuel_capacity
                 );
                 let it = if current {
                     Item::new(d.name.clone(), Act::Switch(d.id.clone()))
@@ -180,7 +225,7 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                     match price_or(&p) {
                         Ok(_) => Item::new(format!("{} kaufen", d.name), Act::Buy(p))
                             .right(format!("{} Cr", fmt_num(d.price)))
-                            .detail(stats),
+                            .detail(format!("{stats} – {}", d.description)),
                         Err(reason) => Item::new(format!("{} kaufen", d.name), Act::Buy(p))
                             .right(format!("{} Cr", fmt_num(d.price)))
                             .detail(format!("{stats} – {reason}"))
@@ -188,6 +233,25 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                     }
                 };
                 v.push(it);
+            }
+            // Was andere Werften führen – damit sich der Weg lohnt.
+            for (si, st) in sim.world.stations.iter().enumerate() {
+                if Some(si) == sim.docked_station() || st.ships_for_sale.is_empty() {
+                    continue;
+                }
+                let names: Vec<String> = st
+                    .ships_for_sale
+                    .iter()
+                    .filter(|id| !stock.contains(id))
+                    .map(|id| sim.data.ship(id).name.clone())
+                    .collect();
+                if !names.is_empty() {
+                    v.push(
+                        Item::new(format!("Nur in {}", st.name), Act::Undock)
+                            .detail(names.join(", "))
+                            .enabled(false),
+                    );
+                }
             }
         }
         Tab::Missions => {
@@ -200,13 +264,21 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
             }
             for m in sim.offers_here() {
                 let here = sim.docked_station();
+                let has_crane = sim.ship.has_tool(crate::sim::data::ToolKind::Crane);
                 let enabled = match &m.kind {
                     MissionKind::Delivery { from, .. } => here == Some(*from),
+                    MissionKind::Haul { from, .. } => here == Some(*from) && has_crane,
                     _ => true,
                 } && sim.active.len() < crate::sim::missions::MAX_ACTIVE;
                 let detail = match &m.kind {
                     MissionKind::Delivery { mass, .. } => {
                         format!("{mass:.1} t Container – landet seitlich im Frachtraum")
+                    }
+                    MissionKind::Haul { mass, .. } if has_crane => format!(
+                        "{mass:.0} t Kiste – passt in keinen Frachtraum, am Kran schleppen. Pendelt!"
+                    ),
+                    MissionKind::Haul { mass, .. } => {
+                        format!("{mass:.0} t Kiste – braucht einen belegten Kran")
                     }
                     MissionKind::Mining { .. } => m.detail(sim),
                     MissionKind::Tow { .. } => {
@@ -228,29 +300,40 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
             }
         }
         Tab::Market => {
+            let here = sim.docked_owner();
+            let price =
+                |ore| here.map_or(sim.data.shop.ore_price(ore), |o| sim.ore_price_at(o, ore));
             let mut total = 0.0;
             let mut credits = 0;
             for ore in crate::sim::data::Ore::ALL {
                 let t = sim.ship.ore_amount(ore);
                 if t > 0.01 {
                     total += t;
-                    credits += (t * sim.data.shop.ore_price(ore) as f32).round() as u32;
+                    credits += (t * price(ore) as f32).round() as u32;
                 }
             }
             let it = Item::new("Erz verkaufen", Act::Sell)
                 .right(format!("+{credits} Cr"))
-                .detail(format!(
-                    "{total:.1} t an Bord · Preise: {}",
-                    sim.data
-                        .shop
-                        .ore_prices
-                        .iter()
-                        .map(|(o, p)| format!("{} {}", o.label(), p))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ))
+                .detail(format!("{total:.1} t an Bord"))
                 .enabled(total > 0.05 && sim.can_sell_here());
             v.push(it);
+            // Preistafel: hier, und wo es am meisten gibt.
+            for ore in crate::sim::data::Ore::ALL {
+                let p = price(ore);
+                let best = sim.best_ore_price(ore);
+                let hint = match best {
+                    Some((o, bp)) if bp > p && Some(o) != here => {
+                        format!("{} zahlt {bp} Cr/t", sim.world.owner_name(o))
+                    }
+                    _ => "bester Preis weit und breit".to_string(),
+                };
+                v.push(
+                    Item::new(format!("Ankauf {}", ore.label()), Act::Sell)
+                        .right(format!("{p} Cr/t"))
+                        .detail(hint)
+                        .enabled(false),
+                );
+            }
             for c in &sim.ship.cargo {
                 let name = match &c.kind {
                     crate::sim::ship::CargoKind::Ore(o) => o.label().to_string(),

@@ -1,6 +1,6 @@
 //! Automatischer Vorführmodus für Screenshots und Rauchtests:
 //! `DRIFTCREW_DEMO=<ordner>` fliegt ein Skript ab, speichert Bildschirmfotos und
-//! beendet sich danach. `DRIFTCREW_SCENE=tour|ui` wählt das Skript.
+//! beendet sich danach. `DRIFTCREW_SCENE=tour|ui|systems` wählt das Skript.
 
 use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
@@ -195,6 +195,132 @@ fn tour() -> Vec<(f32, Act)> {
     ]
 }
 
+/// Schiff auf eine Plattform stellen (nur für Vorführungen).
+fn land_on(c: &mut Ctx, pad: usize) {
+    let s = &mut c.sim.0;
+    let p = s.world.pads[pad].clone();
+    s.ship.angle = p.ship_angle();
+    s.ship.prev_angle = s.ship.angle;
+    s.ship.pos = p.center + p.normal * (s.ship.rest_height() + 0.02);
+    s.ship.prev_pos = s.ship.pos;
+    s.ship.vel = Vec2::ZERO;
+    s.ship.ang_vel = 0.0;
+    s.ship.docked = Some(pad);
+}
+
+fn station(c: &Ctx, id: &str) -> usize {
+    c.sim.0.data.station_index(id).unwrap_or(0)
+}
+
+/// Phase-3-Systeme: Schäden, Treibstoff, Schwarzes Loch, Kapsel, Landezone, Seil, Werft.
+fn systems_scene() -> Vec<(f32, Act)> {
+    vec![
+        (0.5, |c| {
+            keyboard_crew(c, true);
+            c.next.set(AppState::Playing);
+        }),
+        (2.5, |c| {
+            let s = &mut c.sim.0;
+            s.ship.thrusters[0].health = 0.0;
+            s.ship.thrusters[3].health = 0.35;
+            s.ship.fuel = s.ship.max_fuel * 0.12;
+            c.slots.0 = 0b11111;
+        }),
+        (3.6, |c| c.slots.0 = 0b10110),
+        (4.6, |c| shot(c, "schaden_treibstoff")),
+        (6.6, |c| {
+            c.slots.0 = 0;
+            let bh = c
+                .sim
+                .0
+                .world
+                .anomalies
+                .iter()
+                .find(|a| a.is_black_hole())
+                .unwrap()
+                .pos;
+            teleport(c, bh, 34.0, 0.4);
+        }),
+        (7.4, |c| shot(c, "schwarzes_loch")),
+        (10.4, |c| {
+            let bh = c
+                .sim
+                .0
+                .world
+                .anomalies
+                .iter()
+                .find(|a| a.is_black_hole())
+                .unwrap()
+                .pos;
+            teleport(c, bh, 4.0, 0.4);
+            c.sim.0.ship.invulnerable = 0.0;
+        }),
+        (12.2, |c| shot(c, "rettungskapsel")),
+        (17.5, |c| {
+            let zone = c.sim.0.world.planets[0].zones[0];
+            land_on(c, zone);
+        }),
+        (19.5, |c| shot(c, "landezone")),
+        (21.5, |c| {
+            teleport(c, Vec2::new(-300.0, 300.0), 0.0, 0.0);
+            let s = &mut c.sim.0;
+            s.ship.angle = 0.3;
+            s.ship.vel = Vec2::new(2.0, 0.5);
+            let ci = s
+                .ship
+                .tools
+                .iter()
+                .position(|t| t.kind == crate::sim::data::ToolKind::Crane)
+                .unwrap();
+            let mount = s.ship.tool_world_pos(ci);
+            let id = s.next_id();
+            let pos = mount + Vec2::new(-2.5, -4.5);
+            s.bodies.push(crate::sim::Body {
+                id,
+                kind: crate::sim::BodyKind::Crate {
+                    mission: 0,
+                    name: "Druckkessel".into(),
+                },
+                pos,
+                vel: Vec2::new(2.0, 0.5),
+                angle: 0.2,
+                ang_vel: 0.1,
+                radius: 1.5,
+                mass: 9.0,
+                prev_pos: pos,
+                prev_angle: 0.2,
+                alive: true,
+                seed: 3,
+                age: 0.0,
+            });
+            s.ship.tools[ci].crane = crate::sim::ship::CraneState::Attached {
+                body: id,
+                rope: 9.0,
+            };
+        }),
+        (23.0, |c| shot(c, "seil_schlaff")),
+        (24.6, |c| c.slots.0 = 0b01110),
+        (25.8, |c| shot(c, "seil_straff")),
+        (27.8, |c| {
+            c.slots.0 = 0;
+            let vega = station(c, "vega");
+            c.sim.0.ship.docked = None;
+            c.sim.0.dock_at_station(vega);
+        }),
+        (30.0, |c| shot(c, "vega_service")),
+        (31.8, |c| c.menu.right = true),
+        (33.0, |c| shot(c, "vega_werft")),
+        (34.8, |c| c.menu.right = true),
+        (35.2, |c| c.menu.right = true),
+        (36.4, |c| shot(c, "vega_markt")),
+        (38.2, |c| {
+            c.menu.tab = true;
+        }),
+        (39.6, |c| shot(c, "karte")),
+        (41.0, |_| {}),
+    ]
+}
+
 fn ui_scene() -> Vec<(f32, Act)> {
     vec![
         (2.5, |c| shot(c, "titel")),
@@ -253,13 +379,13 @@ fn demo_script(
 ) {
     demo.t += time.delta_secs();
     let t = demo.t;
-    let script = if demo.cfg.scene == "ui" {
-        ui_scene()
-    } else {
-        tour()
+    let script = match demo.cfg.scene.as_str() {
+        "ui" => ui_scene(),
+        "systems" => systems_scene(),
+        _ => tour(),
     };
     let mut pad = pads.iter().next();
-    if pad.is_none() && demo.cfg.scene == "ui" {
+    if pad.is_none() && demo.cfg.scene != "tour" {
         // Ein Gamepad vortäuschen, damit die Lobby zwei Crewmitglieder zeigt.
         pad = Some(
             commands

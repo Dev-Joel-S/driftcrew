@@ -96,6 +96,11 @@ größerer Architekturänderung – dort wird vorher nachgefragt.
   freien Raum“ wird damit konsequent; Planeten sind Hindernisse und Landeorte.
 - **Treibstoff (Punkt 22):** Leerer Tank bedeutet nicht Stillstand, sondern Notreserve mit 25 %
   Schub. Grund: Ohne Reibung könnte eine Crew sonst endgültig festsitzen.
+- **Bergung (Punkt 26):** fester Sockel (40 Cr) + 12 % der Kasse, höchstens die Kasse. Vorher
+  15 % ohne Sockel – mit leerer Kasse war Zerstörung folgenlos, mit voller Kasse sehr teuer.
+- **Kranseil (Punkt 6):** harte Längenbegrenzung statt Feder. Die Feder schwang nach und
+  dehnte sich unter Last; mit fester Länge entsteht echtes Pendeln, und Masse am Seil zieht
+  das Schiff spürbar herum.
 - **Zielen (Punkt 5):** Werkzeuge zielen ausschließlich mit dem Gerät des Spielers, dem der Slot
   gehört (Tastatur → Maus, Gamepad → dessen Stick). Ein Spieler mit Tastatur zielt alle seine
   Werkzeuge gleichzeitig mit der Maus.
@@ -103,6 +108,60 @@ größerer Architekturänderung – dort wird vorher nachgefragt.
 ---
 
 ## Protokoll
+
+### Runde 2 – Phase 3: Systeme in der Simulation (erledigt)
+
+- **15** Schwerkraft nur an Anomalien und Schwarzen Löchern. `PlanetDef` hat kein
+  `surface_gravity`/`influence` mehr, `World::gravity` summiert nur noch Anomalien. Neuer
+  Anomalie-Typ `kind: BlackHole` (Schlund im Südwesten): Sog `strength · k² · (1 + 2·h/d)`, wird
+  zum Horizont hin steiler; wer den Ereignishorizont (`core_radius`) berührt, verliert das Schiff,
+  Körper werden verschluckt. Anzeige: roter gestrichelter Kreis „Kein Zurück“
+  (`Anomaly::no_return_radius`, aus dem aktuell möglichen Schub inkl. Schäden und Notreserve),
+  Warnung beim Eintritt in den Sog. Optik: schwarze Kugel, dünner Photonenring (Torus),
+  schräge Akkretionsscheibe, dunkler Hof – bewusst ohne das Rot der Anomalie.
+  **Konzept angepasst.**
+- **7** Landezonen: `landing_zones` (Winkel) pro Planet. Jede Zone ist eine schmale Plattform
+  (`Pad::zone`), daneben wird ein Erzvorkommen in Bohrreichweite gesetzt. Landen = Andocken,
+  aber ohne Menü, und die Werkzeuge bleiben aktiv (Schiff steht still, Rückstoß wird von der
+  Plattform aufgefangen). HUD: „Gelandet auf … · Werkzeuge frei“.
+- **26** Rettungskapsel: Bei Hülle 0 wird `SimState::escape` ausgestoßen (Nase voraus,
+  bremst langsam ab), die Kamera folgt ihr 5 s lang, dann steht das Schiff repariert an der
+  Heimatstation (Tank mindestens halb voll, Triebwerke heil). Bergungskosten =
+  `salvage_base` + `respawn_fee` · Kasse (höchstens die Kasse), Anzeige in Toast und
+  Mittel-Text.
+- **20** Triebwerksschäden: `Thruster::health`. Hüllenschaden nahe einem Triebwerk (2,2 m)
+  senkt dessen Zustand. Unter 60 % stottert es – deterministisch aus Tick und Teil-Index in
+  Fenstern von 5 Ticks (`tools::thruster_works`), kein Zugriff auf den Haupt-RNG –, bei 0 fällt
+  es aus; Schub sinkt mit dem Zustand auf bis zu 70 %. Schäden bleiben beim Neuverteilen der
+  Slots am jeweiligen Teil. Slot-Leiste zeigt „⚠ stottert“ / „✕ AUSFALL“, Service
+  „Triebwerke instand setzen“ (Preis anteilig).
+- **22** Treibstoff: `fuel_capacity`/`fuel_burn` pro Schiff, Verbrauch = Schub · Rate · Zeit pro
+  feuerndem Triebwerk. Leer = Notreserve mit 25 % Schub (`EMERGENCY_THRUST`). Warnungen bei
+  20 % und leer, HUD-Balken „TREIBSTOFF“, Service „Volltanken“ (anteilig, Ortsfaktor),
+  Upgrade „Zusatztank“.
+- **23** Preise je Ort: `prices: (ore: [(Erz, Faktor)], fuel, service)` für Stationen und
+  Planeten-Außenposten. Markt zeigt eine Preistafel mit Hinweis, wo es mehr gibt
+  (`best_ore_price`). Erze sind nahe ihrer Quelle billig und anderswo gefragt.
+- **9** Werften mit eigenem Angebot: `ships_for_sale` pro Station (validiert). Werft Orion:
+  Driftkutter, Kolibri, Lastesel. Neue **Werft Vega** im Osten: Driftkutter, Hornisse und das
+  neue Schiff **Pelikan** (Bergungsschlepper mit Auslegern, 6 Triebwerke, 2 Kräne, Bohrer).
+  Der Werft-Reiter nennt, was nur anderswo zu haben ist.
+- **6** Kranseil als harte Längenbegrenzung statt Feder (`tools::rope_constraint`): schlaff,
+  solange die Last näher ist als die Seillänge; straff wird per Impuls die Trennungs-
+  geschwindigkeit aufgehoben (nur Zug, nie Druck). Daraus entsteht das Pendeln. Ein zu harter
+  Ruck reißt das Seil. Schwere Lasten werden auf 8 m eingeholt. Angedockt hält das Schiff die
+  Last als fester Anker. Neue Schwerlast-Aufträge (`towed: true` in `missions.ron`): eine Kiste
+  (`BodyKind::Crate`) wird am Kran zur Zielstation geschleppt. Seiloptik: 12 Segmente, schlaff
+  als durchhängende Parabel.
+- Kleinere Fixes: Wegmarken am Bildrand stapeln sich statt sich zu überlagern und meiden die
+  Balken unten links; Andock-Hinweis verschwindet unter dem offenen Stationsmenü; leere
+  Hinweis-Pille ausgeblendet; Zerstört-Text zweizeilig und kleiner.
+- Vorführszene `DRIFTCREW_SCENE=systems` (Schäden, Treibstoff, Schwarzes Loch, Kapsel,
+  Landezone, Seil, Werft Vega, Karte).
+- Tests: 41 grün (neu u. a. `planets_do_not_pull`, `black_hole_pulls_and_swallows_into_escape_pod`,
+  `fuel_burns_and_emergency_reserve_keeps_you_moving`, `damaged_thruster_stutters_deterministically`,
+  `gentle_landing_on_zone_and_drilling_while_landed`, `crane_rope_is_a_hard_length_limit`,
+  `heavy_haul_is_towed_and_completes_at_target`, `ore_prices_differ_between_stations`).
 
 ### Runde 2 – Phase 2: Flughilfen und erwachsener Look (erledigt)
 

@@ -1,6 +1,6 @@
 //! Gemeinsame Kasse, Käufe und das Abstimmungssystem der Crew.
 
-use super::data::{GameData, Service, ServiceEffect, UpgradeEffect};
+use super::data::{GameData, Ore, Prices, Service, ServiceEffect, UpgradeEffect};
 use super::ship::{Loadout, ShipStats};
 use super::world::Owner;
 use super::{Command, DT, SimEvent, SimState, TickInput, ToastKind};
@@ -46,6 +46,7 @@ pub fn stats_for(data: &GameData, upgrades: &[String]) -> ShipStats {
             UpgradeEffect::MaxAmmo(a) => s.ammo_bonus += a,
             UpgradeEffect::CraneRange(m) => s.crane_mul *= m,
             UpgradeEffect::DrillRate(m) => s.drill_mul *= m,
+            UpgradeEffect::FuelTank(f) => s.fuel_mul += f,
         }
     }
     s
@@ -57,13 +58,18 @@ impl SimState {
     }
 
     pub fn docked_station(&self) -> Option<usize> {
-        match self.docked_owner() {
-            Some(Owner::Station(i)) => Some(i),
-            _ => None,
-        }
+        self.docked_owner().and_then(Owner::station)
+    }
+
+    /// Gelandet auf einer freien Landezone (kein Menü, Werkzeuge aktiv)?
+    pub fn landed_in_zone(&self) -> bool {
+        self.ship.docked.is_some_and(|p| self.world.pads[p].zone)
     }
 
     pub fn can_sell_here(&self) -> bool {
+        if self.landed_in_zone() {
+            return false;
+        }
         match self.docked_owner() {
             Some(Owner::Station(i)) => self.world.stations[i].has(Service::Market),
             Some(Owner::Planet(_)) => true,
@@ -71,14 +77,54 @@ impl SimState {
         }
     }
 
-    /// Preis für einen Service (Reparatur und Schild anteilig).
+    /// Preisfaktoren eines Ortes.
+    pub fn prices_of(&self, owner: Owner) -> &Prices {
+        match owner {
+            Owner::Station(i) => &self.world.stations[i].prices,
+            Owner::Planet(i) => &self.world.planets[i].prices,
+        }
+    }
+
+    /// Ankaufspreis für eine Tonne Erz an einem Ort.
+    pub fn ore_price_at(&self, owner: Owner, ore: Ore) -> u32 {
+        let base = self.data.shop.ore_price(ore) as f32;
+        (base * self.prices_of(owner).ore_factor(ore))
+            .round()
+            .max(1.0) as u32
+    }
+
+    /// Bester Ankaufspreis für eine Erzsorte irgendwo in der Welt (Ort, Preis).
+    pub fn best_ore_price(&self, ore: Ore) -> Option<(Owner, u32)> {
+        let stations = (0..self.world.stations.len())
+            .filter(|&i| self.world.stations[i].has(Service::Market))
+            .map(Owner::Station);
+        let planets = (0..self.world.planets.len())
+            .filter(|&i| self.world.planets[i].pad.is_some())
+            .map(Owner::Planet);
+        stations
+            .chain(planets)
+            .map(|o| (o, self.ore_price_at(o, ore)))
+            .max_by_key(|(_, p)| *p)
+    }
+
+    /// Preis für einen Service (Reparatur, Schild und Tanken anteilig), mit Ortsfaktor.
     fn service_price(&self, effect: &ServiceEffect, base: u32) -> u32 {
         let frac = match effect {
             ServiceEffect::RepairFull => 1.0 - self.ship.hull / self.ship.max_hull,
             ServiceEffect::ShieldFull => 1.0 - self.ship.shield / self.ship.max_shield.max(1.0),
             ServiceEffect::Ammo(_) => 1.0,
+            ServiceEffect::RepairThrusters => self.ship.thruster_wear(),
+            ServiceEffect::Refuel => 1.0 - self.ship.fuel / self.ship.max_fuel.max(1.0),
         };
-        ((base as f32 * frac).ceil() as u32).max(5)
+        let factor = self.docked_owner().map_or(1.0, |o| {
+            let p = self.prices_of(o);
+            if *effect == ServiceEffect::Refuel {
+                p.fuel
+            } else {
+                p.service
+            }
+        });
+        ((base as f32 * frac * factor).ceil() as u32).max(5)
     }
 
     /// Prüft einen Kauf. Ok((Bezeichnung, Preis)) oder Err(Grund).
@@ -104,6 +150,12 @@ impl SimState {
                     ),
                     ServiceEffect::RepairFull => {
                         (Service::Repair, self.ship.hull < self.ship.max_hull - 0.5)
+                    }
+                    ServiceEffect::RepairThrusters => {
+                        (Service::Repair, self.ship.thruster_wear() > 0.005)
+                    }
+                    ServiceEffect::Refuel => {
+                        (Service::Fuel, self.ship.fuel < self.ship.max_fuel - 0.5)
                     }
                 };
                 if !st.has(needed) {
@@ -148,6 +200,9 @@ impl SimState {
                 }
                 if self.crew.owned_ships.contains(id) {
                     return Err("Gehört der Crew bereits".into());
+                }
+                if !st.ships_for_sale.contains(id) {
+                    return Err(format!("{} führt dieses Schiff nicht", st.name));
                 }
                 let def = self
                     .data
@@ -262,16 +317,27 @@ impl SimState {
                     }
                     Some(ServiceEffect::ShieldFull) => self.ship.shield = self.ship.max_shield,
                     Some(ServiceEffect::RepairFull) => self.ship.hull = self.ship.max_hull,
+                    Some(ServiceEffect::RepairThrusters) => {
+                        for t in &mut self.ship.thrusters {
+                            t.health = 1.0;
+                        }
+                    }
+                    Some(ServiceEffect::Refuel) => {
+                        self.ship.fuel = self.ship.max_fuel;
+                        self.fuel_warned = 0;
+                    }
                     None => {}
                 }
             }
             Purchase::Upgrade(id) => {
                 self.crew.upgrades.push(id.clone());
-                let (old_max_hull, old_max_shield) = (self.ship.max_hull, self.ship.max_shield);
+                let (old_max_hull, old_max_shield, old_max_fuel) =
+                    (self.ship.max_hull, self.ship.max_shield, self.ship.max_fuel);
                 let loadout = self.loadout.clone();
                 self.rebuild_ship(loadout);
                 self.ship.hull += (self.ship.max_hull - old_max_hull).max(0.0);
                 self.ship.shield += (self.ship.max_shield - old_max_shield).max(0.0);
+                self.ship.fuel += (self.ship.max_fuel - old_max_fuel).max(0.0);
             }
             Purchase::Ship(id) => {
                 self.crew.owned_ships.push(id.clone());
@@ -345,9 +411,12 @@ impl SimState {
             if sellable < 0.05 {
                 continue;
             }
+            let price = self
+                .docked_owner()
+                .map_or(self.data.shop.ore_price(ore), |o| self.ore_price_at(o, ore));
             let taken = self.ship.take_ore(ore, sellable);
             sold_t += taken;
-            earned += (taken * self.data.shop.ore_price(ore) as f32).round() as u32;
+            earned += (taken * price as f32).round() as u32;
         }
         if earned == 0 {
             self.toast("Kein verkaufbares Erz an Bord", ToastKind::Info);
@@ -437,8 +506,47 @@ mod tests {
         s.ship.docked = None;
         s.dock_at_station(yard);
         assert!(s.purchase_info(&Purchase::Ship("kolibri".into())).is_ok());
+        // Jede Werft hat ihr eigenes Angebot.
+        assert!(s.purchase_info(&Purchase::Ship("hornisse".into())).is_err());
         buy(&mut s, Purchase::Ship("kolibri".into()), 0);
         assert_eq!(s.crew.current_ship, "kolibri");
         assert!(s.events.contains(&SimEvent::ShipChanged));
+        let vega = s.data.station_index("vega").unwrap();
+        s.ship.docked = None;
+        s.dock_at_station(vega);
+        assert!(s.purchase_info(&Purchase::Ship("hornisse".into())).is_ok());
+    }
+
+    #[test]
+    fn ore_prices_differ_between_stations() {
+        let mut s = sim(1);
+        let nova = Owner::Station(s.data.station_index("nova").unwrap());
+        let kepler = Owner::Station(s.data.station_index("kepler").unwrap());
+        assert_ne!(
+            s.ore_price_at(nova, Ore::Solarit),
+            s.ore_price_at(kepler, Ore::Solarit)
+        );
+        // Verkauf nutzt den Ortspreis.
+        s.ship
+            .store(crate::sim::ship::CargoKind::Ore(Ore::Solarit), 4.0);
+        s.ship.docked = None;
+        s.dock_at_station(kepler.station().unwrap());
+        let before = s.crew.credits;
+        s.sell_ore();
+        let expected = (4.0 * s.ore_price_at(kepler, Ore::Solarit) as f32).round() as u32;
+        assert_eq!(s.crew.credits - before, expected);
+    }
+
+    #[test]
+    fn refuel_and_thruster_repair_cost_money() {
+        let mut s = sim(1);
+        s.ship.fuel = 10.0;
+        s.ship.thrusters[0].health = 0.0;
+        let before = s.crew.credits;
+        buy(&mut s, Purchase::Service("fuel".into()), 0);
+        buy(&mut s, Purchase::Service("engines".into()), 0);
+        assert_eq!(s.ship.fuel, s.ship.max_fuel);
+        assert!(s.ship.thrusters.iter().all(|t| t.health == 1.0));
+        assert!(s.crew.credits < before);
     }
 }

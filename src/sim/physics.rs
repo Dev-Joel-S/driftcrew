@@ -102,15 +102,42 @@ impl SimState {
                     self.toast("Rand des Sektors – Strömung drückt zurück", ToastKind::Warn);
                 }
             }
-            // Gefahr im Kern der Anomalie.
+            // Gefahr im Kern der Anomalie, Ereignishorizont des Schwarzen Lochs.
             let pos = self.ship.pos;
-            let in_core = self
-                .world
-                .anomalies
-                .iter()
-                .any(|an| (pos - an.pos).length() < an.core_radius + 2.0);
-            if in_core {
+            let mut core_damage = false;
+            let mut swallowed = false;
+            let mut pulled_by = None;
+            for (ai, an) in self.world.anomalies.iter().enumerate() {
+                let d = (pos - an.pos).length();
+                if an.is_black_hole() {
+                    swallowed |= d < an.core_radius + 0.5;
+                } else {
+                    core_damage |= d < an.core_radius + 2.0;
+                }
+                if d < an.radius * 0.8 {
+                    pulled_by = Some(ai);
+                }
+            }
+            if core_damage {
                 self.ship_damage(30.0 * DT, pos, false);
+            }
+            if swallowed {
+                self.ship.invulnerable = 0.0;
+                self.ship.shield = 0.0;
+                self.ship.hull = 0.0;
+                self.toast("Vom Schwarzen Loch verschluckt!", ToastKind::Bad);
+            }
+            if pulled_by != self.pull_warned {
+                if let Some(ai) = pulled_by {
+                    let an = &self.world.anomalies[ai];
+                    let msg = if an.is_black_hole() {
+                        format!("{}: starker Sog – Abstand halten!", an.name)
+                    } else {
+                        format!("{}: Anziehung spürbar", an.name)
+                    };
+                    self.toast(msg, ToastKind::Warn);
+                }
+                self.pull_warned = pulled_by;
             }
         }
         for i in 0..self.bodies.len() {
@@ -118,7 +145,14 @@ impl SimState {
                 continue;
             }
             let g = self.world.gravity(self.bodies[i].pos);
+            let swallowed = self.world.anomalies.iter().any(|an| {
+                an.is_black_hole() && (self.bodies[i].pos - an.pos).length() < an.core_radius
+            });
             let b = &mut self.bodies[i];
+            if swallowed {
+                b.alive = false;
+                continue;
+            }
             b.vel += g * DT;
             let d = b.pos.length();
             if d > world_r {
@@ -473,9 +507,41 @@ impl SimState {
         }
         if left > 0.0 {
             self.ship.hull -= left;
+            if show {
+                self.damage_thrusters(left, at);
+            }
         }
         if show {
             self.events.push(SimEvent::Damage { amount });
+        }
+    }
+
+    /// Treffer in der Nähe eines Triebwerks beschädigen es (Stottern, dann Ausfall).
+    fn damage_thrusters(&mut self, hull_damage: f32, at: Vec2) {
+        const REACH: f32 = 2.2;
+        let n = self.ship.thrusters.len();
+        let mut msgs = Vec::new();
+        for i in 0..n {
+            let wp = self.ship.to_world(self.ship.thrusters[i].pos);
+            let d = (wp - at).length();
+            if d >= REACH {
+                continue;
+            }
+            let t = &mut self.ship.thrusters[i];
+            let (was_stutter, was_failed) = (t.stuttering(), t.failed());
+            t.health = (t.health - hull_damage * 0.028 * (1.0 - d / REACH)).max(0.0);
+            let name = super::thruster_label(i, n);
+            if t.failed() && !was_failed {
+                msgs.push((format!("Triebwerk {name} ausgefallen!"), ToastKind::Bad));
+            } else if t.stuttering() && !was_stutter && !was_failed {
+                msgs.push((
+                    format!("Triebwerk {name} beschädigt – stottert"),
+                    ToastKind::Warn,
+                ));
+            }
+        }
+        for (m, k) in msgs {
+            self.toast(m, k);
         }
     }
 

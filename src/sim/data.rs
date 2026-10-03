@@ -174,6 +174,12 @@ pub struct ShipDef {
     pub angular_damping: f32,
     #[serde(default = "default_min_thrusters")]
     pub min_thrusters: u8,
+    /// Tankgröße (Einheiten).
+    #[serde(default = "default_fuel")]
+    pub fuel_capacity: f32,
+    /// Verbrauch pro Schubeinheit und Sekunde.
+    #[serde(default = "default_fuel_burn")]
+    pub fuel_burn: f32,
     /// Reihenfolge der Triebwerke = Reihenfolge, in der sie in der Lobby belegt werden.
     pub parts: Vec<PartDef>,
     #[serde(default)]
@@ -185,6 +191,12 @@ fn default_ang_damp() -> f32 {
 }
 fn default_min_thrusters() -> u8 {
     2
+}
+fn default_fuel() -> f32 {
+    100.0
+}
+fn default_fuel_burn() -> f32 {
+    0.0065
 }
 
 impl ShipDef {
@@ -289,6 +301,37 @@ pub enum Service {
     Missions,
     Market,
     Ships,
+    Fuel,
+}
+
+/// Preisfaktoren eines Ortes (1.0 = Grundpreis aus `shop.ron`).
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct Prices {
+    /// Ankaufspreis für Erz, pro Sorte. Fehlende Sorten zahlen den Grundpreis.
+    pub ore: Vec<(Ore, f32)>,
+    pub fuel: f32,
+    pub service: f32,
+}
+
+impl Default for Prices {
+    fn default() -> Self {
+        Prices {
+            ore: Vec::new(),
+            fuel: 1.0,
+            service: 1.0,
+        }
+    }
+}
+
+impl Prices {
+    pub fn ore_factor(&self, ore: Ore) -> f32 {
+        self.ore
+            .iter()
+            .find(|(o, _)| *o == ore)
+            .map(|(_, f)| *f)
+            .unwrap_or(1.0)
+    }
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -318,6 +361,11 @@ pub struct StationDef {
     /// Freiliegende Ecken von `#`-Blöcken automatisch abschrägen.
     #[serde(default = "default_true")]
     pub auto_chamfer: bool,
+    #[serde(default)]
+    pub prices: Prices,
+    /// Schiffe, die diese Werft verkauft (Kennungen aus `ships.ron`).
+    #[serde(default)]
+    pub ships_for_sale: Vec<String>,
 }
 
 fn default_true() -> bool {
@@ -332,8 +380,6 @@ pub struct PlanetDef {
     pub name: String,
     pub pos: P,
     pub radius: f32,
-    pub surface_gravity: f32,
-    pub influence: f32,
     /// Farbverlauf für die prozedurale Oberfläche.
     pub colors: Vec<String>,
     pub atmosphere: String,
@@ -343,6 +389,12 @@ pub struct PlanetDef {
     /// Winkel (Grad) einer kleinen Landestation auf der Oberfläche.
     #[serde(default)]
     pub outpost_angle: Option<f32>,
+    /// Winkel (Grad) freier Landezonen. Neben jeder liegt ein Erzvorkommen.
+    #[serde(default)]
+    pub landing_zones: Vec<f32>,
+    /// Preise am Außenposten.
+    #[serde(default)]
+    pub prices: Prices,
     #[serde(default)]
     pub rings: bool,
 }
@@ -380,9 +432,21 @@ pub struct SpinnerDef {
     pub color: String,
 }
 
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum AnomalyKind {
+    /// Gravitationsanomalie: zieht an, der Kern beschädigt.
+    #[default]
+    Anomaly,
+    /// Schwarzes Loch: stärkerer Sog, wer den Ereignishorizont (`core_radius`) berührt, ist verloren.
+    BlackHole,
+}
+
+/// Die einzigen Orte mit Anziehungskraft.
 #[derive(Deserialize, Clone, Debug)]
 pub struct AnomalyDef {
     pub name: String,
+    #[serde(default)]
+    pub kind: AnomalyKind,
     pub pos: P,
     pub radius: f32,
     pub core_radius: f32,
@@ -432,6 +496,10 @@ pub enum ServiceEffect {
     Ammo(u32),
     ShieldFull,
     RepairFull,
+    /// Alle Triebwerke instand setzen.
+    RepairThrusters,
+    /// Volltanken (Preis anteilig zur fehlenden Menge).
+    Refuel,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -452,6 +520,8 @@ pub enum UpgradeEffect {
     MaxAmmo(u32),
     CraneRange(f32),
     DrillRate(f32),
+    /// Tank vergrößern (Anteil).
+    FuelTank(f32),
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -468,7 +538,10 @@ pub struct UpgradeDef {
 #[derive(Deserialize, Clone, Debug)]
 pub struct ShopDef {
     pub start_credits: u32,
+    /// Bergungskosten nach Zerstörung: fester Betrag + Anteil der Kasse (höchstens die Kasse).
     pub respawn_fee: f32,
+    #[serde(default)]
+    pub salvage_base: u32,
     pub services: Vec<ServiceItem>,
     pub upgrades: Vec<UpgradeDef>,
     pub ore_prices: Vec<(Ore, u32)>,
@@ -493,6 +566,9 @@ pub struct CargoTemplate {
     pub name: String,
     pub mass: f32,
     pub reward: u32,
+    /// Zu schwer für den Frachtraum: wird als Kiste am Kran geschleppt.
+    #[serde(default)]
+    pub towed: bool,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -614,6 +690,13 @@ impl GameData {
                     "Station {}: Layout-Zeilen unterschiedlich lang",
                     st.id
                 ));
+            }
+        }
+        for st in &self.world.stations {
+            for id in &st.ships_for_sale {
+                if !self.ships.iter().any(|s| &s.id == id) {
+                    return Err(format!("Station {}: unbekanntes Schiff {id}", st.id));
+                }
             }
         }
         if self.station_index(&self.world.start_station).is_none() {

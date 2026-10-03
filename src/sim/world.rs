@@ -2,7 +2,7 @@
 
 use bevy::math::Vec2;
 
-use super::data::{GameData, Ore, Service, StationKind, v};
+use super::data::{AnomalyKind, GameData, Ore, Prices, Service, StationKind, v};
 use super::geom::{Aabb, Poly};
 use super::rng::Rng;
 
@@ -10,6 +10,15 @@ use super::rng::Rng;
 pub enum Owner {
     Station(usize),
     Planet(usize),
+}
+
+impl Owner {
+    pub fn station(self) -> Option<usize> {
+        match self {
+            Owner::Station(i) => Some(i),
+            Owner::Planet(_) => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -92,6 +101,8 @@ pub struct Pad {
     /// Richtung, in die die Plattform zeigt (Schiffsnase beim Andocken).
     pub normal: Vec2,
     pub half_width: f32,
+    /// Freie Landezone auf einem Planeten (kein Menü, Werkzeuge bleiben aktiv).
+    pub zone: bool,
 }
 
 impl Pad {
@@ -139,6 +150,8 @@ pub struct Station {
     pub bounds: Aabb,
     pub main_color: [f32; 3],
     pub accent_color: [f32; 3],
+    pub prices: Prices,
+    pub ships_for_sale: Vec<String>,
 }
 
 impl Station {
@@ -155,28 +168,22 @@ pub struct Deposit {
 }
 
 #[derive(Clone, Debug)]
+/// Planeten ziehen nicht an (Schwerkraft gibt es nur an Anomalien und Schwarzen Löchern).
+/// Sie sind Hindernisse, Landeorte und Erzquellen.
 pub struct Planet {
     pub name: String,
     pub pos: Vec2,
     pub radius: f32,
-    pub gravity: f32,
-    pub influence: f32,
     pub ore: Ore,
     pub deposits: Vec<Deposit>,
+    /// Außenposten mit Erzannahme.
     pub pad: Option<usize>,
+    /// Freie Landezonen.
+    pub zones: Vec<usize>,
+    pub prices: Prices,
 }
 
 impl Planet {
-    pub fn accel(&self, p: Vec2) -> Vec2 {
-        let d = self.pos - p;
-        let dist = d.length().max(self.radius * 0.5);
-        if dist > self.influence {
-            return Vec2::ZERO;
-        }
-        let fade = smoothstep(self.influence, self.influence * 0.7, dist);
-        let r = (self.radius / dist.max(self.radius)).powi(2);
-        d / dist * self.gravity * r * fade
-    }
     /// Halbe Winkelbreite eines Erzvorkommens.
     pub fn deposit_half_angle(&self) -> f32 {
         (4.5 / self.radius).min(0.35)
@@ -213,8 +220,10 @@ impl Spinner {
 #[derive(Clone, Debug)]
 pub struct Anomaly {
     pub name: String,
+    pub kind: AnomalyKind,
     pub pos: Vec2,
     pub radius: f32,
+    /// Kern der Anomalie bzw. Ereignishorizont des Schwarzen Lochs.
     pub core_radius: f32,
     pub strength: f32,
 }
@@ -227,13 +236,37 @@ impl Anomaly {
             return Vec2::ZERO;
         }
         let k = 1.0 - dist / self.radius;
-        d / dist * self.strength * k * k
+        let a = match self.kind {
+            AnomalyKind::Anomaly => self.strength * k * k,
+            // Zum Horizont hin steiler: ab einem gewissen Abstand reicht kein Schub mehr.
+            AnomalyKind::BlackHole => {
+                self.strength * k * k * (1.0 + 2.0 * self.core_radius / dist.max(self.core_radius))
+            }
+        };
+        d / dist * a
     }
-}
+    pub fn is_black_hole(&self) -> bool {
+        self.kind == AnomalyKind::BlackHole
+    }
 
-pub fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
-    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
+    /// Abstand, innerhalb dessen der Sog stärker ist als `max_accel` – von dort kommt man
+    /// auch mit Vollschub nicht mehr weg. Nur für die Anzeige.
+    pub fn no_return_radius(&self, max_accel: f32) -> f32 {
+        let pull = |d: f32| self.accel(self.pos + Vec2::new(d, 0.0)).length();
+        if pull(self.core_radius) <= max_accel {
+            return self.core_radius;
+        }
+        let (mut lo, mut hi) = (self.core_radius, self.radius);
+        for _ in 0..24 {
+            let mid = 0.5 * (lo + hi);
+            if pull(mid) > max_accel {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        hi
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -248,6 +281,10 @@ pub struct World {
 }
 
 const PAD_THICKNESS: f32 = 0.35;
+/// Halbe Breite einer freien Landezone auf Planeten.
+pub const ZONE_HALF: f32 = 2.5;
+/// Abstand (Meter entlang der Oberfläche) zwischen Landezone und Erzvorkommen.
+const ZONE_DEPOSIT_OFFSET: f32 = 6.0;
 
 impl World {
     pub fn build(data: &GameData, rng: &mut Rng) -> World {
@@ -301,6 +338,8 @@ impl World {
                 },
                 main_color: super::data::hex(&sd.main_color),
                 accent_color: super::data::hex(&sd.accent_color),
+                prices: sd.prices.clone(),
+                ships_for_sale: sd.ships_for_sale.clone(),
             };
 
             for row in 0..h {
@@ -385,6 +424,7 @@ impl World {
                             center: surface_center,
                             normal,
                             half_width: span * 0.92,
+                            zone: false,
                         });
                         station.pads.push(pad_idx);
                         let plate_c = surface_center - normal * (PAD_THICKNESS * 0.5);
@@ -407,11 +447,11 @@ impl World {
                 name: pd.name.clone(),
                 pos,
                 radius: pd.radius,
-                gravity: pd.surface_gravity,
-                influence: pd.influence,
                 ore: pd.ore,
                 deposits: Vec::new(),
                 pad: None,
+                zones: Vec::new(),
+                prices: pd.prices.clone(),
             };
             w.colliders.push(StaticCollider {
                 shape: Shape::Circle {
@@ -431,6 +471,7 @@ impl World {
                     center: surface_center,
                     normal: n,
                     half_width: 2.6,
+                    zone: false,
                 });
                 planet.pad = Some(pad_idx);
                 let angle = f32::atan2(-n.x, n.y);
@@ -449,13 +490,44 @@ impl World {
                     w.push_quad(Poly::obb(c, Vec2::new(1.1, 1.6), angle), Surface::Structure);
                 }
             }
-            // Erzvorkommen gleichmäßig verteilt, mit etwas Zufall, nicht auf der Landestation.
-            let count = pd.deposits.max(1);
+            // Freie Landezonen: schmale Plattform, daneben ein Erzvorkommen in Bohrreichweite.
+            let zone_angles: Vec<f32> = pd.landing_zones.iter().map(|a| a.to_radians()).collect();
+            for (zi, &a) in zone_angles.iter().enumerate() {
+                let n = Vec2::new(a.cos(), a.sin());
+                let pad_idx = w.pads.len();
+                w.pads.push(Pad {
+                    owner: Owner::Planet(pi),
+                    center: pos + n * (pd.radius + PAD_THICKNESS),
+                    normal: n,
+                    half_width: ZONE_HALF * 0.92,
+                    zone: true,
+                });
+                planet.zones.push(pad_idx);
+                let angle = f32::atan2(-n.x, n.y);
+                w.push_quad(
+                    Poly::obb(
+                        pos + n * (pd.radius + PAD_THICKNESS * 0.5 - 0.3),
+                        Vec2::new(ZONE_HALF, PAD_THICKNESS * 0.5 + 0.3),
+                        angle,
+                    ),
+                    Surface::Pad(pad_idx),
+                );
+                let side = if zi % 2 == 0 { 1.0 } else { -1.0 };
+                planet.deposits.push(Deposit {
+                    angle: (a + side * ZONE_DEPOSIT_OFFSET / pd.radius)
+                        .rem_euclid(std::f32::consts::TAU),
+                    amount: pd.deposit_amount,
+                    max: pd.deposit_amount,
+                });
+            }
+            // Übrige Erzvorkommen gleichmäßig verteilt, mit etwas Zufall, abseits der Plattformen.
+            let count = pd.deposits.max(1).saturating_sub(zone_angles.len() as u32);
             let base = rng.range(0.0, std::f32::consts::TAU);
+            let keep_clear: Vec<f32> = outpost.iter().copied().chain(zone_angles).collect();
             for i in 0..count {
                 let mut a =
                     base + std::f32::consts::TAU * i as f32 / count as f32 + rng.range(-0.2, 0.2);
-                if let Some(o) = outpost {
+                for &o in &keep_clear {
                     let diff = angle_diff(a, o);
                     if diff.abs() < 0.35 {
                         a = o + if diff >= 0.0 { 0.5 } else { -0.5 };
@@ -485,6 +557,7 @@ impl World {
         for an in &wd.anomalies {
             w.anomalies.push(Anomaly {
                 name: an.name.clone(),
+                kind: an.kind,
                 pos: v(an.pos),
                 radius: an.radius,
                 core_radius: an.core_radius,
@@ -502,11 +575,9 @@ impl World {
         });
     }
 
+    /// Anziehung an einem Punkt – nur Anomalien und Schwarze Löcher, Planeten nicht.
     pub fn gravity(&self, p: Vec2) -> Vec2 {
         let mut a = Vec2::ZERO;
-        for pl in &self.planets {
-            a += pl.accel(p);
-        }
         for an in &self.anomalies {
             a += an.accel(p);
         }

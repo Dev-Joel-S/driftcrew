@@ -32,6 +32,7 @@ pub struct ShipStats {
     pub ammo_bonus: u32,
     pub crane_mul: f32,
     pub drill_mul: f32,
+    pub fuel_mul: f32,
 }
 
 impl Default for ShipStats {
@@ -45,6 +46,7 @@ impl Default for ShipStats {
             ammo_bonus: 0,
             crane_mul: 1.0,
             drill_mul: 1.0,
+            fuel_mul: 1.0,
         }
     }
 }
@@ -62,12 +64,36 @@ pub struct ShipPart {
 #[derive(Clone, Debug)]
 pub struct Thruster {
     pub slot: u8,
+    /// Index des Teils in der Schiffsdefinition (bleibt beim Umbau gleich).
+    pub part: usize,
     pub pos: Vec2,
     pub dir: Vec2,
     pub thrust: f32,
     pub firing: bool,
     /// Weiche Anzeige 0..1 für Flamme/Sound.
     pub level: f32,
+    /// Zustand 0..1. Unter [`STUTTER_BELOW`] stottert das Triebwerk, bei 0 fällt es aus.
+    pub health: f32,
+}
+
+/// Ab diesem Zustand setzt ein Triebwerk zufällig aus.
+pub const STUTTER_BELOW: f32 = 0.6;
+
+impl Thruster {
+    pub fn failed(&self) -> bool {
+        self.health <= 0.0
+    }
+    pub fn stuttering(&self) -> bool {
+        !self.failed() && self.health < STUTTER_BELOW
+    }
+    /// Schub, den das Triebwerk in seinem Zustand noch liefert.
+    pub fn effective_thrust(&self) -> f32 {
+        if self.failed() {
+            0.0
+        } else {
+            self.thrust * (0.7 + 0.3 * self.health)
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -160,6 +186,9 @@ pub struct Ship {
     pub ang_damp: f32,
     pub crane_range: f32,
     pub drill_rate: f32,
+    pub fuel: f32,
+    pub max_fuel: f32,
+    pub fuel_burn: f32,
 
     pub docked: Option<usize>,
     pub dock_timer: f32,
@@ -179,15 +208,16 @@ impl Ship {
             def.min_thrusters.min(def.max_thrusters()),
             def.max_thrusters(),
         );
-        let mut claimed: Vec<(f32, f32, f32, f32, Vec2, f32, PartShape)> = def
+        type Claimed = (f32, f32, f32, f32, Vec2, f32, PartShape, usize);
+        let mut claimed: Vec<Claimed> = def
             .thruster_parts()
             .take(n as usize)
-            .map(|(_, p, t)| (p.pos.0, p.pos.1, t, p.dir, v(p.size), p.mass, p.shape))
+            .map(|(pi, p, t)| (p.pos.0, p.pos.1, t, p.dir, v(p.size), p.mass, p.shape, pi))
             .collect();
         claimed.sort_by(|a, b| a.0.total_cmp(&b.0));
         let xs = def.thruster_xs(n);
         let mut thrusters = Vec::new();
-        for (i, (_, y, thrust, dir, size, mass, shape)) in claimed.into_iter().enumerate() {
+        for (i, (_, y, thrust, dir, size, mass, shape, part)) in claimed.into_iter().enumerate() {
             let x = xs.get(i).copied().unwrap_or(0.0);
             let pos = Vec2::new(x, y);
             parts.push(ShipPart {
@@ -199,11 +229,13 @@ impl Ship {
             });
             thrusters.push(Thruster {
                 slot: i as u8,
+                part,
                 pos,
                 dir: rot(Vec2::Y, dir.to_radians()),
                 thrust: thrust * stats.thrust_mul,
                 firing: false,
                 level: 0.0,
+                health: 1.0,
             });
         }
 
@@ -264,6 +296,7 @@ impl Ship {
         let max_hull = def.max_hull + stats.hull_bonus;
         let max_shield = def.max_shield + stats.shield_bonus;
         let max_ammo = def.max_ammo + stats.ammo_bonus;
+        let max_fuel = def.fuel_capacity * stats.fuel_mul;
         let mut ship = Ship {
             def_id: def.id.clone(),
             parts,
@@ -290,6 +323,9 @@ impl Ship {
             ang_damp: def.angular_damping + stats.gyro,
             crane_range: 20.0 * stats.crane_mul,
             drill_rate: 1.6 * stats.drill_mul,
+            fuel: max_fuel,
+            max_fuel,
+            fuel_burn: def.fuel_burn,
             docked: None,
             dock_timer: 0.0,
             dock_cooldown: 0.0,
@@ -478,6 +514,18 @@ impl Ship {
 
     pub fn has_tool(&self, kind: ToolKind) -> bool {
         self.tools.iter().any(|t| t.kind == kind)
+    }
+
+    /// Durchschnittlicher Schaden der Triebwerke (0 = alles heil, 1 = alles ausgefallen).
+    pub fn thruster_wear(&self) -> f32 {
+        if self.thrusters.is_empty() {
+            return 0.0;
+        }
+        self.thrusters.iter().map(|t| 1.0 - t.health).sum::<f32>() / self.thrusters.len() as f32
+    }
+
+    pub fn fuel_empty(&self) -> bool {
+        self.fuel <= 0.0
     }
 }
 

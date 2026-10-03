@@ -174,7 +174,9 @@ impl SimState {
                 // Etwas Reibung, damit Felder über lange Zeit ruhig bleiben.
                 b.vel *= 1.0 - 0.02 * DT;
             }
-            if let BodyKind::OreChunk { .. } | BodyKind::Capsule { .. } = b.kind {
+            if let BodyKind::OreChunk { .. } | BodyKind::Capsule { .. } | BodyKind::Crate { .. } =
+                b.kind
+            {
                 b.vel *= 1.0 - 0.05 * DT;
             }
         }

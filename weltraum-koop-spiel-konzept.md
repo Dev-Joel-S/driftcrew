@@ -15,6 +15,7 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 ## Physik
 
 - Keine Schwerkraft im freien Raum. Trägheit und Drehmoment sind die Kernmechanik, alles driftet weiter, bis Gegenschub gegeben wird
+- **Schwerkraft gibt es nur an Anomalien und Schwarzen Löchern** (lokaler Sog). Planeten ziehen nicht an, sie sind Hindernisse, Landeorte und Erzquellen. Schwarze Löcher haben einen Ereignishorizont: Wer ihn berührt, verliert das Schiff *(geändert in Runde 2, siehe WORKLOG)*
 - Triebwerke sitzen in einer Reihe am Heck und schieben alle in dieselbe Richtung
 - Positionen beim Standardschiff: außen links, links, Mitte, rechts, außen rechts (max. 5 Schub-Slots)
 - Mindestens 2 Triebwerke (links + rechts). Reihenfolge beim Hinzukommen: links/rechts, dann Mitte, dann außen links/rechts
@@ -26,6 +27,9 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - Fracht verändert Masse und Schwerpunkt, seitlich hängende Ladung zieht das Schiff in eine Richtung
 - **Lebensbalken** statt Sofort-Tod. Schaden abhängig von der Aufprallgeschwindigkeit
 - Meteoriten verursachen Schaden bis hin zur Explosion
+- Treffer können **einzelne Triebwerke** beschädigen: erst Stottern, dann Ausfall. Reparatur an Stationen
+- **Kein Game Over:** Bei Hülle 0 wird eine Rettungskapsel ausgestoßen, das Schiff wird zur Heimatstation geborgen, die Bergungskosten zahlt die gemeinsame Kasse
+- **Treibstoff:** Tank pro Schiff, Verbrauch je feuerndem Triebwerk nach Schub. Leer bedeutet nicht Stillstand, sondern Notreserve mit 25 % Schub (ohne Reibung könnte eine Crew sonst endgültig festsitzen). Tanken an Stationen
 
 ## Steuerung: Slot-System
 
@@ -44,21 +48,22 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - Schiffe werden als **Daten** beschrieben, nicht im Code: Liste von Teilen mit Position, Richtung, Masse, Typ und Parametern (z. B. Schubstärke)
 - Verschiedene Schiffe mit verschiedenen Layouts, z. B. Scout mit 2 Triebwerken oder Frachter mit 7 Triebwerken und 2 Kränen
 - Die Lobby liest die Slot-Liste aus dem jeweiligen Schiff
-- Schiffe werden **gekauft**, nur in Weltraumwerften
+- Schiffe werden **gekauft**, nur in Weltraumwerften. Jede Werft hat ein eigenes Angebot (Daten)
 
 ## Welt
 
 - Open World in einer 2D-Ebene
 - **Raumstationen:** Munition (z. B. 10 Schuss), Schild, Reparatur, Upgrades, Material abgeben oder aufladen, Missionen annehmen
-- **Weltraumwerften:** Schiffe kaufen
-- **Mini-Planeten:** Abbau von Rohstoffen, Material abgeben oder aufladen
+- **Weltraumwerften:** Schiffe kaufen, jede mit eigenem Angebot
+- **Mini-Planeten:** Abbau von Rohstoffen, Material abgeben oder aufladen. Freie **Landezonen** (Plattformen direkt neben einem Erzvorkommen): Landen wie Andocken, gelandet bleiben die Werkzeuge aktiv
 - Kaufen geht nur an Stationen und Werften
 - **Andocken** ist die zentrale Fähigkeit: niedrige Geschwindigkeit, richtige Ausrichtung
-- Gefahren: Meteoriten, Asteroidenfelder
+- Gefahren: Meteoriten, Asteroidenfelder, Anomalien, Schwarze Löcher
 
 ## Wirtschaft
 
-- Münzen verdient man durch Missionen
+- Münzen verdient man durch Missionen und Erzverkauf
+- **Preise je Ort:** Erzankauf, Treibstoff und Service haben pro Station/Außenposten eigene Faktoren (Daten)
 - **Gemeinsame Kasse** der Crew, Fortschritt (Kasse, Schiffe, Upgrades) gehört dem Spielstand der Crew
 - **Abstimmungssystem** für Käufe:
   - Jemand wählt im Menü einen Kauf aus
@@ -75,11 +80,13 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - **Liefern** von A nach B
 - **Abbauen** auf Mini-Planeten und Material an Stationen abgeben
 - **Notrufe / Hilfe**, z. B. treibendes Schiff abschleppen oder Kapseln einsammeln
+- **Schwerlast:** Fracht, die in keinen Frachtraum passt, wird als Kiste am Kran geschleppt. Das Kranseil ist eine harte Längenbegrenzung (schlaff/straff), die Last pendelt und zerrt am Schiff
 - Weitere Typen später erweiterbar
 
 ## Grafikstil
 
-- Minimalistisch wie Rakete, aber mit knalligen, **leuchtenden Farben** wie ShellShock Live
+- Minimalistisch wie Rakete, aber mit kräftigen Farben wie ShellShock Live / No Man's Sky in Umgebung, Nebeln und Planeten
+- Schiffe und Stationen erwachsener: gedeckte Lackierungen, Schrägen, Fasen und Paneele statt Würfel. **Leuchten nur gezielt:** Triebwerksflammen, Positionslichter, Slotfarben *(geändert in Runde 2)*
 - Farben: Rot, Grün, Gelb, Orange, Blau, Türkis usw.
 - Dunkler Hintergrund, Bloom, Partikel, Triebwerksglühen
 - Jeder Slot hat eine eigene Farbe, die Triebwerksflamme leuchtet in dieser Farbe, damit sichtbar ist, wer gerade schiebt
@@ -101,7 +108,6 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - **Online-Koop** mit Rollback-Netcode (z. B. ggrs / bevy_ggrs)
 - **Deterministische Physik mit Ganzzahlen / Fixed-Point** statt Floats, damit nur Eingaben übers Netz gehen
 - Spielstand online beim Host
-- Werften mit mehreren Schiffen
 - Optional: Schiffseditor, Abstimmung auch für Missionen
 
 ## Architektur für Claude Code
@@ -114,3 +120,13 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - Schiffe, Stationen, Missionen und Shop-Preise als Datendateien (z. B. RON)
 - Joy-Con-Unterstützung (einzelne Joy-Cons als eigene Geräte) früh testen
 - Keine Namen, Grafiken oder Assets aus Rakete verwenden
+
+## Entscheidungsänderungen
+
+Was sich gegenüber der ersten Fassung geändert hat (Begründungen und Details im WORKLOG):
+
+- **Runde 2, Grafik:** Weniger Leuchtfarbe, gedecktere Lackierungen. Leuchten nur noch bei Triebwerksflammen, Positionslichtern und Slotfarben. Schiffsteile und Stationen mit Schrägen, Fasen und Keilen statt reiner Würfel
+- **Runde 2, Schwerkraft:** nur an Anomalien und Schwarzen Löchern, Planeten ohne Anziehung
+- **Runde 2, Treibstoff:** neu, mit Notreserve (25 % Schub) statt Stillstand
+- **Runde 2, Zerstörung:** Rettungskapsel und Bergungskosten statt einfachem Neustart an der Station
+- **Runde 2, Zielen:** Werkzeuge zielen ausschließlich mit dem Gerät des Slot-Besitzers

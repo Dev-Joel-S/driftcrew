@@ -47,8 +47,33 @@ pub struct BodyVis(pub u32);
 #[derive(Component)]
 pub struct ProjVis(pub u32);
 
+/// Ein Segment des Kranseils (Werkzeug, Segment).
 #[derive(Component)]
-pub struct RopeVis(pub usize);
+pub struct RopeVis(pub usize, pub usize);
+
+const ROPE_SEGS: usize = 12;
+
+/// Punkte entlang des Seils. Ist das Seil schlaff (Abstand < Länge), hängt es als
+/// Parabel durch – optisch „nach unten“ auf dem Bildschirm, damit es wie ein Seil wirkt.
+pub fn rope_points(a: Vec2, b: Vec2, length: Option<f32>) -> Vec<Vec2> {
+    let d = b - a;
+    let dist = d.length();
+    let sag = match length {
+        Some(l) if l > dist && dist > 0.05 => (3.0 * dist * (l - dist) / 8.0).sqrt().min(l * 0.5),
+        _ => 0.0,
+    };
+    let dir = d / dist.max(1e-4);
+    let mut perp = Vec2::new(-dir.y, dir.x);
+    if perp.dot(Vec2::NEG_Y) < 0.0 {
+        perp = -perp;
+    }
+    (0..=ROPE_SEGS)
+        .map(|k| {
+            let t = k as f32 / ROPE_SEGS as f32;
+            a + d * t + perp * sag * 4.0 * t * (1.0 - t)
+        })
+        .collect()
+}
 
 #[derive(Component)]
 pub struct ClawVis(pub usize);
@@ -855,6 +880,71 @@ pub fn sync_bodies(
                         .id(),
                 );
             }
+            BodyKind::Crate { .. } => {
+                use super::world_vis::CONTAINER_COLORS;
+                let c = CONTAINER_COLORS[(b.seed as usize) % CONTAINER_COLORS.len()];
+                let shell = mats.add(art.panel_mat(srgb(c), 0.6, 0.3));
+                let frame = mats.add(art.panel_mat(Color::srgb(0.14, 0.15, 0.17), 0.45, 0.6));
+                let band = mats.add(StandardMaterial {
+                    base_color: Color::srgb(0.95, 0.72, 0.12),
+                    base_color_texture: Some(art.stripes.clone()),
+                    perceptual_roughness: 0.6,
+                    ..default()
+                });
+                let bulb = mats.add(art.emissive_mat(Color::srgb(1.0, 0.65, 0.15), 8.0));
+                let body = art.prism(
+                    &mut meshes,
+                    &crate::sim::data::PartShape::Chamfer(0.12).outline(Vec2::new(1.5, 0.95)),
+                    1.9,
+                    0.08,
+                    Some((0.1, 0.05)),
+                );
+                let rail = art.bevel_box(&mut meshes, Vec3::new(3.1, 0.16, 2.0));
+                let stripe = art.bevel_box(&mut meshes, Vec3::new(0.5, 1.92, 1.95));
+                let eye = art.bevel_box(&mut meshes, Vec3::new(0.4, 0.3, 0.3));
+                let holder = commands
+                    .spawn((Transform::default(), Visibility::default(), BodyMesh(b.id)))
+                    .with_children(|h| {
+                        h.spawn((Mesh3d(body), MeshMaterial3d(shell)));
+                        for y in [-0.9f32, 0.9] {
+                            h.spawn((
+                                Mesh3d(rail.clone()),
+                                MeshMaterial3d(frame.clone()),
+                                Transform::from_xyz(0.0, y, 0.0),
+                            ));
+                        }
+                        for x in [-1.15f32, 1.15] {
+                            h.spawn((
+                                Mesh3d(stripe.clone()),
+                                MeshMaterial3d(band.clone()),
+                                Transform::from_xyz(x, 0.0, 0.0),
+                            ));
+                        }
+                        h.spawn((
+                            Mesh3d(eye),
+                            MeshMaterial3d(frame.clone()),
+                            Transform::from_xyz(0.0, 1.1, 0.0),
+                        ));
+                        h.spawn((
+                            Mesh3d(art.sphere.clone()),
+                            MeshMaterial3d(bulb),
+                            Transform::from_xyz(1.2, 1.0, 0.8).with_scale(Vec3::splat(0.14)),
+                        ));
+                        h.spawn((
+                            PointLight {
+                                color: Color::srgb(1.0, 0.6, 0.15),
+                                intensity: 120_000.0,
+                                range: 10.0,
+                                shadow_maps_enabled: false,
+                                ..default()
+                            },
+                            Transform::from_xyz(1.2, 1.2, 1.5),
+                            BlinkLight(120_000.0),
+                        ));
+                    })
+                    .id();
+                kids.push(holder);
+            }
             BodyKind::Derelict { .. } => {
                 let def = data.0.ship("kolibri").clone();
                 let ship = Ship::build(&def, &Loadout::full(&def), &ShipStats::default());
@@ -1019,15 +1109,24 @@ pub fn sync_tools(
     for i in 0..n {
         if ship.tools[i].kind == ToolKind::Crane && !have_rope.contains(&i) {
             let col = slot_color(ship.tools[i].slot);
-            let rope_mat = mats.add(art.emissive_mat(col, 2.5));
-            commands.spawn((
-                Mesh3d(art.cylinder.clone()),
-                MeshMaterial3d(rope_mat.clone()),
-                Transform::default(),
-                Visibility::Hidden,
-                RopeVis(i),
-                NotShadowCaster,
-            ));
+            // Dunkles Stahlseil mit einem Hauch Slotfarbe.
+            let rope_mat = mats.add(StandardMaterial {
+                base_color: Color::srgb(0.18, 0.19, 0.21),
+                emissive: col.to_linear() * 0.9,
+                perceptual_roughness: 0.4,
+                metallic: 0.7,
+                ..default()
+            });
+            for seg in 0..ROPE_SEGS {
+                commands.spawn((
+                    Mesh3d(art.cylinder.clone()),
+                    MeshMaterial3d(rope_mat.clone()),
+                    Transform::default(),
+                    Visibility::Hidden,
+                    RopeVis(i, seg),
+                    NotShadowCaster,
+                ));
+            }
             let claw = mats.add(art.panel_mat(Color::srgb(0.2, 0.2, 0.24), 0.3, 0.6));
             commands.spawn((
                 Mesh3d(art.cube.clone()),
@@ -1074,18 +1173,19 @@ pub fn sync_tools(
         let tip = match &tool.crane {
             CraneState::Idle => None,
             CraneState::Extending { len, dir } | CraneState::Retracting { len, dir } => {
-                Some(mount + *dir * *len)
+                Some((mount + *dir * *len, None))
             }
-            CraneState::Attached { body, .. } => sim
+            CraneState::Attached { body, rope } => sim
                 .0
                 .bodies
                 .iter()
                 .find(|b| b.id == *body)
-                .map(|b| b.prev_pos.lerp(b.pos, alpha)),
+                .map(|b| (b.prev_pos.lerp(b.pos, alpha), Some(*rope))),
         };
         match tip {
-            Some(tip) if !ship.destroyed => {
-                *t = segment(mount, tip, 0.09, 0.7);
+            Some((tip, len)) if !ship.destroyed => {
+                let pts = rope_points(mount, tip, len);
+                *t = segment(pts[r.1], pts[r.1 + 1], 0.08, 0.7);
                 *vis = Visibility::Visible;
             }
             _ => *vis = Visibility::Hidden,
@@ -1131,4 +1231,86 @@ pub fn sync_tools(
         *t = segment(mount, end, 0.06, 0.8);
         *vis = Visibility::Visible;
     }
+}
+
+/// Die Rettungskapsel nach einer Zerstörung.
+#[derive(Component)]
+pub struct PodVis;
+
+pub fn sync_pod(
+    mut commands: Commands,
+    fixed: Res<Time<Fixed>>,
+    sim: Res<Sim>,
+    mut art: ResMut<Art>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut mats: ResMut<Assets<StandardMaterial>>,
+    mut q: Query<(Entity, &mut Transform), With<PodVis>>,
+) {
+    let Some(pod) = &sim.0.escape else {
+        for (e, _) in &q {
+            commands.entity(e).despawn();
+        }
+        return;
+    };
+    let alpha = fixed.overstep_fraction();
+    let pos = pod.prev_pos.lerp(pod.pos, alpha);
+    let angle = pod.prev_angle + angle_diff(pod.angle, pod.prev_angle) * alpha;
+    let tr =
+        Transform::from_translation(pos.extend(0.0)).with_rotation(Quat::from_rotation_z(angle));
+    if let Some((_, mut t)) = q.iter_mut().next() {
+        *t = tr;
+        return;
+    }
+    let shell = mats.add(art.panel_mat(Color::srgb(0.88, 0.88, 0.86), 0.4, 0.25));
+    let band = mats.add(art.panel_mat(Color::srgb(0.85, 0.42, 0.12), 0.5, 0.2));
+    let glass = mats.add(StandardMaterial {
+        base_color: Color::srgb(0.05, 0.08, 0.1),
+        perceptual_roughness: 0.08,
+        metallic: 0.6,
+        ..default()
+    });
+    let bulb = mats.add(art.emissive_mat(Color::srgb(1.0, 0.2, 0.15), 9.0));
+    let flame = art.glow_mat(&mut mats, Color::srgb(1.0, 0.6, 0.25), 2.0);
+    let ring = art.bevel_box(&mut meshes, Vec3::new(1.25, 0.22, 1.25));
+    commands
+        .spawn((tr, Visibility::default(), PodVis))
+        .with_children(|c| {
+            c.spawn((
+                Mesh3d(art.capsule.clone()),
+                MeshMaterial3d(shell),
+                Transform::from_scale(Vec3::new(1.1, 1.0, 1.1)),
+            ));
+            c.spawn((
+                Mesh3d(ring),
+                MeshMaterial3d(band),
+                Transform::from_xyz(0.0, -0.1, 0.0),
+            ));
+            c.spawn((
+                Mesh3d(art.sphere.clone()),
+                MeshMaterial3d(glass),
+                Transform::from_xyz(0.0, 0.45, 0.42).with_scale(Vec3::new(0.55, 0.35, 0.3)),
+            ));
+            c.spawn((
+                Mesh3d(art.sphere.clone()),
+                MeshMaterial3d(bulb),
+                Transform::from_xyz(0.0, 0.95, 0.0).with_scale(Vec3::splat(0.14)),
+            ));
+            c.spawn((
+                PointLight {
+                    color: Color::srgb(1.0, 0.25, 0.2),
+                    intensity: 200_000.0,
+                    range: 14.0,
+                    shadow_maps_enabled: false,
+                    ..default()
+                },
+                Transform::from_xyz(0.0, 1.0, 1.5),
+                BlinkLight(200_000.0),
+            ));
+            c.spawn((
+                Mesh3d(art.quad.clone()),
+                MeshMaterial3d(flame),
+                Transform::from_xyz(0.0, -1.2, 0.3).with_scale(Vec3::new(0.9, 1.6, 1.0)),
+                NotShadowCaster,
+            ));
+        });
 }

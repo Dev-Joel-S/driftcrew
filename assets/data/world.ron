@@ -3,6 +3,9 @@
 //   #  Block          X  Akzentblock      W  Fensterblock
 //   ^ v < >  Landeplattform (zeigt in Pfeilrichtung, braucht einen Block dahinter)
 //   L  Leuchtfeuer    .  leer
+//   / \ 7 r  Schräge (halbe Zelle); freiliegende Ecken werden automatisch abgeschrägt
+// prices: Faktoren auf die Grundpreise aus shop.ron (Erzankauf je Sorte, Treibstoff, Service).
+// Schwerkraft gibt es nur an Anomalien und Schwarzen Löchern – Planeten ziehen nicht an.
 (
     seed: 20261003,
     radius: 2600.0,
@@ -16,7 +19,8 @@
             cell: 4.0,
             main_color: "#e8322a",
             accent_color: "#ffb21f",
-            services: [Ammo, Shield, Repair, Upgrades, Missions, Market],
+            services: [Ammo, Shield, Repair, Fuel, Upgrades, Missions, Market],
+            prices: (ore: [], fuel: 1.0, service: 1.0),
             layout: [
                 ".....########XXXXX########.....",
                 "....##...................##....",
@@ -51,7 +55,9 @@
             cell: 4.0,
             main_color: "#14b8a6",
             accent_color: "#ff4fa3",
-            services: [Ammo, Repair, Missions, Market],
+            services: [Ammo, Repair, Fuel, Missions, Market],
+            // Am Kobaltschwarm gibt es Kobalt im Überfluss, Solarit und Ionit sind gefragt.
+            prices: (ore: [(Kobalt, 0.8), (Solarit, 1.35), (Ionit, 1.2)], fuel: 1.3, service: 1.15),
             layout: [
                 ".......XLX.......",
                 ".......#W#.......",
@@ -78,7 +84,9 @@
             cell: 4.0,
             main_color: "#ff7a1a",
             accent_color: "#2f6bff",
-            services: [Ships, Repair, Shield, Ammo, Upgrades],
+            services: [Ships, Repair, Shield, Ammo, Fuel, Upgrades],
+            prices: (fuel: 0.9, service: 0.9),
+            ships_for_sale: ["driftkutter", "kolibri", "lastesel"],
             layout: [
                 "X###############################X",
                 "#..L.........L.....L.........L..#",
@@ -100,39 +108,73 @@
                 (ship: "hornisse", cell: (24, 10)),
             ],
         ),
+        (
+            id: "vega",
+            name: "Werft Vega",
+            kind: Shipyard,
+            pos: (2050.0, 150.0),
+            cell: 4.0,
+            main_color: "#5b6573",
+            accent_color: "#e0a526",
+            services: [Ships, Repair, Shield, Ammo, Fuel, Market, Missions],
+            // Nahe Azura: Ionit billig, Ferrit und Kobalt werden gesucht.
+            prices: (ore: [(Ionit, 0.85), (Ferrit, 1.4), (Kobalt, 1.2)], fuel: 1.1, service: 1.0),
+            ships_for_sale: ["driftkutter", "hornisse", "pelikan"],
+            layout: [
+                "..........XLX..........",
+                "..........#W#..........",
+                "..........#W#..........",
+                "......^^^.#W#.^^^......",
+                ".....X###W#W#W###X.....",
+                "..........#W#..........",
+                "..........#W#..........",
+                "^^^^^.....#W#.....^^^^^",
+                "#X####XX###W###XX####X#",
+                "..........#W#..........",
+                "..........#X#..........",
+                "...........L...........",
+            ],
+            decor_ships: [
+                (ship: "hornisse", cell: (7, 7)),
+                (ship: "pelikan", cell: (15, 7)),
+            ],
+        ),
     ],
     planets: [
         (
             id: "viridia", name: "Viridia", pos: (640.0, 700.0), radius: 58.0,
-            surface_gravity: 4.2, influence: 230.0,
             colors: ["#0b3d3a", "#0f8a6c", "#3fe0a0", "#d8ff6a", "#fff7c2"],
             atmosphere: "#5cffc8",
             ore: Kobalt, deposits: 7, deposit_amount: 14.0,
             outpost_angle: Some(205.0),
+            landing_zones: [20.0, 110.0],
+            prices: (ore: [(Kobalt, 0.7), (Ferrit, 1.2)]),
         ),
         (
             id: "ember", name: "Ember", pos: (-700.0, -820.0), radius: 72.0,
-            surface_gravity: 5.0, influence: 280.0,
             colors: ["#2a0a12", "#8a1b2c", "#ff4a2a", "#ffa21f", "#ffe7a0"],
             atmosphere: "#ff6a3d",
             ore: Solarit, deposits: 8, deposit_amount: 16.0,
             outpost_angle: Some(40.0),
+            landing_zones: [160.0, 290.0],
+            prices: (ore: [(Solarit, 0.75), (Kobalt, 1.25)]),
         ),
         (
             id: "azura", name: "Azura", pos: (1820.0, 980.0), radius: 46.0,
-            surface_gravity: 3.6, influence: 190.0,
             colors: ["#160c3d", "#3b2a9e", "#6a5cff", "#4fd8ff", "#e2fbff"],
             atmosphere: "#8a7dff",
             ore: Ionit, deposits: 6, deposit_amount: 12.0,
             outpost_angle: Some(250.0),
+            landing_zones: [70.0],
+            prices: (ore: [(Ionit, 0.7), (Solarit, 1.2)]),
             rings: true,
         ),
         (
             id: "ferrox", name: "Ferrox", pos: (-380.0, 1260.0), radius: 34.0,
-            surface_gravity: 3.0, influence: 140.0,
             colors: ["#2b1408", "#6e3417", "#b8612a", "#e8a05a", "#ffe1b0"],
             atmosphere: "#ffb070",
             ore: Ferrit, deposits: 6, deposit_amount: 18.0,
+            landing_zones: [90.0, 270.0],
         ),
     ],
     asteroid_fields: [
@@ -156,7 +198,9 @@
         (pos: (-1150.0, 250.0), arm_length: 10.0, arm_width: 1.0, arms: 2, speed: 35.0, color: "#2f6bff"),
     ],
     anomalies: [
+        // Die einzigen Orte mit Anziehung. core_radius: Kern (Anomalie) bzw. Ereignishorizont.
         (name: "Gravitationsanomalie", pos: (980.0, -1150.0), radius: 140.0, core_radius: 6.0, strength: 34.0),
+        (name: "Schlund", kind: BlackHole, pos: (-1850.0, -1000.0), radius: 320.0, core_radius: 9.0, strength: 22.0),
     ],
     regions: [
         (name: "Kernsektor",   center: (0.0, 0.0),       radius: 1000.0, colors: ("#1fd1c1", "#7c4dff")),
@@ -166,6 +210,8 @@
         (name: "Splitterzone", center: (200.0, 1450.0),  radius: 800.0,  colors: ("#ff4fa3", "#ffb21f")),
         (name: "Tiefe",        center: (1300.0, -900.0), radius: 900.0,  colors: ("#ff4fa3", "#6a5cff")),
         (name: "Azurgrenze",   center: (1900.0, 1000.0), radius: 800.0,  colors: ("#6a5cff", "#4fd8ff")),
+        (name: "Vega-Rand",    center: (2100.0, 100.0),  radius: 600.0,  colors: ("#e0a526", "#4fd8ff")),
+        (name: "Schlund",      center: (-1850.0, -1000.0), radius: 520.0, colors: ("#7c4dff", "#ff4a2a")),
     ],
     backdrop: [
         (pos: (420.0, -380.0),   depth: 700.0, radius: 230.0, colors: ["#2a0f3d", "#7c4dff", "#ff4fa3", "#ffb21f"], rings: true),
