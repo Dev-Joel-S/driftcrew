@@ -1,0 +1,29 @@
+// Preise und Upgrades. Gekauft wird nur angedockt an Stationen und Werften.
+(
+    start_credits: 300,
+    // Anteil der Kasse, der bei Zerstörung des Schiffs als Bergungsgebühr fällig wird.
+    respawn_fee: 0.15,
+    services: [
+        (id: "ammo",   name: "Munition +10",    price: 40, effect: Ammo(10)),
+        (id: "shield", name: "Schild aufladen", price: 60, effect: ShieldFull),
+        (id: "repair", name: "Reparatur",       price: 90, effect: RepairFull),
+    ],
+    upgrades: [
+        (id: "thrust1", name: "Triebwerkstuning I",  description: "+15 % Schub für alle Triebwerke.", price: 320, effect: ThrustMul(1.15)),
+        (id: "thrust2", name: "Triebwerkstuning II", description: "+15 % Schub obendrauf.",          price: 640, effect: ThrustMul(1.15), requires: Some("thrust1")),
+        (id: "armor1",  name: "Panzerplatten",       description: "+40 maximale Hülle.",              price: 360, effect: MaxHull(40.0)),
+        (id: "armor2",  name: "Verbundpanzer",       description: "+60 maximale Hülle.",              price: 720, effect: MaxHull(60.0), requires: Some("armor1")),
+        (id: "shield1", name: "Schildgenerator+",    description: "+40 maximaler Schild.",            price: 420, effect: MaxShield(40.0)),
+        (id: "cargo1",  name: "Frachtmodule",        description: "+50 % Frachtraum.",               price: 280, effect: Cargo(0.5)),
+        (id: "gyro",    name: "Gyro-Stabilisator",   description: "Dämpft Drehungen deutlich.",       price: 300, effect: Gyro(0.55)),
+        (id: "mag",     name: "Großes Magazin",      description: "+10 Schuss Kapazität.",            price: 200, effect: MaxAmmo(10)),
+        (id: "crane1",  name: "Langer Kranarm",      description: "+40 % Kranreichweite.",            price: 240, effect: CraneRange(1.4)),
+        (id: "drill1",  name: "Diamantbohrkopf",     description: "Doppelt so schnell abbauen.",      price: 380, effect: DrillRate(2.0)),
+    ],
+    ore_prices: [
+        (Ferrit, 9),
+        (Kobalt, 16),
+        (Solarit, 22),
+        (Ionit, 30),
+    ],
+)

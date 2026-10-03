@@ -1,0 +1,25 @@
+// Missionsvorlagen. Konkrete Aufträge werden daraus mit festem Seed erzeugt.
+(
+    offers_per_station: 4,
+    distress_offers: 2,
+    delivery_cargo: [
+        (name: "Medizinische Vorräte", mass: 2.0, reward: 110),
+        (name: "Ersatzteile",          mass: 4.0, reward: 140),
+        (name: "Wasserkristalle",      mass: 6.0, reward: 170),
+        (name: "Forschungssonde",      mass: 3.0, reward: 150),
+        (name: "Pflanzensamen",        mass: 1.5, reward: 100),
+        (name: "Reaktorkern",          mass: 7.0, reward: 220),
+    ],
+    // Zusätzliche Belohnung pro Meter Luftlinie.
+    reward_per_distance: 0.14,
+    mining: [
+        (ore: Ferrit,  amount: (6.0, 12.0), reward_per_t: 22.0),
+        (ore: Kobalt,  amount: (5.0, 10.0), reward_per_t: 34.0),
+        (ore: Solarit, amount: (4.0, 9.0),  reward_per_t: 44.0),
+        (ore: Ionit,   amount: (3.0, 7.0),  reward_per_t: 58.0),
+    ],
+    tow_reward: (380.0, 560.0),
+    capsule_reward: (300.0, 440.0),
+    capsule_count: (3, 5),
+    derelict_names: ["MS Halcyon", "Frachter Nimbus", "Sonde K-7", "Kutter Albatros", "Tanker Velaro", "Shuttle Mira"],
+)

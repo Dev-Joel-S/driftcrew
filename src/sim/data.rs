@@ -1,0 +1,519 @@
+//! Spieldaten: Schiffe, Welt, Shop und Missionen werden als RON-Dateien beschrieben.
+//!
+//! Die Dateien liegen unter `assets/data/`. Sie werden zusätzlich in die Binärdatei
+//! eingebettet, damit das Spiel auch ohne Asset-Ordner startet. Liegt eine Datei im
+//! Ordner, hat sie Vorrang (so lassen sich Werte ohne Neukompilieren ändern).
+
+use bevy::math::Vec2;
+use serde::{Deserialize, Serialize};
+
+pub type P = (f32, f32);
+
+pub fn v(p: P) -> Vec2 {
+    Vec2::new(p.0, p.1)
+}
+
+/// Farbe aus "#rrggbb" in lineare-ish sRGB-Komponenten 0..1 (die Umrechnung macht das Rendering).
+pub fn hex(s: &str) -> [f32; 3] {
+    let s = s.trim_start_matches('#');
+    let p = |i: usize| u8::from_str_radix(s.get(i..i + 2).unwrap_or("ff"), 16).unwrap_or(255) as f32 / 255.0;
+    [p(0), p(2), p(4)]
+}
+
+// ---------------------------------------------------------------------------
+// Schiffe
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ToolKind {
+    Cannon,
+    Crane,
+    Drill,
+}
+
+impl ToolKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            ToolKind::Cannon => "Kanone",
+            ToolKind::Crane => "Kran",
+            ToolKind::Drill => "Bohrer",
+        }
+    }
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+pub enum PartKind {
+    Hull,
+    Cockpit,
+    Armor,
+    /// Frachtmodul mit Kapazität in Tonnen.
+    CargoPod(f32),
+    /// Triebwerk mit Schubkraft.
+    Thruster(f32),
+    Tool(ToolKind),
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct PartDef {
+    pub kind: PartKind,
+    pub pos: P,
+    pub size: P,
+    pub mass: f32,
+    /// Schubrichtung in Grad relativ zur Schiffsnase (0 = schiebt nach vorne).
+    #[serde(default)]
+    pub dir: f32,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct ThrusterLayout {
+    pub count: u8,
+    pub xs: Vec<f32>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct ShipDef {
+    pub id: String,
+    pub name: String,
+    pub class: String,
+    pub description: String,
+    pub price: u32,
+    pub hull_color: String,
+    pub accent_color: String,
+    pub max_hull: f32,
+    pub max_shield: f32,
+    pub max_ammo: u32,
+    #[serde(default = "default_ang_damp")]
+    pub angular_damping: f32,
+    #[serde(default = "default_min_thrusters")]
+    pub min_thrusters: u8,
+    /// Reihenfolge der Triebwerke = Reihenfolge, in der sie in der Lobby belegt werden.
+    pub parts: Vec<PartDef>,
+    #[serde(default)]
+    pub thruster_layouts: Vec<ThrusterLayout>,
+}
+
+fn default_ang_damp() -> f32 {
+    0.12
+}
+fn default_min_thrusters() -> u8 {
+    2
+}
+
+impl ShipDef {
+    pub fn thruster_parts(&self) -> impl Iterator<Item = (usize, &PartDef, f32)> {
+        self.parts.iter().enumerate().filter_map(|(i, p)| match p.kind {
+            PartKind::Thruster(t) => Some((i, p, t)),
+            _ => None,
+        })
+    }
+    pub fn tool_parts(&self) -> impl Iterator<Item = (usize, &PartDef, ToolKind)> {
+        self.parts.iter().enumerate().filter_map(|(i, p)| match p.kind {
+            PartKind::Tool(k) => Some((i, p, k)),
+            _ => None,
+        })
+    }
+    pub fn max_thrusters(&self) -> u8 {
+        self.thruster_parts().count() as u8
+    }
+    pub fn cargo_capacity(&self) -> f32 {
+        self.parts
+            .iter()
+            .map(|p| match p.kind {
+                PartKind::CargoPod(c) => c,
+                _ => 0.0,
+            })
+            .sum()
+    }
+    /// x-Positionen der Triebwerke, wenn `n` belegt sind (symmetrisch neu angeordnet).
+    pub fn thruster_xs(&self, n: u8) -> Vec<f32> {
+        if let Some(l) = self.thruster_layouts.iter().find(|l| l.count == n && l.xs.len() == n as usize) {
+            return l.xs.clone();
+        }
+        let span = self
+            .thruster_parts()
+            .map(|(_, p, _)| p.pos.0.abs())
+            .fold(0.0f32, f32::max);
+        if n <= 1 {
+            return vec![0.0];
+        }
+        (0..n)
+            .map(|i| -span + 2.0 * span * i as f32 / (n - 1) as f32)
+            .collect()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Welt
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Ore {
+    Ferrit,
+    Kobalt,
+    Solarit,
+    Ionit,
+}
+
+impl Ore {
+    pub const ALL: [Ore; 4] = [Ore::Ferrit, Ore::Kobalt, Ore::Solarit, Ore::Ionit];
+    pub fn label(self) -> &'static str {
+        match self {
+            Ore::Ferrit => "Ferrit",
+            Ore::Kobalt => "Kobalt",
+            Ore::Solarit => "Solarit",
+            Ore::Ionit => "Ionit",
+        }
+    }
+    /// Leuchtfarbe des Erzes (sRGB).
+    pub fn color(self) -> [f32; 3] {
+        match self {
+            Ore::Ferrit => [1.0, 0.55, 0.25],
+            Ore::Kobalt => [0.25, 0.55, 1.0],
+            Ore::Solarit => [1.0, 0.85, 0.15],
+            Ore::Ionit => [0.2, 1.0, 0.85],
+        }
+    }
+}
+
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StationKind {
+    Station,
+    Shipyard,
+    Outpost,
+}
+
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Service {
+    Ammo,
+    Shield,
+    Repair,
+    Upgrades,
+    Missions,
+    Market,
+    Ships,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct DecorShip {
+    pub ship: String,
+    /// Zelle (Spalte, Zeile) im Layout, auf der das Schiff steht.
+    pub cell: (i32, i32),
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct StationDef {
+    pub id: String,
+    pub name: String,
+    pub kind: StationKind,
+    pub pos: P,
+    pub cell: f32,
+    pub main_color: String,
+    pub accent_color: String,
+    pub services: Vec<Service>,
+    /// Raster: `#` Block, `X` Akzentblock, `W` Fensterblock, `^ v < >` Landeplattform
+    /// (Pfeil = Richtung, in die die Plattform zeigt), `L` Leuchtfeuer, `.` leer.
+    pub layout: Vec<String>,
+    #[serde(default)]
+    pub decor_ships: Vec<DecorShip>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct PlanetDef {
+    pub id: String,
+    pub name: String,
+    pub pos: P,
+    pub radius: f32,
+    pub surface_gravity: f32,
+    pub influence: f32,
+    /// Farbverlauf für die prozedurale Oberfläche.
+    pub colors: Vec<String>,
+    pub atmosphere: String,
+    pub ore: Ore,
+    pub deposits: u32,
+    pub deposit_amount: f32,
+    /// Winkel (Grad) einer kleinen Landestation auf der Oberfläche.
+    #[serde(default)]
+    pub outpost_angle: Option<f32>,
+    #[serde(default)]
+    pub rings: bool,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct FieldDef {
+    pub name: String,
+    pub center: P,
+    pub radius: f32,
+    pub count: u32,
+    pub min_radius: f32,
+    pub max_radius: f32,
+    pub ore: Ore,
+    pub ore_chance: f32,
+    pub color: String,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct MeteorZoneDef {
+    pub name: String,
+    pub center: P,
+    pub radius: f32,
+    pub interval: f32,
+    pub speed: P,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct SpinnerDef {
+    pub pos: P,
+    pub arm_length: f32,
+    pub arm_width: f32,
+    pub arms: u32,
+    /// Winkelgeschwindigkeit in Grad pro Sekunde.
+    pub speed: f32,
+    pub color: String,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct AnomalyDef {
+    pub name: String,
+    pub pos: P,
+    pub radius: f32,
+    pub core_radius: f32,
+    pub strength: f32,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct RegionDef {
+    pub name: String,
+    pub center: P,
+    pub radius: f32,
+    pub colors: (String, String),
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct BackdropDef {
+    pub pos: P,
+    pub depth: f32,
+    pub radius: f32,
+    pub colors: Vec<String>,
+    #[serde(default)]
+    pub rings: bool,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct WorldDef {
+    pub seed: u64,
+    pub radius: f32,
+    pub start_station: String,
+    pub stations: Vec<StationDef>,
+    pub planets: Vec<PlanetDef>,
+    pub asteroid_fields: Vec<FieldDef>,
+    pub meteor_zones: Vec<MeteorZoneDef>,
+    pub spinners: Vec<SpinnerDef>,
+    pub anomalies: Vec<AnomalyDef>,
+    pub regions: Vec<RegionDef>,
+    pub backdrop: Vec<BackdropDef>,
+    pub distress_sites: Vec<P>,
+}
+
+// ---------------------------------------------------------------------------
+// Shop
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+pub enum ServiceEffect {
+    Ammo(u32),
+    ShieldFull,
+    RepairFull,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct ServiceItem {
+    pub id: String,
+    pub name: String,
+    pub price: u32,
+    pub effect: ServiceEffect,
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+pub enum UpgradeEffect {
+    ThrustMul(f32),
+    MaxHull(f32),
+    MaxShield(f32),
+    Cargo(f32),
+    Gyro(f32),
+    MaxAmmo(u32),
+    CraneRange(f32),
+    DrillRate(f32),
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct UpgradeDef {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub price: u32,
+    pub effect: UpgradeEffect,
+    #[serde(default)]
+    pub requires: Option<String>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct ShopDef {
+    pub start_credits: u32,
+    pub respawn_fee: f32,
+    pub services: Vec<ServiceItem>,
+    pub upgrades: Vec<UpgradeDef>,
+    pub ore_prices: Vec<(Ore, u32)>,
+}
+
+impl ShopDef {
+    pub fn ore_price(&self, ore: Ore) -> u32 {
+        self.ore_prices.iter().find(|(o, _)| *o == ore).map(|(_, p)| *p).unwrap_or(5)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Missionen
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct CargoTemplate {
+    pub name: String,
+    pub mass: f32,
+    pub reward: u32,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct MiningTemplate {
+    pub ore: Ore,
+    pub amount: P,
+    pub reward_per_t: f32,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct MissionsDef {
+    pub offers_per_station: u32,
+    pub distress_offers: u32,
+    pub delivery_cargo: Vec<CargoTemplate>,
+    pub reward_per_distance: f32,
+    pub mining: Vec<MiningTemplate>,
+    pub tow_reward: P,
+    pub capsule_reward: P,
+    pub capsule_count: (u32, u32),
+    pub derelict_names: Vec<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Spielstand der Crew
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CrewSave {
+    pub version: u32,
+    pub credits: u32,
+    pub upgrades: Vec<String>,
+    pub owned_ships: Vec<String>,
+    pub current_ship: String,
+    pub home_station: String,
+    pub missions_done: u32,
+    pub ore_sold: f32,
+}
+
+impl CrewSave {
+    pub fn new_game(data: &GameData) -> Self {
+        CrewSave {
+            version: 1,
+            credits: data.shop.start_credits,
+            upgrades: Vec::new(),
+            owned_ships: vec![data.ships[0].id.clone()],
+            current_ship: data.ships[0].id.clone(),
+            home_station: data.world.start_station.clone(),
+            missions_done: 0,
+            ore_sold: 0.0,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Laden
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug)]
+pub struct GameData {
+    pub ships: Vec<ShipDef>,
+    pub world: WorldDef,
+    pub shop: ShopDef,
+    pub missions: MissionsDef,
+}
+
+const SHIPS_RON: &str = include_str!("../../assets/data/ships.ron");
+const WORLD_RON: &str = include_str!("../../assets/data/world.ron");
+const SHOP_RON: &str = include_str!("../../assets/data/shop.ron");
+const MISSIONS_RON: &str = include_str!("../../assets/data/missions.ron");
+
+fn read_or(name: &str, embedded: &str) -> String {
+    let path = std::path::Path::new("assets/data").join(name);
+    std::fs::read_to_string(path).unwrap_or_else(|_| embedded.to_string())
+}
+
+fn parse<T: for<'de> Deserialize<'de>>(name: &str, text: &str) -> Result<T, String> {
+    ron::from_str(text).map_err(|e| format!("{name}: {e}"))
+}
+
+impl GameData {
+    /// Lädt die Daten aus `assets/data` (falls vorhanden) oder aus der eingebetteten Kopie.
+    pub fn load() -> Result<Self, String> {
+        let data = GameData {
+            ships: parse("ships.ron", &read_or("ships.ron", SHIPS_RON))?,
+            world: parse("world.ron", &read_or("world.ron", WORLD_RON))?,
+            shop: parse("shop.ron", &read_or("shop.ron", SHOP_RON))?,
+            missions: parse("missions.ron", &read_or("missions.ron", MISSIONS_RON))?,
+        };
+        data.validate()?;
+        Ok(data)
+    }
+
+    /// Nur die eingebetteten Daten (für Tests, unabhängig vom Arbeitsverzeichnis).
+    pub fn embedded() -> Result<Self, String> {
+        let data = GameData {
+            ships: parse("ships.ron", SHIPS_RON)?,
+            world: parse("world.ron", WORLD_RON)?,
+            shop: parse("shop.ron", SHOP_RON)?,
+            missions: parse("missions.ron", MISSIONS_RON)?,
+        };
+        data.validate()?;
+        Ok(data)
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if self.ships.is_empty() {
+            return Err("ships.ron: keine Schiffe".into());
+        }
+        for s in &self.ships {
+            if s.max_thrusters() < s.min_thrusters {
+                return Err(format!("Schiff {}: zu wenige Triebwerke", s.id));
+            }
+        }
+        for st in &self.world.stations {
+            let w = st.layout.first().map(|r| r.chars().count()).unwrap_or(0);
+            if st.layout.iter().any(|r| r.chars().count() != w) {
+                return Err(format!("Station {}: Layout-Zeilen unterschiedlich lang", st.id));
+            }
+        }
+        if self.station_index(&self.world.start_station).is_none() {
+            return Err("world.ron: start_station unbekannt".into());
+        }
+        Ok(())
+    }
+
+    pub fn ship(&self, id: &str) -> &ShipDef {
+        self.ships.iter().find(|s| s.id == id).unwrap_or(&self.ships[0])
+    }
+
+    pub fn station_index(&self, id: &str) -> Option<usize> {
+        self.world.stations.iter().position(|s| s.id == id)
+    }
+
+    pub fn upgrade(&self, id: &str) -> Option<&UpgradeDef> {
+        self.shop.upgrades.iter().find(|u| u.id == id)
+    }
+}
