@@ -2,9 +2,7 @@
 
 use bevy::prelude::*;
 
-use super::{
-    ACCENT, BAD, BG, BORDER, GOOD, MUTED, Signature, TEAL, TEXT, WARN, chip, fmt_num, text,
-};
+use super::{ACCENT, BAD, BG, BORDER, GOOD, MUTED, Signature, TEAL, TEXT, WARN, fmt_num, text};
 use crate::game::{AppState, GameCamera, MapOpen, Paused, Sim};
 use crate::input::{ActiveBindings, Crew};
 use crate::render::{slot_color, srgb};
