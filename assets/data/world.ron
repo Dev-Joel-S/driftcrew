@@ -196,6 +196,30 @@
                 ],
             )),
         ),
+        (
+            // Schmugglernest im Schleiernebel: der Andockport ist gesichert. Wer anfliegt,
+            // muss ein Muster aus Slot-Tasten eingeben (hack); ein Fehler löst einen
+            // Störimpuls aus. Dafür zahlt man hier gut für Ionit, Solarit und Schrott.
+            id: "nebelhafen",
+            name: "Nebelhafen",
+            kind: Outpost,
+            pos: (1640.0, -1420.0),
+            cell: 4.0,
+            main_color: "#3a3550",
+            accent_color: "#ff4fa3",
+            services: [Fuel, Repair, Missions, Market],
+            prices: (ore: [(Ionit, 1.6), (Solarit, 1.45), (Schrott, 1.5), (Kobalt, 1.1)], fuel: 1.6, service: 1.35, dock: 0.0),
+            known: false,
+            hack: Some((length: 5, time: 9.0, lockout: 30.0, open: 600.0)),
+            layout: [
+                "....X#L#X....",
+                "....#WWW#....",
+                "..^^^#W#^^^..",
+                "XX#########XX",
+                ".....#W#.....",
+                "......L......",
+            ],
+        ),
     ],
     planets: [
         (

@@ -20,6 +20,11 @@
     ],
     places: [
         (
+            at: "nebelhafen", speaker: "Nebelhafen",
+            approach: ["Nebelhafen: Hier draußen fragt keiner nach Frachtpapieren."],
+            docked: ["Nebelhafen: Drin. Ihr habt nichts gesehen, wir haben euch nicht gesehen."],
+        ),
+        (
             at: "kepler", speaker: "Kepler-Turm",
             approach: ["Kepler-Turm: Vorsicht, der Rotor dreht. Er dreht immer."],
             docked: ["Kepler-Turm: Hier draußen zählt jede Lieferung. Danke, {ship}."],

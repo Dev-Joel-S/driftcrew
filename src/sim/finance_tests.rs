@@ -59,6 +59,7 @@ fn delivery(s: &mut SimState, to: usize, reward: u32) -> u32 {
         giver: None,
         start: Some(Box::new(s.stats.clone())),
         top_speed: 0.0,
+        max_strain: None,
         // Keine Boni, damit die Rechnung übersichtlich bleibt: Richtzeit schon vorbei und
         // ein Kratzer (kein Sauberkeitsbonus).
         par: -1.0,

@@ -540,6 +540,7 @@ fn rules_scene() -> Vec<(f32, Act)> {
                 giver: None,
                 start: None,
                 top_speed: 0.0,
+                max_strain: None,
                 par,
             });
             c.pending.0.push(Command::AcceptMission { id });
@@ -869,6 +870,7 @@ fn courses_scene() -> Vec<(f32, Act)> {
                 giver: None,
                 start: Some(Box::new(s.stats.clone())),
                 top_speed: 0.0,
+                max_strain: None,
                 par: 420.0,
             });
             let p = crate::sim::data::v(s.data.courses.survey_sites[site].pos);
@@ -927,6 +929,7 @@ fn courses_scene() -> Vec<(f32, Act)> {
                 giver: None,
                 start: Some(Box::new(s.stats.clone())),
                 top_speed: 0.0,
+                max_strain: None,
                 par: 300.0,
             });
             let ci = s
@@ -1056,6 +1059,7 @@ fn finance_scene() -> Vec<(f32, Act)> {
                 giver: None,
                 start: Some(Box::new(start)),
                 top_speed: 0.0,
+                max_strain: None,
                 par: 220.0,
             });
             let pad = s.world.stations[nova].pads[2];
@@ -1065,6 +1069,188 @@ fn finance_scene() -> Vec<(f32, Act)> {
         }),
         (12.4, |c| shot(c, "abrechnung")),
         (13.4, |_| {}),
+    ]
+}
+
+/// Phase 10: Triebwerk im Takt flicken, Notreparatur der Hülle, Andockport hacken,
+/// Ersatzteil mit dem Kran einsetzen.
+fn minigame_scene() -> Vec<(f32, Act)> {
+    vec![
+        (0.5, |c| {
+            keyboard_crew(c, false);
+            c.next.set(AppState::Playing);
+        }),
+        (2.0, |c| {
+            teleport(c, Vec2::new(-300.0, -260.0), 0.0, 0.0);
+            let s = &mut c.sim.0;
+            s.ship.thrusters[0].health = 0.0;
+            s.repair.thrusters = vec![0.0; s.ship.thrusters.len()];
+            s.repair.thrusters[0] = 3.0 / crate::sim::minigame::PATCH_HITS;
+            let slot = s.ship.thrusters[0].slot;
+            s.repair.beats = vec![
+                crate::sim::minigame::Beat {
+                    slot,
+                    hit: true,
+                    age: 0.2,
+                },
+                crate::sim::minigame::Beat {
+                    slot,
+                    hit: false,
+                    age: 0.5,
+                },
+                crate::sim::minigame::Beat {
+                    slot,
+                    hit: true,
+                    age: 0.9,
+                },
+            ];
+            s.ship.vel = Vec2::new(0.8, 0.2);
+        }),
+        (4.8, |c| {
+            let s = &mut c.sim.0;
+            let slot = s.ship.thrusters[0].slot;
+            s.repair.beats = vec![
+                crate::sim::minigame::Beat {
+                    slot,
+                    hit: true,
+                    age: 0.6,
+                },
+                crate::sim::minigame::Beat {
+                    slot,
+                    hit: false,
+                    age: 0.4,
+                },
+                crate::sim::minigame::Beat {
+                    slot,
+                    hit: true,
+                    age: 0.1,
+                },
+            ];
+        }),
+        (5.0, |c| shot(c, "takt_triebwerk")),
+        (5.8, |c| {
+            // Notreparatur: Hülle angeschlagen, Schiff ruht, die Crew tippt im Takt.
+            teleport(c, Vec2::new(-300.0, -260.0), 0.0, 0.0);
+            let s = &mut c.sim.0;
+            s.ship.thrusters[0].health = 1.0;
+            s.ship.hull = s.ship.max_hull * 0.38;
+            s.repair.active = true;
+            s.repair.held = vec![0.0; crate::sim::MAX_SLOTS];
+            let a = s.ship.thrusters[1].slot;
+            let b = s.ship.thrusters[3].slot;
+            let t = s.ship.tools[0].slot;
+            s.repair.beats = vec![
+                crate::sim::minigame::Beat {
+                    slot: a,
+                    hit: true,
+                    age: 0.1,
+                },
+                crate::sim::minigame::Beat {
+                    slot: b,
+                    hit: true,
+                    age: 0.3,
+                },
+                crate::sim::minigame::Beat {
+                    slot: t,
+                    hit: false,
+                    age: 0.6,
+                },
+                crate::sim::minigame::Beat {
+                    slot: a,
+                    hit: true,
+                    age: 0.8,
+                },
+            ];
+        }),
+        (6.8, |c| {
+            let s = &mut c.sim.0;
+            let a = s.ship.thrusters[1].slot;
+            let b = s.ship.thrusters[3].slot;
+            let t = s.ship.tools[0].slot;
+            s.repair.beats = vec![
+                crate::sim::minigame::Beat {
+                    slot: a,
+                    hit: true,
+                    age: 0.7,
+                },
+                crate::sim::minigame::Beat {
+                    slot: b,
+                    hit: true,
+                    age: 0.5,
+                },
+                crate::sim::minigame::Beat {
+                    slot: t,
+                    hit: false,
+                    age: 0.3,
+                },
+                crate::sim::minigame::Beat {
+                    slot: a,
+                    hit: true,
+                    age: 0.1,
+                },
+            ];
+        }),
+        (7.0, |c| shot(c, "notreparatur")),
+        (7.8, |c| {
+            // Nebelhafen: in Portnähe beginnt der Hack, zwei Tasten sind schon richtig.
+            c.sim.0.repair = Default::default();
+            c.sim.0.ship.hull = c.sim.0.ship.max_hull;
+            let si = station(c, "nebelhafen");
+            let pad = c.sim.0.world.stations[si].pads[1];
+            let p = c.sim.0.world.pads[pad].clone();
+            teleport(c, p.center + p.normal * 13.0, 0.0, 0.0);
+            let s = &mut c.sim.0;
+            s.ship.angle = p.ship_angle();
+            s.ship.prev_angle = s.ship.angle;
+            s.explored.reveal(s.ship.pos, 300.0);
+        }),
+        (8.4, |c| {
+            if let Some(h) = c.sim.0.hack.as_mut() {
+                h.done = 2;
+                h.left = h.total * 0.55;
+            }
+        }),
+        (9.2, |c| shot(c, "port_hacken")),
+        (10.0, |c| {
+            // Ersatzteil mit dem Kran an das ausgefallene Triebwerk halten.
+            c.sim.0.hack = None;
+            teleport(c, Vec2::new(-300.0, -260.0), 0.0, 0.0);
+            let s = &mut c.sim.0;
+            s.ship.thrusters[4].health = 0.0;
+            s.ship.store(
+                crate::sim::ship::CargoKind::Salvage {
+                    name: "Kühlrippe".into(),
+                    value: 40,
+                },
+                0.5,
+            );
+            let crane = s
+                .ship
+                .tools
+                .iter()
+                .position(|t| t.kind == crate::sim::data::ToolKind::Crane)
+                .unwrap_or(0);
+            s.ship.tools[crane].crane = crate::sim::ship::CraneState::Patching {
+                thruster: 4,
+                progress: 0.55,
+            };
+        }),
+        (10.05, |c| {
+            // Kran-Taste gedrückt halten (sonst bricht die Notreparatur ab).
+            let slot = c
+                .sim
+                .0
+                .ship
+                .tools
+                .iter()
+                .find(|t| t.kind == crate::sim::data::ToolKind::Crane)
+                .map(|t| t.slot)
+                .unwrap_or(0);
+            c.slots.0 = 1 << slot;
+        }),
+        (10.5, |c| shot(c, "kran_ersatzteil")),
+        (11.0, |c| c.slots.0 = 0),
+        (11.5, |_| {}),
     ]
 }
 
@@ -1136,6 +1322,7 @@ fn demo_script(
         "rebuild" => rebuild_scene(),
         "courses" => courses_scene(),
         "finance" => finance_scene(),
+        "minigames" => minigame_scene(),
         _ => tour(),
     };
     let mut pad = pads.iter().next();

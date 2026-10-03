@@ -1407,6 +1407,10 @@ pub fn sync_tools(
             CraneState::Extending { len, dir } | CraneState::Retracting { len, dir } => {
                 Some((mount + *dir * *len, None))
             }
+            CraneState::Patching { thruster, .. } => ship
+                .thrusters
+                .get(*thruster)
+                .map(|t| (origin + rot(t.pos, angle), None)),
             CraneState::Attached { body, rope, local } => {
                 sim.0.bodies.iter().find(|b| b.id == *body).map(|b| {
                     let a = b.prev_angle + angle_diff(b.angle, b.prev_angle) * alpha;
@@ -1433,6 +1437,10 @@ pub fn sync_tools(
             CraneState::Extending { len, dir } | CraneState::Retracting { len, dir } => {
                 Some((mount + *dir * *len, *dir))
             }
+            CraneState::Patching { thruster, .. } => ship.thrusters.get(*thruster).map(|t| {
+                let p = origin + rot(t.pos, angle);
+                (p, (p - mount).normalize_or_zero())
+            }),
             _ => None,
         };
         match tip {

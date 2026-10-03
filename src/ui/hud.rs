@@ -697,7 +697,21 @@ fn update_slots(
         .iter()
         .map(|t| if t.failed() { 2 } else { t.stuttering() as u8 })
         .collect();
-    let key = format!("{:?}|{}|{:?}|{:?}", active.0, ship.slot_count, labels, wear);
+    // Bohren: Ruhe der Zielhand in drei Stufen (ruhig, normal, zittrig).
+    let steady: Vec<i8> = ship
+        .tools
+        .iter()
+        .map(|t| match &t.drill {
+            Some(d) if d.steady >= 1.12 => 1,
+            Some(d) if d.steady <= 0.9 => -1,
+            Some(_) => 0,
+            None => 2,
+        })
+        .collect();
+    let key = format!(
+        "{:?}|{}|{:?}|{:?}|{:?}",
+        active.0, ship.slot_count, labels, wear, steady
+    );
     let h = super::sig_of(&key);
     if sig.0 != h {
         sig.0 = h;
@@ -770,6 +784,33 @@ fn update_slots(
                                 st.spawn((text(label, 10.0, col), Pickable::IGNORE));
                             });
                         }
+                    }
+                    if let Some(d) = ship
+                        .tools
+                        .iter()
+                        .find(|t| t.slot == b.slot)
+                        .and_then(|t| t.drill.as_ref())
+                    {
+                        let (label, col) = if d.steady >= 1.12 {
+                            ("ruhige Hand ▲", GOOD)
+                        } else if d.steady <= 0.9 {
+                            ("zittrig ▼", WARN)
+                        } else {
+                            ("bohrt", TEXT)
+                        };
+                        bx.spawn((
+                            Node {
+                                margin: UiRect::top(Val::Px(2.0)),
+                                padding: UiRect::axes(Val::Px(4.0), Val::Px(0.0)),
+                                border_radius: BorderRadius::all(Val::Px(4.0)),
+                                ..default()
+                            },
+                            BackgroundColor(BG),
+                            Pickable::IGNORE,
+                        ))
+                        .with_children(|st| {
+                            st.spawn((text(label, 10.0, col), Pickable::IGNORE));
+                        });
                     }
                     // Spieler-Abzeichen: gleiche Tasten verschiedener Geräte unterscheidbar.
                     if multi {

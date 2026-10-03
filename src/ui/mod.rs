@@ -4,6 +4,7 @@ pub mod course;
 pub mod hud;
 pub mod lobby;
 pub mod map;
+pub mod minigame;
 pub mod pause;
 pub mod radio;
 pub mod report;
@@ -71,6 +72,7 @@ impl Plugin for UiPlugin {
                 report::ReportPlugin,
                 radio::RadioPlugin,
                 course::CoursePlugin,
+                minigame::MinigamePlugin,
             ));
     }
 }

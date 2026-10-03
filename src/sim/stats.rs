@@ -96,6 +96,9 @@ pub struct MissionReport {
     pub reward: u32,
     pub bonus_time: u32,
     pub bonus_clean: u32,
+    /// Bonus für sanft geführte Last am Kran und die höchste Seilbelastung dabei.
+    pub bonus_gentle: u32,
+    pub max_strain: Option<f32>,
     /// Zufriedenheit der Passagiere (0..1), falls welche an Bord waren.
     pub comfort: Option<f32>,
     /// Richtzeit in Sekunden.
@@ -113,7 +116,7 @@ pub struct MissionReport {
 impl MissionReport {
     /// Einnahmen des Auftrags (Grundbelohnung und Boni).
     pub fn earned(&self) -> u32 {
-        self.reward + self.bonus_time + self.bonus_clean
+        self.reward + self.bonus_time + self.bonus_clean + self.bonus_gentle
     }
     /// Was in die Kasse ging.
     pub fn paid_in(&self) -> u32 {
@@ -210,6 +213,8 @@ mod tests {
             reward: 100,
             bonus_time: 0,
             bonus_clean: 0,
+            bonus_gentle: 0,
+            max_strain: None,
             comfort: None,
             par: 100.0,
             reputation: None,

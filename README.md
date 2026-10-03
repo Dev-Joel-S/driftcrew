@@ -29,7 +29,9 @@ eigener Name, eigener Look, alle Grafiken und Klänge werden beim Start prozedur
 | ![Messflug am Anomalierand](docs/screenshots/messflug.jpg) | ![Lastaufnahme an Kepler](docs/screenshots/lastaufnahme.jpg) |
 | ![Ziel mit Bestenliste](docs/screenshots/parcours_ziel.jpg) | ![Grundkurs: Bremsen](docs/screenshots/training_bremsen.jpg) |
 | ![Schiff auf Kredit](docs/screenshots/werft_kredit.jpg) | ![Markt mit Preistrend und Nachfrage](docs/screenshots/markt_trend.jpg) |
-| ![Abrechnung nach dem Auftrag](docs/screenshots/abrechnung.jpg) | |
+| ![Abrechnung nach dem Auftrag](docs/screenshots/abrechnung.jpg) | ![Triebwerk im Takt flicken](docs/screenshots/takt_triebwerk.jpg) |
+| ![Notreparatur der Hülle](docs/screenshots/notreparatur.jpg) | ![Andockport hacken](docs/screenshots/port_hacken.jpg) |
+| ![Ersatzteil mit dem Kran einsetzen](docs/screenshots/kran_ersatzteil.jpg) | |
 
 *(Screenshots aus dem automatischen Vorführmodus, gerendert mit Software-Vulkan.)*
 
@@ -229,6 +231,28 @@ Station per **Funk**.
 - **Notrufe** – überall annehmbar (Karte mit **Tab**): treibendes Wrack mit dem Kran zur Station
   schleppen oder Rettungskapseln einsammeln und abliefern.
 
+### Minispiele für einzelne Slots
+
+Alles läuft mit den eigenen Slot-Tasten und in der Simulation (also später auch online).
+
+- **Triebwerk im Takt flicken:** Fällt ein Triebwerk aus, ist seine Taste tot – wer den Slot
+  hat, tippt sie im Takt der Leiste unten (grüne Zonen). Acht Treffer, dann läuft es wieder,
+  stottert aber. Das geht auch mitten im Flug, während die anderen steuern.
+- **Notreparatur der Hülle:** Liegt die Hülle unter 75 % und das Schiff ein paar Sekunden ruhig,
+  ohne dass jemand etwas drückt, beginnt die Notreparatur. Dann flicken alle Slot-Tasten im Takt
+  die Hülle (bis 75 %) – mehr Leute, mehr Treffer. Eine Taste lange halten: weiterfliegen.
+- **Ersatzteil mit dem Kran:** Liegt ein Bauteil aus einem Wrack im Frachtraum, richtet die
+  Person am Kran ihn auf das ausgefallene Triebwerk und hält die Taste: das Teil wird eingesetzt,
+  solange Ziel und Schiff ruhig bleiben.
+- **Ruhige Hand beim Bohren:** Je ruhiger gezielt wird, desto mehr Ertrag (bis +25 %, zittrig
+  bis −30 %); die Slot-Leiste zeigt es an. Lasten, die nie hart ans Seil gerissen wurden, bringen
+  einen Bonus („Last sanft geführt“).
+- **Andockport hacken:** Der **Nebelhafen** im Schleiernebel ist ein Schmugglernest mit
+  gesichertem Port. In Portnähe erscheint ein Muster aus Slots – der Reihe nach drücken, jede
+  Person ihren Slot. Ein Fehler oder Zeitablauf löst einen Störimpuls aus (Schild weg, Port eine
+  Weile gesperrt). Geknackt bleibt der Port zehn Minuten offen; drinnen zahlt man gut für Ionit,
+  Solarit und Schrott.
+
 ### Parcours: Training und Zeitrennen
 
 Draußen in der Welt stehen **Tore** mit Pfosten und Leuchtkappen. Wer in Pfeilrichtung durch ein
@@ -301,6 +325,7 @@ Eine offene 2D-Ebene von gut 5 km Durchmesser, dargestellt in 3D (2.5D) mit Para
 - **Splittergürtel** und **Kobaltschwarm** – Asteroidenfelder
 - **Glutstrom** und **Sturzfeld** – Meteoritenschauer
 - **Wrackring** im Schiffsfriedhof – ein langsam drehender Ringfrachter mit zwei Öffnungen
+- **Nebelhafen** im Schleiernebel – Schmugglernest mit gesichertem Andockport
 - **Gravitationsanomalie** im Südosten – wer zu nah kommt, wird hineingezogen
 - **Schlund** im Südwesten – ein Schwarzes Loch mit starkem Sog und Ereignishorizont
 
@@ -333,7 +358,8 @@ in die Binärdatei eingebettet; liegt `assets/data/` im Arbeitsverzeichnis (z. B
   steuert die Zufallsereignisse. `project` beschreibt den Wiederaufbau einer Station in Etappen
   (Raster-Zeichen `1`–`3` = Blöcke, `a`–`c` = Plattformen ab dieser Etappe), `drop_zone` die
   Ablagezone für Bergungsobjekte, `socket` eine Lastaufnahme (Versatz, Richtung der Öffnung).
-  Rotoren können statt Armen ein Ring mit Öffnungen sein (`shape: Ring(...)`). `known: false`
+  Rotoren können statt Armen ein Ring mit Öffnungen sein (`shape: Ring(...)`), `hack` sichert
+  den Andockport (Musterlänge, Zeit, Sperre, Öffnungsdauer). `known: false`
   versteckt eine Station, bis sie entdeckt ist. `wrecks` legt Wracks fest (Modell, Schrott,
   Bauteile). Dazu Asteroidenfelder, Meteoritenzonen, Rotoren, Nebelregionen und Notruf-Orte.
 - `shop.ron` – Services (inkl. Tanken und Triebwerksreparatur), Upgrades, Grundpreise für Erz und
@@ -386,7 +412,7 @@ Damit ist der Weg zu Rollback-Netcode vorbereitet.
 
 **Vorführmodus:** `DRIFTCREW_DEMO=<ordner> DRIFTCREW_SCENE=<szene> cargo run` fliegt ein
 Skript ab, speichert Screenshots und beendet sich. Szenen: `tour`, `ui`, `systems`, `progress`,
-`coop`, `sectors`, `rules`, `rebuild`, `courses`, `finance`.
+`coop`, `sectors`, `rules`, `rebuild`, `courses`, `finance`, `minigames`.
 
 ---
 

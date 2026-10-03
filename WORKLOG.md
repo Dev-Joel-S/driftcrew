@@ -142,7 +142,7 @@ Abgleich mit dem, was schon da ist:
 | 48 | Schwankende Preise | Angebot/Nachfrage je Station: Verkäufe drücken den Preis, er erholt sich langsam; deterministisch, im Spielstand |
 | 49 | Crew-Abrechnung | Auswertung zeigt Einnahmen minus Kosten des Auftrags (Treibstoff, Reparatur, Gebühren); Rest geht in die Kasse |
 
-### Phase 10 – Minispiele für einzelne Slots
+### Phase 10 – Minispiele für einzelne Slots (erledigt, siehe Protokoll)
 
 Laufen in der Simulation (deterministisch, nur Slot-Tasten als Eingabe), damit sie später auch
 online funktionieren.
@@ -209,7 +209,7 @@ Der Rest wird in die bestehenden Phasen einsortiert bzw. bekommt eigene Phasen.
 | 69 | Triebwerks-Übersteuerung mit Hitze | Phase 15 (Zusammenarbeit): eigene Eingabe pro Gerät (z. B. Taste halten + Doppeltipp), Hitze pro Triebwerk, Warnstufen |
 | 70 | Gemeinsame Energiereserve | später (nach 69), Grundfunktionen bleiben immer nutzbar |
 | 71 | Präzisionsarbeit im Flug | **Phase 8b** (deckt auch einen Teil von 36 ab) |
-| 72 | Physische Notfallreparatur mit dem Kran | Phase 10 (Minispiele) als Alternative zum Takt-Spiel |
+| 72 | Physische Notfallreparatur mit dem Kran | **erledigt in Phase 10** (Ersatzteil am Kran) |
 | 73 | Manöveransagen | Phase 15: kurze Signale („Bremsen“, „Schub aus“, „Links drehen“, „Werkzeug bereit“) in Slotfarbe, optionaler Ton, keine Rollen |
 | 74 | Flugmanöver als Missionsziele | **erledigt in Phase 7** (Wrackring, Messflug, Lastaufnahme) |
 | 75 | Stationen sichtbar wiederaufbauen | **Phase 8b** |
@@ -250,6 +250,54 @@ Der Rest wird in die bestehenden Phasen einsortiert bzw. bekommt eigene Phasen.
 ---
 
 ## Protokoll
+
+### Runde 3 – Phase 10: Minispiele für einzelne Slots (erledigt)
+
+Alle Spiele laufen in der Simulation (`sim/minigame.rs`), Eingabe sind nur Slot-Tasten und
+Zielwinkel – deterministisch wie der Rest. Gehört eine Taste gerade einem Minispiel, bekommt die
+Steuerung in diesem Tick eine leere Eingabe (das Schiff treibt einfach weiter).
+
+- **Takt:** ein fester Schlag alle 0,7 s (aus der Simulationszeit), ±0,14 s zählen als Treffer.
+  Die Leiste unten zeigt eine wandernde Marke und die grünen Zonen an den Enden, darunter die
+  letzten Tastendrücke in Slotfarbe (✓/✕).
+- **35 Triebwerk im Takt flicken:** Ein ausgefallenes Triebwerk hat eine tote Taste – genau die
+  wird zum Reparaturknopf. Acht Treffer (Fehlgriffe kosten einen halben) setzen den Zustand auf
+  0,45: es läuft wieder, stottert aber. Geht im Flug, die anderen steuern weiter.
+- **35 Notreparatur der Hülle:** Hülle unter 75 %, Schiff ruhig (unter 0,6 m/s, kaum Drehung)
+  und 3 s lang keine Taste gedrückt → Notreparatur. Dann ist jede Slot-Taste ein Hammer: Treffer
+  +2 Hülle, höchstens bis 75 % („den Rest macht die Station“); ausgefallene Triebwerke lassen
+  sich dabei mit ihrer eigenen Taste flicken. Eine Taste 0,45 s halten beendet die Notreparatur
+  und wirkt sofort normal – so kommt niemand in einer Lage fest, in der Tippen nicht schiebt.
+  Entscheidung: Auslösen durch Ruhe statt durch eine eigene Taste, weil alle festen Tasten schon
+  vergeben sind und jede freie Taste ein Slot sein kann.
+- **36 Präzisionsarbeit:** `Tool::jitter` misst, wie schnell sich der Zielwinkel dreht
+  (geglättet). Der Bohrertrag hängt davon ab: ruhig ×1,25, zittrig bis ×0,7
+  (`steady_factor`); die Slot-Leiste zeigt „ruhige Hand ▲“ bzw. „zittrig ▼“. Beim Kran zählt
+  `Mission::max_strain` die höchste Seilbelastung, solange die Last des Auftrags (Schwerlast,
+  Bergung, Abschleppen) am Haken hing; unter 55 % gibt es den Bonus „Last sanft geführt“
+  (10 %), sonst steht in der Auswertung, wie hoch das Seil belastet war. Zusammen mit
+  Erzadern und Wrackbolzen aus Phase 8b ist Punkt 36 damit abgedeckt.
+- **38 Andockport hacken:** neue Station **Nebelhafen** (Schmugglernest im Schleiernebel, erst
+  nach Entdeckung auf der Karte, Hehlerin Vex Moreau, hohe Preise für Ionit/Solarit/Schrott,
+  keine Dockgebühr). `hack` in `world.ron`: Ohne Hack bietet der Port keine Plattform an. In
+  30 m Nähe (langsamer als 5 m/s) beginnt der Hack: ein Muster aus fünf belegten Slots, nie
+  derselbe zweimal hintereinander, 9 s Zeit. Jede Person drückt ihren Slot in der Reihenfolge.
+  Fehler oder Zeit um → Störimpuls (Schild auf 0, Nachladen beginnt neu), Port 30 s gesperrt.
+  Geschafft → Port 10 Minuten offen. Wegfliegen bricht ohne Alarm ab.
+- **72 Ersatzteil mit dem Kran:** `CraneState::Patching`. Liegt ein Bauteil (aus einem Wrack)
+  im Frachtraum und zielt der Kran beim Drücken auf ein ausgefallenes Triebwerk (±15°, in
+  Reichweite), fährt er das Teil dorthin statt auszufahren. Taste halten, Ziel halten, nicht
+  kreiseln: nach 2,5 s ist das Teil verbaut und das Triebwerk läuft eingeschränkt (0,45).
+  Abweichen lässt den Fortschritt wieder sinken, Loslassen bricht ab. Im Bild: rote Ringe an
+  ausgefallenen Triebwerken, grüner Fortschrittsbogen beim Einsetzen.
+- Töne: Treffer im Takt (Blip), daneben (Klick), geflickt/Port offen (Klonk), Alarm über die
+  rote Meldung.
+- Vorführszene `DRIFTCREW_SCENE=minigames`.
+- Tests: 94 grün, neu in `minigame_tests.rs`: Triebwerk im Takt (daneben zählt nicht, Taste
+  schiebt nicht, nach acht Treffern geflickt), Notreparatur (Ruhe startet sie, Treffer flicken,
+  Tippen schiebt nicht, Halten beendet, Obergrenze 75 %), Hack (Port gesperrt bis geknackt,
+  Muster ohne Doppel, Tasten steuern nicht), falsche Taste → Alarm und Sperre, Zeit abgelaufen,
+  Ersatzteil am Kran (ohne Teil normaler Kran), ruhige Hand bohrt mehr, Bonus für sanfte Last.
 
 ### Runde 3 – Phase 9: Finanzen (erledigt)
 

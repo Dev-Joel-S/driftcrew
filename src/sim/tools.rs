@@ -100,6 +100,9 @@ impl SimState {
                 t.prev_pressed = t.pressed;
                 t.pressed = !voting && input.pressed(t.slot);
                 if let Some(a) = input.aims.get(t.slot as usize) {
+                    // Ruhe der Zielhand: wie schnell sich der Zielwinkel dreht (geglättet).
+                    let turn = angle_diff(*a, t.aim).abs() / DT;
+                    t.jitter += (turn.min(20.0) - t.jitter) * 0.06;
                     t.aim = *a;
                 }
                 t.cooldown = (t.cooldown - DT).max(0.0);
@@ -184,11 +187,40 @@ impl SimState {
         let state = self.ship.tools[i].crane.clone();
         let next = match state {
             CraneState::Idle => {
-                if just {
+                if just && let Some(ti) = self.crane_patch_target(i) {
+                    // Ersatzteil an Bord und Kran zeigt auf ein ausgefallenes Triebwerk.
+                    CraneState::Patching {
+                        thruster: ti,
+                        progress: 0.0,
+                    }
+                } else if just {
                     self.events.push(SimEvent::CraneFire);
                     CraneState::Extending { len: 0.5, dir: aim }
                 } else {
                     CraneState::Idle
+                }
+            }
+            CraneState::Patching { thruster, progress } => {
+                if !self.ship.tools[i].pressed {
+                    CraneState::Idle
+                } else {
+                    // Ruhig auf der Stelle halten: Kran zielt weiter aufs Triebwerk, kein Kreiseln.
+                    let on = self.crane_patch_target(i) == Some(thruster)
+                        && self.ship.ang_vel.abs() < 0.6;
+                    let step = DT / super::minigame::CRANE_PATCH_TIME;
+                    let progress = if on {
+                        progress + step
+                    } else {
+                        (progress - 1.5 * step).max(0.0)
+                    };
+                    if progress >= 1.0 {
+                        if self.use_spare_part() {
+                            self.finish_thruster_patch(thruster, "mit Ersatzteil instand gesetzt");
+                        }
+                        CraneState::Idle
+                    } else {
+                        CraneState::Patching { thruster, progress }
+                    }
                 }
             }
             CraneState::Extending { len, dir } => {
@@ -517,7 +549,9 @@ impl SimState {
         let point = mount + dir * t;
         // Rückstoß des Bohrers.
         self.ship.apply_impulse(-dir * 3.0 * DT, mount);
-        let rate = self.ship.drill_rate * DT;
+        // Ruhige Hand bringt mehr Ertrag, Zittern weniger (Punkt 36).
+        let steady = super::ship::steady_factor(self.ship.tools[i].jitter);
+        let rate = self.ship.drill_rate * DT * steady;
         let free = (self.ship.cargo_capacity() - self.ship.cargo_mass()).max(0.0);
         let mut mined_ore = None;
         let mut mined_amt = 0.0;
@@ -592,6 +626,7 @@ impl SimState {
         self.ship.tools[i].drill = Some(DrillHit {
             point,
             ore: mined_ore,
+            steady,
         });
     }
 

@@ -345,6 +345,7 @@ fn survey_mission(s: &mut SimState, sites: Vec<usize>) -> u32 {
         giver: None,
         start: Some(Box::new(s.stats.clone())),
         top_speed: 0.0,
+        max_strain: None,
         par: 300.0,
     });
     id
@@ -456,6 +457,7 @@ fn haul_to_socket_station_completes_only_when_set_in_and_released() {
         giver: None,
         start: Some(Box::new(s.stats.clone())),
         top_speed: 0.0,
+        max_strain: None,
         par: 300.0,
     });
     // Neben der Station, aber nicht in der Aufnahme: früher hätte das gereicht, jetzt nicht.

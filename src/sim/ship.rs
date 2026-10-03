@@ -117,12 +117,19 @@ pub enum CraneState {
         rope: f32,
         local: Vec2,
     },
+    /// Notreparatur: der Kran hält ein Ersatzteil an ein ausgefallenes Triebwerk.
+    Patching {
+        thruster: usize,
+        progress: f32,
+    },
 }
 
 #[derive(Clone, Debug)]
 pub struct DrillHit {
     pub point: Vec2,
     pub ore: Option<Ore>,
+    /// Ertragsfaktor durch die Zielhand (siehe [`steady_factor`]).
+    pub steady: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -139,6 +146,14 @@ pub struct Tool {
     pub drill: Option<DrillHit>,
     /// Seilbelastung 0..1 (1 = reißt gleich), geglättet für die Anzeige.
     pub strain: f32,
+    /// Wie unruhig die Zielhand ist: geglättete Drehgeschwindigkeit des Zielwinkels (rad/s).
+    pub jitter: f32,
+}
+
+/// Ertragsfaktor beim Bohren je nach Ruhe der Zielhand: ruhig mehr, zittrig weniger.
+pub fn steady_factor(jitter: f32) -> f32 {
+    let k = ((jitter - 0.25) / 1.75).clamp(0.0, 1.0);
+    1.25 - 0.55 * k
 }
 
 impl Tool {
@@ -296,6 +311,7 @@ impl Ship {
                 cooldown: 0.0,
                 crane: CraneState::Idle,
                 drill: None,
+                jitter: 0.0,
                 strain: 0.0,
             });
             slot += 1;

@@ -45,6 +45,14 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - Solo: z. B. zwei Joy-Cons, linker steuert die linke Seite, rechter die rechte
 - Slots können während des Spiels neu verteilt werden (z. B. wenn jemand ausfällt)
 
+## Minispiele für einzelne Slots
+
+- Laufen in der Simulation und nur mit den Slot-Tasten
+- **Reparatur im Takt:** ausgefallenes Triebwerk mit der eigenen (toten) Taste flicken, auch im Flug; **Notreparatur** der Hülle bis 75 %, wenn das Schiff ruht – dann flicken alle Slots im Takt, lange halten = weiterfliegen
+- **Ersatzteil mit dem Kran** an ein ausgefallenes Triebwerk setzen und ruhig halten (eingeschränkte Funktion, volle Reparatur an der Station)
+- **Ruhige Hand:** Bohrertrag hängt von der Zielhand ab, sanft geführte Lasten bringen einen Bonus
+- **Andockport hacken** (Schmugglernest): Muster aus Slot-Tasten, jede Person ihren Slot; Fehler lösen einen Störimpuls aus
+
 ## Schiffe
 
 - Schiffe werden als **Daten** beschrieben, nicht im Code: Liste von Teilen mit Position, Richtung, Masse, Typ und Parametern (z. B. Schubstärke)

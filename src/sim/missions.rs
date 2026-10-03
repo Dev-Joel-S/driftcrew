@@ -14,6 +14,8 @@ pub const MAX_ACTIVE: usize = 4;
 pub const COMFORT_ACCEL: f32 = 10.0;
 /// Kollisionsradius einer Schwerlastkiste.
 pub const CRATE_RADIUS: f32 = 1.5;
+/// Seilbelastung, unter der eine Last als „sanft geführt“ gilt (Bonus).
+pub const GENTLE_STRAIN: f32 = 0.55;
 /// Lastaufnahme: so ruhig und so lange muss die Kiste darin liegen.
 pub const SOCKET_MAX_SPEED: f32 = 0.5;
 pub const SOCKET_SETTLE: f32 = 1.0;
@@ -95,6 +97,8 @@ pub struct Mission {
     /// Statistikstand bei Annahme (für die Auswertung).
     pub start: Option<Box<CrewStats>>,
     pub top_speed: f32,
+    /// Höchste Seilbelastung, solange die Last des Auftrags am Kran hing (None = nie).
+    pub max_strain: Option<f32>,
     /// Richtzeit in Sekunden (Zeitbonus, wenn schneller).
     pub par: f32,
 }
@@ -643,6 +647,7 @@ impl SimState {
             giver,
             start: None,
             top_speed: 0.0,
+            max_strain: None,
             par,
         }
     }
@@ -723,6 +728,7 @@ impl SimState {
             giver,
             start: None,
             top_speed: 0.0,
+            max_strain: None,
             par,
         }
     }
@@ -778,6 +784,7 @@ impl SimState {
             giver: None,
             start: None,
             top_speed: 0.0,
+            max_strain: None,
             par,
         }
     }
@@ -1041,7 +1048,12 @@ impl SimState {
         } else {
             0
         };
-        let earned = base + bonus_time + bonus_clean;
+        // Kranarbeit mit ruhiger Hand (Punkt 36): die Last nie hart ans Seil gerissen.
+        let bonus_gentle = match m.max_strain {
+            Some(k) if k < GENTLE_STRAIN => round5(base as f32 * md.clean_bonus),
+            _ => 0,
+        };
+        let earned = base + bonus_time + bonus_clean + bonus_gentle;
         // Abrechnung: Versicherungsprämie und Kreditrate gehen ab, der Rest in die Kasse.
         let (premium, installment) = self.settle_mission(earned);
         let paid = earned - premium - installment;
@@ -1097,6 +1109,8 @@ impl SimState {
             reward: base,
             bonus_time,
             bonus_clean,
+            bonus_gentle,
+            max_strain: m.max_strain,
             comfort,
             par: m.par,
             reputation,

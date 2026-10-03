@@ -21,6 +21,9 @@ pub mod finance;
 mod finance_tests;
 pub mod geom;
 pub mod hazards;
+pub mod minigame;
+#[cfg(test)]
+mod minigame_tests;
 pub mod missions;
 pub mod physics;
 pub mod precision;
@@ -219,6 +222,16 @@ pub enum SimEvent {
     SurveyField {
         pos: Vec2,
     },
+    /// Minispiele: Tastendruck im Takt (getroffen?), Triebwerk geflickt, Hack, Alarm.
+    Beat {
+        hit: bool,
+    },
+    Patched {
+        slot: u8,
+    },
+    HackStarted,
+    HackDone,
+    Alarm,
 }
 
 /// Markierung eines Crewmitglieds (Ping), verblasst nach [`PING_SECONDS`].
@@ -475,6 +488,13 @@ pub struct SimState {
     pub demand_timer: f32,
     /// Wo und wann zuletzt Dockgebühr gezahlt wurde.
     pub last_dock_fee: Option<(usize, f32)>,
+    /// Minispiele: Slot-Tasten im letzten Tick, Notreparatur, laufender Hack, bis wann ein
+    /// gesicherter Port offen ist und bis wann er nach einem Fehler gesperrt bleibt.
+    pub prev_slots: u32,
+    pub repair: minigame::Repair,
+    pub hack: Option<minigame::Hack>,
+    pub unlocked: Vec<f32>,
+    pub hack_lockout: Vec<f32>,
 }
 
 impl SimState {
@@ -520,6 +540,7 @@ impl SimState {
         let stats = economy::stats_for(&data, &crew.upgrades);
         let ship = Ship::build(data.ship(&crew.current_ship), &loadout, &stats);
         let n_zones = data.world.meteor_zones.len();
+        let n_stations = data.world.stations.len();
         let n_fields = data.world.asteroid_fields.len();
         let mut s = SimState {
             data,
@@ -565,6 +586,11 @@ impl SimState {
             demand: None,
             demand_timer: 0.0,
             last_dock_fee: None,
+            prev_slots: 0,
+            repair: minigame::Repair::default(),
+            hack: None,
+            unlocked: vec![0.0; n_stations],
+            hack_lockout: vec![0.0; n_stations],
         };
         s.load_projects(save);
         s.load_records(save);
@@ -690,6 +716,14 @@ impl SimState {
 
         if self.ship.destroyed {
             self.update_respawn();
+        } else if self.update_minigames(input) {
+            // Slot-Tasten gehören gerade einem Minispiel: das Schiff treibt.
+            let idle = TickInput {
+                slots: 0,
+                aims: input.aims.clone(),
+                commands: Vec::new(),
+            };
+            self.apply_input(&idle);
         } else {
             self.apply_input(input);
         }
@@ -819,8 +853,27 @@ impl SimState {
         self.prev_vel = self.ship.vel;
         let spin = self.ship.ang_vel.abs();
         let flying = self.ship.docked.is_none();
+        // Seilbelastung pro Auftrag, solange dessen Last am Kran hängt.
+        let hooked: Vec<(u32, f32)> = self
+            .ship
+            .tools
+            .iter()
+            .filter_map(|t| match t.crane {
+                ship::CraneState::Attached { body, .. } => Some((body, t.strain)),
+                _ => None,
+            })
+            .collect();
         for m in &mut self.active {
             m.top_speed = m.top_speed.max(speed);
+            let body = match m.kind {
+                missions::MissionKind::Haul { body, .. }
+                | missions::MissionKind::Bulky { body, .. }
+                | missions::MissionKind::Tow { body, .. } => body,
+                _ => None,
+            };
+            if let Some(&(_, k)) = body.and_then(|b| hooked.iter().find(|(h, _)| *h == b)) {
+                m.max_strain = Some(m.max_strain.unwrap_or(0.0).max(k));
+            }
             if let missions::MissionKind::Passengers { comfort, .. } = &mut m.kind
                 && flying
             {

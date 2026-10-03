@@ -302,6 +302,7 @@ fn heavy_haul_is_towed_and_completes_at_target() {
         giver: None,
         start: None,
         top_speed: 0.0,
+        max_strain: None,
         par: 600.0,
     });
     s.step(&TickInput {

@@ -413,6 +413,18 @@ pub struct StationDef {
     /// (Versatz zur Stationsmitte, Richtung der Öffnung in Grad, 0 = +x).
     #[serde(default)]
     pub socket: Option<(P, f32)>,
+    /// Gesicherter Andockport: erst nach einem Hack (Tastenmuster der Slots) anfliegbar.
+    #[serde(default)]
+    pub hack: Option<HackDef>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct HackDef {
+    /// Länge des Musters, Zeit dafür (s), Sperre nach einem Fehler (s), wie lange offen (s).
+    pub length: u32,
+    pub time: f32,
+    pub lockout: f32,
+    pub open: f32,
 }
 
 /// Wiederaufbau einer Station.

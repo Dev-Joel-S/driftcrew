@@ -98,4 +98,14 @@
             "Im Wrackring misst man am besten genau in der Mitte. Wenn man reinkommt.",
         ],
     ),
+    (
+        id: "vex", name: "Vex Moreau", role: "Hehlerin", at: "nebelhafen",
+        gives: [Delivery, Haul],
+        look: (skin: "#d1a07e", hair: "#7a1f4d", suit: "#2b2838"),
+        lines: [
+            "Wer reinkommt, ohne Alarm auszulösen, kriegt hier gute Preise.",
+            "Ionit kaufe ich zu jedem Kurs. Fragen stelle ich keine.",
+            "Der Port merkt sich nicht, wer ihr seid. Nur, ob ihr die Reihenfolge könnt.",
+        ],
+    ),
 ]

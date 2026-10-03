@@ -320,6 +320,11 @@ fn play_event_sounds(
             SimEvent::VoteStarted | SimEvent::MissionAccepted { .. } => {
                 one_shot(&mut commands, &s.blip, 0.4)
             }
+            // Minispiele: Takt getroffen klickt hell, daneben dumpf; geflickt und Port offen klingen.
+            SimEvent::Beat { hit: true } => one_shot(&mut commands, &s.blip, 0.35),
+            SimEvent::Beat { hit: false } => one_shot(&mut commands, &s.click, 0.4),
+            SimEvent::Patched { .. } | SimEvent::HackDone => one_shot(&mut commands, &s.clank, 0.6),
+            SimEvent::HackStarted => one_shot(&mut commands, &s.blip, 0.5),
             SimEvent::Toast {
                 kind: crate::sim::ToastKind::Bad,
                 ..

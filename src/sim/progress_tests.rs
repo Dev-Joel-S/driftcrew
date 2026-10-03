@@ -598,6 +598,7 @@ fn passengers_pay_by_comfort_and_bonuses_apply() {
         giver: None,
         start: None,
         top_speed: 0.0,
+        max_strain: None,
         par,
     });
     cmd(&mut s, Command::AcceptMission { id });
@@ -819,6 +820,7 @@ fn bulky_salvage_needs_the_drop_zone_and_a_capable_ship() {
         giver: None,
         start: None,
         top_speed: 0.0,
+        max_strain: None,
         par,
     });
     cmd(&mut s, Command::AcceptMission { id });

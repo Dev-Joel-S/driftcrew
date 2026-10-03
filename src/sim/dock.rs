@@ -82,6 +82,12 @@ impl SimState {
             if !pad.enabled {
                 continue;
             }
+            // Gesicherter Port: erst hacken.
+            if let Owner::Station(si) = pad.owner
+                && self.port_locked(si)
+            {
+                continue;
+            }
             let rel = self.ship.pos - pad.center;
             let dist = rel.length();
             if dist > 28.0 || best.is_some_and(|b| b.distance < dist) {

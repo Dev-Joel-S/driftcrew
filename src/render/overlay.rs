@@ -27,6 +27,7 @@ impl Plugin for OverlayPlugin {
                 draw_precision_marks,
                 draw_courses,
                 draw_survey_and_sockets,
+                draw_repair_marks,
             )
                 .run_if(in_state(AppState::Playing)),
         );
@@ -559,6 +560,47 @@ fn draw_survey_and_sockets(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mu
                 }
             }
             _ => {}
+        }
+    }
+}
+
+/// Ausgefallene Triebwerke rot markieren; beim Einsetzen eines Ersatzteils der Fortschritt.
+fn draw_repair_marks(
+    sim: Res<Sim>,
+    time: Res<Time>,
+    fixed: Res<Time<Fixed>>,
+    map: Res<MapOpen>,
+    mut gizmos: Gizmos,
+) {
+    use crate::sim::ship::CraneState;
+    if map.0 {
+        return;
+    }
+    let s = &sim.0;
+    if s.ship.destroyed || s.ship.docked.is_some() {
+        return;
+    }
+    let t = time.elapsed_secs();
+    let (origin, angle) = ship_pose(s, fixed.overstep_fraction());
+    let patching: Option<(usize, f32)> = s.ship.tools.iter().find_map(|tl| match tl.crane {
+        CraneState::Patching { thruster, progress } => Some((thruster, progress)),
+        _ => None,
+    });
+    for (i, th) in s.ship.thrusters.iter().enumerate() {
+        if !th.failed() {
+            continue;
+        }
+        let p = origin + rot(th.pos, angle);
+        let pulse = 0.55 + 0.45 * (t * 5.0).sin();
+        gizmos.circle(
+            Isometry3d::from_translation(p.extend(Z)),
+            0.55,
+            Color::srgba(1.0, 0.25, 0.2, pulse),
+        );
+        if let Some((ti, prog)) = patching
+            && ti == i
+        {
+            arc(&mut gizmos, p, 0.95, prog, Color::srgb(0.35, 1.0, 0.55));
         }
     }
 }

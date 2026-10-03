@@ -173,6 +173,13 @@ fn draw_report(
             if r.bonus_clean > 0 {
                 parts.push(format!("sauber geflogen +{}", r.bonus_clean));
             }
+            match r.max_strain {
+                Some(_) if r.bonus_gentle > 0 => {
+                    parts.push(format!("Last sanft geführt +{}", r.bonus_gentle))
+                }
+                Some(k) => parts.push(format!("Seil bis {:.0} % belastet", k * 100.0)),
+                None => {}
+            }
             p.spawn(text(parts.join("  ·  "), 13.0, TEXT));
             // Crew-Abrechnung: Einnahmen minus Abzüge, und was unterwegs schon bezahlt wurde.
             let mut bill = vec![format!("Einnahmen {}", fmt_num(r.earned()))];
