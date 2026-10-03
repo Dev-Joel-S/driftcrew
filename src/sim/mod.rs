@@ -682,7 +682,7 @@ impl SimState {
             if let missions::MissionKind::Passengers { comfort, .. } = &mut m.kind
                 && flying
             {
-                let loss = (acc - missions::COMFORT_ACCEL).max(0.0).min(400.0) * 0.004
+                let loss = (acc - missions::COMFORT_ACCEL).clamp(0.0, 400.0) * 0.004
                     + (spin - 1.8).max(0.0) * 0.03;
                 *comfort = (*comfort - loss * DT).max(0.0);
             }
