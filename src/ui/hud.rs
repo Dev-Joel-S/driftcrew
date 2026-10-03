@@ -62,6 +62,26 @@ struct MarkerLayer;
 struct CenterText;
 #[derive(Component)]
 struct DockGuideText;
+#[derive(Component)]
+struct DockLights;
+#[derive(Clone, Copy, PartialEq)]
+enum LightKind {
+    Speed,
+    Angle,
+    Spin,
+}
+#[derive(Component)]
+struct LightDot(LightKind);
+#[derive(Component)]
+struct LightText(LightKind);
+
+pub fn light_color(l: crate::sim::dock::Light) -> Color {
+    match l {
+        crate::sim::dock::Light::Green => GOOD,
+        crate::sim::dock::Light::Yellow => WARN,
+        crate::sim::dock::Light::Red => BAD,
+    }
+}
 
 const RADAR: f32 = 210.0;
 const RADAR_RANGE: f32 = 900.0;
@@ -222,7 +242,9 @@ fn spawn_hud(mut commands: Commands) {
                     position_type: PositionType::Absolute,
                     width: Val::Percent(100.0),
                     bottom: Val::Px(150.0),
-                    justify_content: JustifyContent::Center,
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Center,
+                    row_gap: Val::Px(6.0),
                     ..default()
                 },
                 Pickable::IGNORE,
@@ -233,6 +255,45 @@ fn spawn_hud(mut commands: Commands) {
                     DockGuideText,
                     TextLayout::justify(Justify::Center),
                 ));
+                // Ampel: Tempo, Winkel, Drehung
+                c.spawn((
+                    Node {
+                        column_gap: Val::Px(10.0),
+                        padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)),
+                        border_radius: BorderRadius::all(Val::Px(10.0)),
+                        display: Display::None,
+                        ..default()
+                    },
+                    BackgroundColor(BG.with_alpha(0.75)),
+                    DockLights,
+                    Pickable::IGNORE,
+                ))
+                .with_children(|row| {
+                    for kind in [LightKind::Speed, LightKind::Angle, LightKind::Spin] {
+                        row.spawn((
+                            Node {
+                                align_items: AlignItems::Center,
+                                column_gap: Val::Px(6.0),
+                                ..default()
+                            },
+                            Pickable::IGNORE,
+                        ))
+                        .with_children(|it| {
+                            it.spawn((
+                                Node {
+                                    width: Val::Px(14.0),
+                                    height: Val::Px(14.0),
+                                    border_radius: BorderRadius::all(Val::Px(7.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(MUTED),
+                                LightDot(kind),
+                                Pickable::IGNORE,
+                            ));
+                            it.spawn((text("", 15.0, TEXT), LightText(kind), Pickable::IGNORE));
+                        });
+                    }
+                });
             });
             root.spawn((
                 Node {
@@ -391,6 +452,15 @@ fn update_bars(
     }
 }
 
+/// Text in einem Slot-Kästchen (Farbe wechselt beim Drücken).
+#[derive(Component)]
+struct SlotText {
+    slot: u8,
+    accent: bool,
+}
+
+const DARK_TEXT: Color = Color::srgb(0.04, 0.06, 0.1);
+
 fn update_slots(
     mut commands: Commands,
     sim: Res<Sim>,
@@ -398,18 +468,21 @@ fn update_slots(
     crew: Res<Crew>,
     mut strip: Query<(Entity, &mut Signature), With<SlotStrip>>,
     mut boxes: Query<(&SlotBox, &mut BackgroundColor)>,
+    mut texts: Query<(&SlotText, &mut TextColor)>,
 ) {
     let Ok((e, mut sig)) = strip.single_mut() else {
         return;
     };
     let ship = &sim.0.ship;
-    let key = format!("{:?}|{}", active.0, ship.slot_count);
+    let labels: Vec<String> = crew.players.iter().map(|p| p.label.clone()).collect();
+    let key = format!("{:?}|{}|{:?}", active.0, ship.slot_count, labels);
     let h = super::sig_of(&key);
     if sig.0 != h {
         sig.0 = h;
         commands.entity(e).despawn_children();
         let mut list: Vec<_> = active.0.clone();
         list.sort_by_key(|b| b.slot);
+        let multi = crew.players.len() > 1;
         commands.entity(e).with_children(|p| {
             for b in list {
                 let name = if let Some(i) = ship.thrusters.iter().position(|t| t.slot == b.slot) {
@@ -420,11 +493,6 @@ fn update_slots(
                     "?".into()
                 };
                 let c = slot_color(b.slot);
-                let who = if crew.players.len() > 1 {
-                    format!("S{}", b.player + 1)
-                } else {
-                    String::new()
-                };
                 p.spawn((
                     Node {
                         flex_direction: FlexDirection::Column,
@@ -441,19 +509,64 @@ fn update_slots(
                     Pickable::IGNORE,
                 ))
                 .with_children(|bx| {
-                    bx.spawn((text(b.btn.label(), 17.0, TEXT), Pickable::IGNORE));
-                    bx.spawn((text(format!("{name} {who}"), 11.0, c), Pickable::IGNORE));
+                    bx.spawn((
+                        text(b.btn.label(), 17.0, TEXT),
+                        SlotText {
+                            slot: b.slot,
+                            accent: false,
+                        },
+                        Pickable::IGNORE,
+                    ));
+                    bx.spawn((
+                        text(name, 11.0, c),
+                        SlotText {
+                            slot: b.slot,
+                            accent: true,
+                        },
+                        Pickable::IGNORE,
+                    ));
+                    // Spieler-Abzeichen: gleiche Tasten verschiedener Geräte unterscheidbar.
+                    if multi {
+                        let pl = crew.players.get(b.player);
+                        let badge = pl
+                            .map(|pl| crate::input::device_badge(pl.device, &pl.label))
+                            .unwrap_or_default();
+                        bx.spawn((
+                            Node {
+                                position_type: PositionType::Absolute,
+                                top: Val::Px(-9.0),
+                                right: Val::Px(-6.0),
+                                padding: UiRect::axes(Val::Px(5.0), Val::Px(1.0)),
+                                border_radius: BorderRadius::all(Val::Px(6.0)),
+                                ..default()
+                            },
+                            BackgroundColor(crate::input::player_color(b.player)),
+                            Pickable::IGNORE,
+                        ))
+                        .with_children(|bd| {
+                            bd.spawn((
+                                text(format!("{badge} {}", b.player + 1), 11.0, DARK_TEXT),
+                                Pickable::IGNORE,
+                            ));
+                        });
+                    }
                 });
             }
         });
     }
+    let on = |slot: u8| {
+        ship.thrusters.iter().any(|t| t.slot == slot && t.firing)
+            || ship.tools.iter().any(|t| t.slot == slot && t.pressed)
+    };
+    // Ruhezustand: nur Rahmen in Slotfarbe. Gedrückt: ganz in Slotfarbe gefüllt.
     for (sb, mut bg) in &mut boxes {
-        let on = ship.thrusters.iter().any(|t| t.slot == sb.0 && t.firing)
-            || ship.tools.iter().any(|t| t.slot == sb.0 && t.pressed);
-        bg.0 = if on {
-            slot_color(sb.0).with_alpha(0.55)
-        } else {
-            BG
+        bg.0 = if on(sb.0) { slot_color(sb.0) } else { BG };
+    }
+    for (st, mut tc) in &mut texts {
+        tc.0 = match (on(st.slot), st.accent) {
+            (true, _) => DARK_TEXT,
+            (false, false) => TEXT,
+            (false, true) => slot_color(st.slot),
         };
     }
 }
@@ -591,6 +704,9 @@ fn update_markers(
     }
     let s = &sim.0;
     let size = Vec2::new(win.width(), win.height());
+    // Solange das Stationsmenü offen ist, keine Wegmarken dahinter.
+    let menu_open = super::station::menu_open(s);
+    let blocked = |q: Vec2| menu_open && q.x > size.x - 520.0 && q.y > 225.0 && q.y < size.y - 95.0;
     let add = |c: &mut Commands, world: Vec2, label: String, color: Color, arrow_always: bool| {
         let Ok(p) = cam.world_to_viewport(cam_t, world.extend(0.0)) else {
             return;
@@ -600,6 +716,9 @@ fn update_markers(
             p.x > margin && p.y > margin && p.x < size.x - margin && p.y < size.y - margin;
         let dist = (world - s.ship.pos).length();
         if on_screen && !arrow_always {
+            if blocked(p) {
+                return;
+            }
             let e = c
                 .spawn((
                     Node {
@@ -633,6 +752,9 @@ fn update_markers(
             }
             // Nicht über die Slot-Leiste und die Balken legen.
             at.y = at.y.min(size.y - 150.0);
+            if blocked(at) {
+                return;
+            }
             let arrow = match (dir.x.abs() > dir.y.abs(), dir.x > 0.0, dir.y > 0.0) {
                 (true, true, _) => "▶",
                 (true, false, _) => "◀",
@@ -706,14 +828,20 @@ struct MarkerItem;
 
 fn update_center(
     sim: Res<Sim>,
-    mut center: Query<&mut Text, (With<CenterText>, Without<DockGuideText>)>,
-    mut guide: Query<(&mut Text, &mut TextColor), (With<DockGuideText>, Without<CenterText>)>,
+    mut center: Query<&mut Text, (With<CenterText>, Without<DockGuideText>, Without<LightText>)>,
+    mut guide: Query<
+        (&mut Text, &mut TextColor),
+        (With<DockGuideText>, Without<CenterText>, Without<LightText>),
+    >,
+    mut lights: Query<&mut Node, With<DockLights>>,
+    mut dots: Query<(&LightDot, &mut BackgroundColor)>,
+    mut texts: Query<(&LightText, &mut Text), (Without<CenterText>, Without<DockGuideText>)>,
 ) {
     let s = &sim.0;
     if let Ok(mut t) = center.single_mut() {
         let v = if s.ship.destroyed {
             format!(
-                "SCHIFF ZERSTÖRT\nBergung in {:.0} …",
+                "SCHIFF ZERSTÖRT – Rettungskapsel ausgestoßen\nBergung in {:.0} …",
                 s.ship.respawn_timer.max(0.0).ceil()
             )
         } else {
@@ -723,27 +851,59 @@ fn update_center(
             t.0 = v;
         }
     }
+    let guide_data = s.dock_guide().filter(|g| {
+        let to_pad = s.world.pads[g.pad].center - s.ship.pos;
+        g.distance < 22.0 && (s.ship.vel.length() < 8.0 || s.ship.vel.dot(to_pad) > 0.0)
+    });
+    if let Ok(mut n) = lights.single_mut() {
+        let want = if guide_data.is_some() {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if n.display != want {
+            n.display = want;
+        }
+    }
+    if let Some(g) = &guide_data {
+        for (d, mut bg) in &mut dots {
+            let l = match d.0 {
+                LightKind::Speed => g.speed_light(),
+                LightKind::Angle => g.angle_light(),
+                LightKind::Spin => g.spin_light(),
+            };
+            bg.0 = light_color(l);
+        }
+        for (lt, mut t) in &mut texts {
+            let v = match lt.0 {
+                LightKind::Speed => format!("Tempo {:.1} m/s", g.speed),
+                LightKind::Angle => format!("Winkel {:.0}°", g.angle_deg),
+                LightKind::Spin => format!("Drehung {:.1}", g.spin),
+            };
+            if t.0 != v {
+                t.0 = v;
+            }
+        }
+    }
     if let Ok((mut t, mut c)) = guide.single_mut() {
         let v = if let Some(pad) = s.ship.docked {
             let name = s.world.owner_name(s.world.pads[pad].owner).to_string();
             c.0 = GOOD;
             format!("Angedockt: {name}  ·  ein Triebwerk zünden zum Abdocken")
-        } else if let Some(g) = s.dock_guide().filter(|g| {
-            let to_pad = s.world.pads[g.pad].center - s.ship.pos;
-            g.distance < 20.0 && (s.ship.vel.length() < 8.0 || s.ship.vel.dot(to_pad) > 0.0)
-        }) {
-            let mark = |ok: bool| if ok { "✓" } else { "✗" };
-            c.0 = if g.speed_ok && g.angle_ok && g.spin_ok {
-                GOOD
+        } else if let Some(g) = &guide_data {
+            c.0 = light_color(g.overall());
+            let side = if !g.in_zone && g.lateral.abs() > 1.0 {
+                if g.lateral > 0.0 {
+                    "  ·  ← zur Mitte"
+                } else {
+                    "  ·  zur Mitte →"
+                }
             } else {
-                WARN
+                ""
             };
             format!(
-                "ANDOCKEN  Tempo {} {:.1}  ·  Ausrichtung {}  ·  Drehung {}",
-                mark(g.speed_ok),
-                s.ship.vel.length(),
-                mark(g.angle_ok),
-                mark(g.spin_ok)
+                "ANDOCKEN  ·  {:.1} m über der Plattform{side}",
+                g.height.max(0.0)
             )
         } else {
             String::new()
@@ -752,5 +912,4 @@ fn update_center(
             t.0 = v;
         }
     }
-    let _ = chip(Color::WHITE, 1.0);
 }

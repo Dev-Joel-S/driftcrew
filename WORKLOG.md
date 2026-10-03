@@ -1,0 +1,132 @@
+# WORKLOG – DriftCrew
+
+Laufendes Arbeitsprotokoll: Pläne, Entscheidungen, erledigte Schritte, offene Fragen.
+Neueste Einträge stehen oben im jeweiligen Abschnitt.
+
+Grundprinzipien, die bei jeder Änderung gelten (aus dem Konzept):
+
+- **Slot-System:** Die Simulation kennt nur Slots (Triebwerke/Werkzeuge), keine Spieler.
+- **Schiffe als Daten:** Teile, Formen, Layouts, Preise stehen in RON, nicht im Code.
+- **Simulation getrennt und deterministisch:** feste 60 Hz, Eingabe = Slot-Bitmaske +
+  Zielwinkel + Befehle, Zufall nur über den geseedeten RNG, keine Hash-Iteration.
+  Alles, was das Spielgeschehen verändert, läuft als `Command` durch die Simulation
+  (damit es später übers Netz geht). Reine Anzeige (HUD, Flugbahn-Vorschau, Seil-Optik)
+  darf außerhalb liegen, liest den Simulationszustand aber nur.
+
+---
+
+## Plan: Änderungswünsche Runde 2 (32 Punkte)
+
+Reihenfolge: erst Fixes, dann nach Nutzen/Aufwand. Phase 7 enthält die Punkte mit
+größerer Architekturänderung – dort wird vorher nachgefragt.
+
+### Phase 1 – UI-Fixes (klein, sofort spürbar)
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 1 | Gleiche Tasten verschiedener Spieler unterscheidbar | Slot-Kästchen bekommen ein Spieler-Abzeichen (Spielerfarbe + Geräte-Kürzel ⌨ / Pad / Joy-Con) |
+| 32 | Slot-Leiste: Rahmen im Ruhezustand, gefüllt nur beim Drücken | Rahmen in Slotfarbe, Füllung in Slotfarbe nur solange gedrückt, Text dann dunkel |
+| 2 | Belohnung bricht nicht um, Wegmarken hinter dem Menü weg | Rechte Spalte `no_wrap` + `flex_shrink: 0`; Marker, die unter dem offenen Stationsmenü liegen, werden ausgeblendet |
+| 4 | Andock-Assist als Ampel | Tempo, Winkel, Drehung je grün/gelb/rot (gelb = bis doppelter Grenzwert), Plattform-Leuchten folgt der Ampel |
+| 5 | Zielen nur durch den Slot-Besitzer | ist bereits so verdrahtet; wird als reine Funktion herausgezogen und getestet, dazu ein Zielmarker pro Werkzeug in Slotfarbe |
+
+### Phase 2 – Flughilfen und erwachsener Look (hoher Nutzen, mittlerer Aufwand)
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 3 | Geschwindigkeitsvektor + Flugbahn-Vorschau | dünne Linien (Gizmos); Vorschau integriert den aktuellen Zustand ohne Eingabe ~4 s voraus, markiert den ersten Aufprallpunkt |
+| 30 | Weniger Spielzeug-Look, Leuchten nur gezielt | gedecktere Lackierungen, Akzentstreifen als Lack statt Leuchtfarbe, dunkles Cockpitglas, schmalere Slot-Ringe; Leuchten nur Flammen, Positionslichter, Slotfarben |
+| 31 | Schrägen, Fasen, Keile statt Würfel – auch bei Stationen | Teile bekommen eine Form in den Daten (`Box`, `Trapez`, `Keil` …); allgemeiner Mesh-Generator für abgeschrägte konvexe Prismen. Kollision folgt der Form (konvexe Polygone statt nur Rechtecke). Stationsraster bekommt Schrägen-Zeichen (`/ \ 7 r`) |
+| 8 | Plattformen wie Druckplatten mit Details und Deko | Plattform mit Fase, Warnstreifen, Lauflichtern, Andockmarkierung; Deko-Generator für Kräne, Container, Antennen, Lichtmasten |
+
+### Phase 3 – Kleine Systeme in der Simulation (mittel)
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 15 | Schwerkraft nur bei Anomalien/Schwarzen Löchern | Planeten verlieren ihre Anziehung (Daten), neuer Typ „Schwarzes Loch“ mit stärkerem Sog und Ereignishorizont. **Konzept wird angepasst** |
+| 7 | Landen auf Planeten | Landezonen als Daten (Winkel auf der Oberfläche); Andocken wie an Stationen; gelandet darf gebohrt werden |
+| 26 | Rettungskapsel statt Game Over | Bei Hülle 0 wird eine Kapsel ausgestoßen (sichtbar, Kamera folgt), Bergungskosten aus der gemeinsamen Kasse (Text zeigt den Betrag) |
+| 20 | Einzelne Triebwerke beschädigbar | Treffer nahe einem Triebwerk senken dessen Zustand: Stottern (geseedeter Zufall), Ausfall; Reparatur im Stationsservice; Anzeige an der Slot-Leiste |
+| 22 | Treibstoff | Tank pro Schiff (Daten), Verbrauch pro Triebwerk; Tanken an Stationen; leer = Notreserve mit 25 % Schub, damit niemand festsitzt |
+| 23 | Marktpreise je Station | Preisfaktoren pro Station in den Daten (Erz, Treibstoff, Service) |
+| 9 | Mehrere Werften mit eigenem Angebot | Schiffe gibt es schon in vier Layouts; neu: Angebot pro Werft in den Daten + zweite Werft |
+| 6 | Fracht am Kran schleppen, pendelnde Seilphysik | Schwere Container werden als Kiste am Kran geschleppt statt verstaut; Seil als harte Längenbeschränkung (straff/schlaff) statt weicher Feder; Seiloptik mit durchhängenden Segmenten |
+
+### Phase 4 – Missionen und Fortschritt (mittel)
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 10 | NPCs vergeben Missionen | `npcs.ron`: Name, Station, Rolle, Porträt-Seed, Sprüche; Aufträge haben einen Auftraggeber, Porträt im Stationsmenü |
+| 11 | Missionstypen Abbau / Material verschicken / Notrufe | vorhanden; ergänzt um Lieferungen von Planeten-Außenposten und schwere Schlepp-Container (siehe 6) |
+| 12 | Auswertung mit Spaßstatistik | Simulation zählt pro Slot Schubzeit, Kollisionen, Schüsse; Auswertungsfenster nach jedem Auftrag |
+| 13 | Ruf pro Station | Ruf steigt mit erledigten Aufträgen; höhere Stufen = mehr/bessere Angebote, Rabatt |
+| 18 | Fog of War | Orte und erkundete Gebiete werden gespeichert; Karte/Radar zeigen nur Entdecktes |
+| 19 | Wracks ausschlachten | Wrackfelder in den Daten; Bohrer gewinnt Schrott, Kran reißt Bauteile ab; Verkauf am Markt |
+| 27 | Lackierung und Flammenfarben | Lackiererei im Stationsmenü, Paletten für Rumpf/Akzent/Flammen, im Spielstand gespeichert |
+
+### Phase 5 – Koop
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 24 | Ping pro Spieler | fester Ping-Knopf je Gerät (Tastatur: `^`-Taste oder mittlere Maustaste, Gamepad: Stick-Klick), Ping läuft als Befehl durch die Simulation, alle sehen Marker in Spielerfarbe |
+| 25 | Hot-Join | Ein neues Gamepad, das während des Flugs eine Taste drückt, übernimmt den nächsten freien Slot; Umbau des Schiffs läuft als Befehl durch die Simulation |
+
+### Phase 6 – Offene Welt und Ereignisse
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 14 | Sektoren mit Effekten | Regionen bekommen Effekte: Trümmer (Splitterzone), Nebel (Sicht + Radar gestört), Sonnenwind (seitliche Kraft) |
+| 16 | Zufallsereignisse | geseedeter Ereignis-Takt: Meteoritenschauer in der Nähe, spontane Notsignale, Sonneneruption (Schild/Radar gestört) |
+
+### Phase 7 – Größere Architekturänderungen (vorher nachfragen)
+
+| Nr. | Punkt | Warum Rückfrage |
+|---|---|---|
+| 17 | NPC-Schiffe pendeln und docken | Die Simulation kennt heute genau ein Schiff. Für echte NPC-Schiffe (gleiche Physik, Andocken, Kollisionen) müsste sie mehrere Schiffe führen – das ist auch die Grundlage für Gegner und späteres Online-Spiel mit mehreren Crews |
+| 21 | Gegner (Piratendrohnen, Schürfroboter) | hängt an derselben Entscheidung wie 17 |
+| 28 | Trainingsmission | braucht Szenarien (eigene Welt-/Missionsdateien, Checkpoints) neben der offenen Welt |
+| 29 | Zeit-Herausforderungen mit Bestenliste | baut auf den Szenarien aus 28 auf |
+
+---
+
+## Entscheidungen
+
+- **Schwerkraft (Punkt 15):** Nur Anomalien und Schwarze Löcher ziehen an. Planeten haben keine
+  Anziehung mehr (in Runde 1 hatte ich ihnen welche gegeben). Das Konzept „keine Schwerkraft im
+  freien Raum“ wird damit konsequent; Planeten sind Hindernisse und Landeorte.
+- **Treibstoff (Punkt 22):** Leerer Tank bedeutet nicht Stillstand, sondern Notreserve mit 25 %
+  Schub. Grund: Ohne Reibung könnte eine Crew sonst endgültig festsitzen.
+- **Zielen (Punkt 5):** Werkzeuge zielen ausschließlich mit dem Gerät des Spielers, dem der Slot
+  gehört (Tastatur → Maus, Gamepad → dessen Stick). Ein Spieler mit Tastatur zielt alle seine
+  Werkzeuge gleichzeitig mit der Maus.
+
+---
+
+## Protokoll
+
+### Runde 2 – Phase 1: UI-Fixes (erledigt)
+
+- **1** Slot-Leiste: Abzeichen in Spielerfarbe mit Geräte-Kürzel (`⌨ 1`, `JC-R 2`, `◉ 3`),
+  sobald mehr als ein Crewmitglied an Bord ist. Gleiche Tasten (z. B. „A“ auf Tastatur und
+  Joy-Con) sind so unterscheidbar. Spielerfarben: `input::PLAYER_COLORS`.
+- **32** Slot-Leiste: Ruhezustand nur Rahmen in Slotfarbe, gedrückt komplett in Slotfarbe gefüllt,
+  Schrift dann dunkel.
+- **2** Menüeinträge: rechte Spalte (Preis/Belohnung) bricht nie um (`no_wrap`, `flex_shrink: 0`),
+  der Titel nimmt den Restplatz und bricht stattdessen um. Wegmarken, die unter dem offenen
+  Stationsmenü liegen würden, werden ausgeblendet (`station::menu_open`).
+- **4** Andock-Ampel: Tempo, Winkel, Drehung je grün/gelb/rot (gelb bis zum doppelten Grenzwert,
+  `sim::dock::light`), dazu Höhe über der Plattform und „← zur Mitte“-Hinweis. Die Plattform
+  leuchtet in derselben Ampelfarbe.
+- **5** Zielen: `input::aim_device` liefert ausschließlich das Gerät, dessen Taste den
+  Werkzeug-Slot belegt (vorher fiel ein unbekannter Spieler auf die Maus zurück). Test
+  `only_the_owner_aims_a_tool_slot`. Neu: gestrichelte Ziellinie mit Kreis pro Werkzeug in
+  Slotfarbe (`render/overlay.rs`).
+- Vorgezogen aus Phase 2: **3** Geschwindigkeitsvektor (Pfeil = Strecke in 1 s) und
+  Flugbahn-Vorschau über 4 s ohne Eingabe, erster Aufprall als X (rot = schädlich).
+  Berechnung `SimState::predict_path` liest nur, Test `prediction_finds_wall_ahead`.
+- Tests: 27 grün.
+
+### Runde 1 (abgeschlossen)
+
+- Deterministische Simulation, Daten in RON, Grafik, UI, Lobby, Missionen, Kasse mit Abstimmung,
+  Sound, Vorführmodus, 24 Tests. Details: README und Commit-Historie.

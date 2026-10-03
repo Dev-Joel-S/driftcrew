@@ -170,12 +170,28 @@ pub fn spawn_items<A: Clone>(parent: &mut ChildSpawnerCommands, menu: usize, ite
                     ..default()
                 })
                 .with_children(|row| {
-                    row.spawn(text(it.label.clone(), 17.0, label_color));
+                    row.spawn((
+                        text(it.label.clone(), 17.0, label_color),
+                        Node {
+                            flex_grow: 1.0,
+                            flex_shrink: 1.0,
+                            flex_basis: Val::Px(0.0),
+                            ..default()
+                        },
+                    ));
                     if !it.right.is_empty() {
-                        row.spawn(text(
-                            it.right.clone(),
-                            17.0,
-                            if it.enabled { ACCENT } else { MUTED },
+                        // Preise/Belohnungen nie umbrechen.
+                        row.spawn((
+                            text(
+                                it.right.clone(),
+                                17.0,
+                                if it.enabled { ACCENT } else { MUTED },
+                            ),
+                            Node {
+                                flex_shrink: 0.0,
+                                ..default()
+                            },
+                            TextLayout::no_wrap(),
                         ));
                     }
                 });

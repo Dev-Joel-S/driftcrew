@@ -479,16 +479,13 @@ fn update_aims(
         cursor_world.0 = Some(ray.get_point(t).truncate());
     }
     let ship = &sim.0.ship;
+    let _ = &crew;
     for tool_i in 0..ship.tools.len() {
         let slot = ship.tools[tool_i].slot as usize;
-        let Some(b) = bindings.0.iter().find(|b| b.slot as usize == slot) else {
+        // Zielen darf nur das Gerät, dem der Werkzeug-Slot gehört.
+        let Some(device) = aim_device(&bindings.0, slot as u8) else {
             continue;
         };
-        let device = crew
-            .players
-            .get(b.player)
-            .map(|p| p.device)
-            .unwrap_or(Device::Keyboard);
         let mount = ship.tool_world_pos(tool_i);
         let aim = match device {
             Device::Keyboard => cursor_world.0.map(|c| (c - mount).to_angle()),
@@ -504,5 +501,102 @@ fn update_aims(
         {
             aims.0[slot] = a;
         }
+    }
+}
+
+/// Welches Gerät zielt für diesen Slot? Nur das Gerät, dessen Taste den Slot belegt.
+/// Ist ein Slot mehrfach belegt (sollte nicht vorkommen), gewinnt die erste Belegung.
+pub fn aim_device(bindings: &[ActiveBinding], slot: u8) -> Option<Device> {
+    bindings
+        .iter()
+        .find(|b| b.slot == slot)
+        .map(|b| b.btn.device())
+}
+
+/// Erkennungsfarben der Spieler (unabhängig von den Slotfarben).
+pub const PLAYER_COLORS: [[f32; 3]; 8] = [
+    [0.92, 0.94, 0.98],
+    [1.0, 0.72, 0.16],
+    [0.3, 0.75, 1.0],
+    [1.0, 0.42, 0.68],
+    [0.62, 0.92, 0.42],
+    [0.72, 0.58, 1.0],
+    [1.0, 0.5, 0.3],
+    [0.35, 0.95, 0.85],
+];
+
+pub fn player_color(i: usize) -> Color {
+    let c = PLAYER_COLORS[i % PLAYER_COLORS.len()];
+    Color::srgb(c[0], c[1], c[2])
+}
+
+/// Kurzes Geräte-Kürzel für Abzeichen: ⌨ Tastatur, JC-L/JC-R für Joy-Cons, ◉ sonst.
+pub fn device_badge(device: Device, label: &str) -> String {
+    match device {
+        Device::Keyboard => "⌨".into(),
+        Device::Pad(_) => {
+            let l = label.to_lowercase();
+            if l.contains("joy-con") || l.contains("joycon") {
+                if l.contains("(l)") || l.ends_with(" l") {
+                    "JC-L".into()
+                } else if l.contains("(r)") || l.ends_with(" r") {
+                    "JC-R".into()
+                } else {
+                    "JC".into()
+                }
+            } else {
+                "◉".into()
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pad(n: u32) -> Entity {
+        Entity::from_raw_u32(n).unwrap()
+    }
+
+    #[test]
+    fn only_the_owner_aims_a_tool_slot() {
+        let p1 = pad(7);
+        let p2 = pad(9);
+        let bindings = vec![
+            ActiveBinding {
+                btn: Btn::Key(KeyCode::KeyA),
+                slot: 0,
+                player: 0,
+            },
+            ActiveBinding {
+                btn: Btn::Pad(p1, GamepadButton::South),
+                slot: 1,
+                player: 1,
+            },
+            ActiveBinding {
+                btn: Btn::Pad(p2, GamepadButton::East),
+                slot: 2,
+                player: 2,
+            },
+            ActiveBinding {
+                btn: Btn::Key(KeyCode::Space),
+                slot: 3,
+                player: 0,
+            },
+        ];
+        assert_eq!(aim_device(&bindings, 1), Some(Device::Pad(p1)));
+        assert_eq!(aim_device(&bindings, 2), Some(Device::Pad(p2)));
+        assert_eq!(aim_device(&bindings, 3), Some(Device::Keyboard));
+        // Unbelegte Slots zielt niemand.
+        assert_eq!(aim_device(&bindings, 4), None);
+    }
+
+    #[test]
+    fn badges() {
+        assert_eq!(device_badge(Device::Keyboard, "Tastatur"), "⌨");
+        assert_eq!(device_badge(Device::Pad(pad(3)), "Joy-Con (L)"), "JC-L");
+        assert_eq!(device_badge(Device::Pad(pad(3)), "Joy-Con (R)"), "JC-R");
+        assert_eq!(device_badge(Device::Pad(pad(3)), "Xbox Controller"), "◉");
     }
 }

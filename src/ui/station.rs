@@ -69,6 +69,11 @@ enum Act {
     Undock,
 }
 
+/// Ist das Stationsmenü gerade sichtbar (angedockt an einem Ort mit Menü)?
+pub fn menu_open(sim: &SimState) -> bool {
+    sim.ship.docked.is_some() && !sim.ship.destroyed && !tabs_for(sim).is_empty()
+}
+
 fn tabs_for(sim: &SimState) -> Vec<Tab> {
     match sim.docked_owner() {
         Some(Owner::Station(si)) => {

@@ -882,11 +882,17 @@ pub fn update_dynamic_world(
     let guide = sim.0.dock_guide();
     for (pg, mat) in &pads {
         let target = match guide {
-            Some(g) if g.pad == pg.0 => {
-                if g.in_zone && g.speed_ok && g.angle_ok && g.spin_ok {
-                    LinearRgba::rgb(0.2, 3.0, 0.8)
-                } else {
-                    LinearRgba::rgb(2.0, 0.9, 0.1) * (0.6 + 0.4 * (t * 6.0).sin().abs())
+            Some(g) if g.pad == pg.0 && g.distance < 22.0 => {
+                use crate::sim::dock::Light;
+                // Die Plattform zeigt dieselbe Ampel wie das HUD.
+                match g.overall() {
+                    Light::Green if g.in_zone => LinearRgba::rgb(0.2, 3.0, 0.8),
+                    Light::Green | Light::Yellow => {
+                        LinearRgba::rgb(2.2, 1.6, 0.1) * (0.7 + 0.3 * (t * 4.0).sin().abs())
+                    }
+                    Light::Red => {
+                        LinearRgba::rgb(2.6, 0.25, 0.1) * (0.5 + 0.5 * (t * 8.0).sin().abs())
+                    }
                 }
             }
             _ => LinearRgba::rgb(0.0, 0.0, 0.0),

@@ -521,3 +521,74 @@ impl SimState {
 fn b_mass(r: f32) -> f32 {
     r * r * 3.0
 }
+
+/// Vorhersage der Flugbahn ohne weitere Eingabe (nur zur Anzeige, ändert nichts).
+#[derive(Clone, Debug, Default)]
+pub struct Prediction {
+    pub points: Vec<Vec2>,
+    /// Erster voraussichtlicher Aufprall (Ort, Aufprallgeschwindigkeit).
+    pub hit: Option<(Vec2, f32)>,
+}
+
+impl SimState {
+    /// Integriert Position und Geschwindigkeit des Schiffs `seconds` voraus (mit Schwerkraft,
+    /// ohne Schub) und meldet die erste Berührung mit statischer Geometrie.
+    pub fn predict_path(&self, seconds: f32, step: f32) -> Prediction {
+        let mut out = Prediction::default();
+        if self.ship.docked.is_some() || self.ship.destroyed {
+            return out;
+        }
+        let r = self.ship.bound_radius() * 0.55;
+        let mut p = self.ship.pos;
+        let mut v = self.ship.vel;
+        out.points.push(p);
+        let steps = (seconds / step) as usize;
+        for _ in 0..steps {
+            v += self.world.gravity(p) * step;
+            p += v * step;
+            out.points.push(p);
+            let bound = Aabb::around(p, r);
+            let hit = self.world.colliders.iter().any(|c| {
+                c.aabb.overlaps(&bound)
+                    && match c.shape {
+                        Shape::Quad(q) => quad_circle(&q, p, r).is_some(),
+                        Shape::Circle { c, r: cr } => (p - c).length() < cr + r,
+                    }
+            });
+            if hit {
+                out.hit = Some((p, v.length()));
+                break;
+            }
+        }
+        out
+    }
+}
+
+#[cfg(test)]
+mod prediction_tests {
+    use super::*;
+    use crate::sim::data::{CrewSave, GameData};
+    use crate::sim::ship::Loadout;
+    use std::sync::Arc;
+
+    #[test]
+    fn prediction_finds_wall_ahead() {
+        let data = Arc::new(GameData::embedded().unwrap());
+        let save = CrewSave::new_game(&data);
+        let def = data.ship(&save.current_ship).clone();
+        let mut s = SimState::new(data, &save, Loadout::full(&def), 1);
+        s.ship.docked = None;
+        // Mitten in Nova-Hub, mit Tempo auf die obere Ringwand zu.
+        s.ship.pos = Vec2::new(0.0, 20.0);
+        s.ship.vel = Vec2::new(0.0, 10.0);
+        let p = s.predict_path(4.0, 0.05);
+        let (hit, speed) = p.hit.expect("Aufprall erwartet");
+        assert!(hit.y > 25.0 && hit.y < 46.0, "Aufprall bei {hit:?}");
+        assert!((speed - 10.0).abs() < 0.1);
+        // Freier Raum: kein Aufprall, Gerade.
+        s.ship.pos = Vec2::new(0.0, 400.0);
+        let p = s.predict_path(2.0, 0.05);
+        assert!(p.hit.is_none());
+        assert!((p.points.last().unwrap().y - 420.0).abs() < 0.5);
+    }
+}

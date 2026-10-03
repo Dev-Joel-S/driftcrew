@@ -2,6 +2,7 @@
 
 pub mod fx;
 pub mod meshes;
+pub mod overlay;
 pub mod ship_vis;
 pub mod textures;
 pub mod world_vis;
@@ -56,7 +57,7 @@ impl Plugin for RenderPlugin {
                 )
                     .chain(),
             )
-            .add_plugins(fx::FxPlugin);
+            .add_plugins((fx::FxPlugin, overlay::OverlayPlugin));
     }
 }
 

@@ -19,6 +19,53 @@ pub struct DockGuide {
     pub spin_ok: bool,
     pub in_zone: bool,
     pub distance: f32,
+    /// Aktuelle Werte für die Ampel-Anzeige.
+    pub speed: f32,
+    pub angle_deg: f32,
+    pub spin: f32,
+    /// Seitlicher Versatz zur Plattformmitte (positiv = in Tangentenrichtung).
+    pub lateral: f32,
+    /// Höhe über der Ruheposition.
+    pub height: f32,
+}
+
+/// Maximal erlaubte Drehgeschwindigkeit beim Andocken (rad/s).
+pub const DOCK_MAX_SPIN: f32 = 0.9;
+
+/// Ampel für die Andockhilfe: grün = passt, gelb = bis doppelter Grenzwert, rot = darüber.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Light {
+    Green,
+    Yellow,
+    Red,
+}
+
+pub fn light(value: f32, limit: f32) -> Light {
+    if value < limit {
+        Light::Green
+    } else if value < limit * 2.0 {
+        Light::Yellow
+    } else {
+        Light::Red
+    }
+}
+
+impl DockGuide {
+    pub fn speed_light(&self) -> Light {
+        light(self.speed, DOCK_MAX_SPEED)
+    }
+    pub fn angle_light(&self) -> Light {
+        light(self.angle_deg, DOCK_MAX_ANGLE_DEG)
+    }
+    pub fn spin_light(&self) -> Light {
+        light(self.spin, DOCK_MAX_SPIN)
+    }
+    /// Schlechteste der drei Ampeln.
+    pub fn overall(&self) -> Light {
+        self.speed_light()
+            .max(self.angle_light())
+            .max(self.spin_light())
+    }
 }
 
 impl SimState {
@@ -37,14 +84,23 @@ impl SimState {
             let along = rel.dot(pad.normal);
             let lateral = rel.dot(pad.tangent());
             let rest = self.ship.rest_height();
+            let speed = self.ship.vel.length();
+            let angle_deg = angle_diff(self.ship.angle, pad.ship_angle())
+                .abs()
+                .to_degrees();
+            let spin = self.ship.ang_vel.abs();
             best = Some(DockGuide {
                 pad: pi,
-                speed_ok: self.ship.vel.length() < DOCK_MAX_SPEED,
-                angle_ok: angle_diff(self.ship.angle, pad.ship_angle()).abs()
-                    < DOCK_MAX_ANGLE_DEG.to_radians(),
-                spin_ok: self.ship.ang_vel.abs() < 0.9,
+                speed_ok: speed < DOCK_MAX_SPEED,
+                angle_ok: angle_deg < DOCK_MAX_ANGLE_DEG,
+                spin_ok: spin < DOCK_MAX_SPIN,
                 in_zone: lateral.abs() < pad.half_width && along > rest - 0.6 && along < rest + 1.4,
                 distance: dist,
+                speed,
+                angle_deg,
+                spin,
+                lateral,
+                height: along - rest,
             });
         }
         best
