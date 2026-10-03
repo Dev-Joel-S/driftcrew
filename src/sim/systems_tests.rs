@@ -299,6 +299,7 @@ fn heavy_haul_is_towed_and_completes_at_target() {
         giver: None,
         start: None,
         top_speed: 0.0,
+        par: 600.0,
     });
     s.step(&TickInput {
         commands: vec![Command::AcceptMission { id }],
@@ -321,7 +322,8 @@ fn heavy_haul_is_towed_and_completes_at_target() {
     b.prev_pos = target;
     s.step(&TickInput::default());
     assert!(s.active.is_empty());
-    assert_eq!(s.crew.credits, credits + 300);
+    // Grundbelohnung, dazu Zeit- und Sauberkeitsbonus (schnell und ohne Kollision).
+    assert_eq!(s.crew.credits, credits + 300 + 45 + 30);
     assert!(!s.bodies.iter().any(|b| b.id == crate_id && b.alive));
 }
 

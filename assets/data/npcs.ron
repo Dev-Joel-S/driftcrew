@@ -15,6 +15,15 @@
         ],
     ),
     (
+        id: "lio", name: "Lio Tanaka", role: "Fährdienst", at: "nova",
+        gives: [Passengers],
+        look: (skin: "#d9a982", hair: "#2a2320", suit: "#5a7fa8"),
+        lines: [
+            "Meine Leute zahlen für ruhigen Flug, nicht für Achterbahn.",
+            "Wer bremst, ohne zu ruckeln, kriegt Trinkgeld.",
+        ],
+    ),
+    (
         id: "ivo", name: "Ivo Brandt", role: "Bergbauingenieur", at: "nova",
         gives: [Mining],
         look: (skin: "#e0b49a", hair: "#a2622f", suit: "#3d6f8e", helmet: true),
@@ -43,7 +52,7 @@
     ),
     (
         id: "yara", name: "Yara Lindqvist", role: "Werftleiterin", at: "vega",
-        gives: [Delivery, Haul, Mining],
+        gives: [Delivery, Haul, Mining, Passengers],
         look: (skin: "#f0c8b0", hair: "#d9c27a", suit: "#e0a526"),
         lines: [
             "Der Pelikan zieht euch jedes Wrack aus dem Dreck.",

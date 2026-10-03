@@ -357,9 +357,13 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                     MissionKind::Haul { from, .. } => {
                         here == Some(Owner::Station(*from)) && has_crane
                     }
+                    MissionKind::Passengers { from, .. } => here == Some(Owner::Station(*from)),
                     _ => true,
                 } && sim.active.len() < crate::sim::missions::MAX_ACTIVE;
                 let detail = match &m.kind {
+                    MissionKind::Passengers { .. } => {
+                        "Sanft beschleunigen, nicht anecken – sonst sinkt die Bezahlung".into()
+                    }
                     MissionKind::Delivery {
                         mass,
                         from: Owner::Planet(_),
@@ -383,9 +387,13 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                     }
                 };
                 let (lo, hi) = m.crew(sim);
+                let par = format!("Richtzeit {}:{:02}", m.par as u32 / 60, m.par as u32 % 60);
                 let detail = match m.giver.and_then(|g| sim.data.npcs.get(g)) {
-                    Some(n) => format!("{} ({}) · Crew {lo}–{hi} · {detail}", n.name, n.role),
-                    None => format!("Crew {lo}–{hi} · {detail}"),
+                    Some(n) => format!(
+                        "{} ({}) · Crew {lo}–{hi} · {par} · {detail}",
+                        n.name, n.role
+                    ),
+                    None => format!("Crew {lo}–{hi} · {par} · {detail}"),
                 };
                 v.push(
                     Item::new(m.title(sim), Act::Accept(m.id))

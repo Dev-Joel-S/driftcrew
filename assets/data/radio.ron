@@ -1,0 +1,53 @@
+// Funksprüche beim Anflug, Andocken und Abdocken. Platzhalter: {station}, {ship}.
+// Reine Anzeige – die Simulation kennt sie nicht.
+(
+    approach: [
+        "{station} Kontrolle an {ship}: Wir sehen Sie. Plattform frei, langsam reinkommen.",
+        "{station}: Anflug erkannt. Bitte unter 2,6 Metern pro Sekunde bleiben.",
+        "{station} hier. Achten Sie auf die Lauflichter – grün heißt passt.",
+        "{station} an {ship}: Ruhig, ruhig. Wir haben keine Lust, die Plattform neu zu lackieren.",
+    ],
+    docked: [
+        "{station}: Willkommen, {ship}. Klammern geschlossen.",
+        "{station}: Angedockt. Der Kaffee ist kalt, die Aufträge sind frisch.",
+        "{station}: Saubere Landung. Wir nehmen es zur Kenntnis.",
+        "{station}: Andocken bestätigt. Gebühren entnehmen Sie bitte niemandem.",
+    ],
+    undock: [
+        "{station}: Klammern gelöst. Guten Flug, {ship}.",
+        "{station}: Sie sind frei. Bitte nicht an der Antenne hängen bleiben.",
+        "{station}: Abflug bestätigt. Funkkanal bleibt offen.",
+    ],
+    places: [
+        (
+            at: "kepler", speaker: "Kepler-Turm",
+            approach: ["Kepler-Turm: Vorsicht, der Rotor dreht. Er dreht immer."],
+            docked: ["Kepler-Turm: Hier draußen zählt jede Lieferung. Danke, {ship}."],
+        ),
+        (
+            at: "werft", speaker: "Werft Orion",
+            approach: ["Werft Orion: Hangar Süd ist frei. Bitte nicht die Ausstellungsstücke rammen."],
+            docked: ["Werft Orion: Neue Rümpfe im Angebot. Probefliegen nur mit Kaution."],
+        ),
+        (
+            at: "vega", speaker: "Vega-Dock",
+            approach: ["Vega-Dock: Sie haben uns gefunden. Nicht viele schaffen das."],
+            docked: ["Vega-Dock: Seit dem Ausfall der alten Relaisstation kommt kaum noch jemand vorbei."],
+        ),
+        (
+            at: "viridia", speaker: "Außenposten Viridia",
+            approach: ["Viridia unten: Landezone im Norden ist frei, die im Süden wackelt."],
+            docked: ["Viridia: Die alten Terraforming-Masten summen wieder. Keiner weiß, warum."],
+        ),
+        (
+            at: "ember", speaker: "Außenposten Ember",
+            approach: ["Ember: Hitzeschilde hoch, Funkverkehr runter."],
+            docked: ["Ember: Seit dem Signal aus der Tiefe schlafen hier alle schlecht."],
+        ),
+        (
+            at: "azura", speaker: "Station Azura",
+            approach: ["Azura: Wir messen Störungen aus den Ringen. Bitte kein Feuerwerk."],
+            docked: ["Azura: Die Kolonie hier sollte zehntausend Leute fassen. Wir sind elf."],
+        ),
+    ],
+)

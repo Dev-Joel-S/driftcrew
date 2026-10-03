@@ -1,6 +1,6 @@
 //! Automatischer Vorführmodus für Screenshots und Rauchtests:
 //! `DRIFTCREW_DEMO=<ordner>` fliegt ein Skript ab, speichert Bildschirmfotos und
-//! beendet sich danach. `DRIFTCREW_SCENE=tour|ui|systems|progress|coop|sectors` wählt das Skript.
+//! beendet sich danach. `DRIFTCREW_SCENE=tour|ui|systems|progress|coop|sectors|rules` wählt das Skript.
 
 use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
@@ -507,6 +507,63 @@ fn sectors_scene() -> Vec<(f32, Act)> {
     ]
 }
 
+/// Phase 8: Funk, Passagiere, Boni.
+fn rules_scene() -> Vec<(f32, Act)> {
+    vec![
+        (0.5, |c| {
+            keyboard_crew(c, false);
+            c.next.set(AppState::Playing);
+        }),
+        (2.5, |c| {
+            let s = &mut c.sim.0;
+            let nova = s.data.station_index("nova").unwrap_or(0);
+            let kepler = s.data.station_index("kepler").unwrap_or(1);
+            let kind = crate::sim::missions::MissionKind::Passengers {
+                from: nova,
+                to: kepler,
+                count: 5,
+                comfort: 1.0,
+                aboard: false,
+            };
+            let par = s.par_time(&kind);
+            let id = s.next_id();
+            s.offers.push(crate::sim::missions::Mission {
+                id,
+                kind,
+                reward: 420,
+                origin: Some(crate::sim::world::Owner::Station(nova)),
+                giver: None,
+                start: None,
+                top_speed: 0.0,
+                par,
+            });
+            c.pending.0.push(Command::AcceptMission { id });
+        }),
+        (3.5, |c| c.slots.0 = 0b11111),
+        (4.6, |c| c.slots.0 = 0b10001),
+        (5.4, |c| c.slots.0 = 0),
+        (6.5, |c| {
+            c.slots.0 = 0;
+            shot(c, "passagiere_funk");
+        }),
+        (8.5, |c| {
+            let kepler = c.sim.0.data.station_index("kepler").unwrap_or(1);
+            let pad = c.sim.0.world.stations[kepler].pads[0];
+            let p = c.sim.0.world.pads[pad].clone();
+            let s = &mut c.sim.0;
+            s.ship.docked = None;
+            s.ship.angle = p.ship_angle();
+            s.ship.prev_angle = s.ship.angle;
+            s.ship.pos = p.center + p.normal * (s.ship.rest_height() + 6.0);
+            s.ship.prev_pos = s.ship.pos;
+            s.ship.vel = -p.normal * 1.2;
+            s.ship.ang_vel = 0.0;
+        }),
+        (13.0, |c| shot(c, "anflug_andocken")),
+        (15.0, |_| {}),
+    ]
+}
+
 fn ui_scene() -> Vec<(f32, Act)> {
     vec![
         (2.5, |c| shot(c, "titel")),
@@ -571,6 +628,7 @@ fn demo_script(
         "progress" => progress_scene(),
         "coop" => coop_scene(),
         "sectors" => sectors_scene(),
+        "rules" => rules_scene(),
         _ => tour(),
     };
     let mut pad = pads.iter().next();

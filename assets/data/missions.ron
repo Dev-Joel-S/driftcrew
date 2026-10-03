@@ -12,7 +12,15 @@
         (Haul, (2, 4)),
         (Tow, (2, 4)),
         (Capsules, (1, 3)),
+        (Passengers, (1, 3)),
     ],
+    // Passagiere: Anzahl (von, bis), Bezahlung pro Person. Harte Beschleunigung, Stöße und
+    // Kreiseln senken die Zufriedenheit; bezahlt wird 30 % + 70 % × Zufriedenheit.
+    passengers: (2, 6),
+    fare_per_person: 45.0,
+    // Bonus (Anteil der Belohnung): innerhalb der Richtzeit / ohne Kollision und Schaden.
+    time_bonus: 0.15,
+    clean_bonus: 0.10,
     distress_offers: 2,
     delivery_cargo: [
         (name: "Medizinische Vorräte", mass: 2.0, reward: 110),

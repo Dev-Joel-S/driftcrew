@@ -40,10 +40,10 @@ fn spawn_root(mut commands: Commands) {
     commands.spawn((
         Node {
             position_type: PositionType::Absolute,
-            top: Val::Px(120.0),
+            top: Val::Px(170.0),
             left: Val::Percent(50.0),
-            margin: UiRect::left(Val::Px(-390.0)),
-            width: Val::Px(480.0),
+            margin: UiRect::left(Val::Px(-300.0)),
+            width: Val::Px(445.0),
             ..default()
         },
         ReportRoot,
@@ -154,11 +154,27 @@ fn draw_report(
                     )
                 })
                 .unwrap_or_default();
+            let paid = r.reward + r.bonus_time + r.bonus_clean;
             p.spawn(text(
-                format!("+{} Credits{rep}", fmt_num(r.reward)),
+                format!("+{} Credits{rep}", fmt_num(paid)),
                 15.0,
                 ACCENT,
             ));
+            // Abrechnung: Grundbelohnung und Boni einzeln.
+            let mut parts = vec![format!("Grundbelohnung {}", fmt_num(r.reward))];
+            if let Some(c) = r.comfort {
+                parts.push(format!("Passagiere {:.0} % zufrieden", c * 100.0));
+            }
+            let par = format!("{}:{:02}", r.par as u32 / 60, r.par as u32 % 60);
+            if r.bonus_time > 0 {
+                parts.push(format!("Zeitbonus +{} (unter {par})", r.bonus_time));
+            } else {
+                parts.push(format!("kein Zeitbonus (Richtzeit {par})"));
+            }
+            if r.bonus_clean > 0 {
+                parts.push(format!("sauber geflogen +{}", r.bonus_clean));
+            }
+            p.spawn(text(parts.join("  ·  "), 13.0, TEXT));
             p.spawn(text(
                 format!(
                     "Dauer {mins}:{secs:02}  ·  {} m geflogen  ·  Spitze {:.0} m/s  ·  Schaden {:.0}",

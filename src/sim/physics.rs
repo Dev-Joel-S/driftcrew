@@ -493,6 +493,12 @@ impl SimState {
         if let Some(slot) = self.nearest_slot(at) {
             self.stats.slot(slot).collisions += 1;
         }
+        // Jeder Rums verschüttet den Passagieren den Kaffee.
+        for m in &mut self.active {
+            if let super::missions::MissionKind::Passengers { comfort, .. } = &mut m.kind {
+                *comfort = (*comfort - 0.05).max(0.0);
+            }
+        }
     }
 
     /// Schaden an Schild/Hülle.
@@ -505,6 +511,7 @@ impl SimState {
             return;
         }
         self.stats.damage += amount;
+        self.ship.since_hit = 0.0;
         let mut left = amount;
         if self.ship.shield > 0.0 {
             let absorbed = self.ship.shield.min(left);

@@ -191,6 +191,35 @@ online funktionieren.
 
 ---
 
+## Backlog: Erweiterungen (Punkte 63–82)
+
+Kam während Phase 8 dazu. Vorgabe: zuerst **65, 71 und 75** in kleinen spielbaren Varianten
+(→ Phase 8b, direkt nach Phase 8), Energieverwaltung (70) und Wiederholungen (80) später.
+Der Rest wird in die bestehenden Phasen einsortiert bzw. bekommt eigene Phasen.
+
+| Nr. | Punkt | Einordnung |
+|---|---|---|
+| 63 | Artefakte als Schlüssel und Sammlung | gehört zu Phase 13 (Artefakte, Logbuch) – dort schon geplant, noch nicht gebaut |
+| 64 | Fracht verschieben und arretieren | Phase 14 (Fracht und Bergung): Befestigungspunkte = Frachtmodule/Bauplätze, Umladen im Stationsmenü und im Flug (langsam), Schwerpunkt rechnet sich wie bisher |
+| 65 | Sperrige Bergungsobjekte | **Phase 8b** |
+| 66 | Zwei Kräne, eine Last; Seilbelastung sichtbar | Seilbelastung schon in Phase 8b (für 65/71), zwei Kräne an einer Last in Phase 14 |
+| 67 | Notabwurf und Wiederaufnahme | Phase 14: Abwurf als Befehl, Fracht bleibt als Körper in der Welt, Position und Zustand im Spielstand |
+| 68 | Fracht mit Flugeigenschaften | Phase 14: Tanks schwappen (gedämpfte Zusatzmasse), empfindliche Geräte (Stoßgrenze), instabile Funde (Überlast) – vor Annahme angezeigt |
+| 69 | Triebwerks-Übersteuerung mit Hitze | Phase 15 (Zusammenarbeit): eigene Eingabe pro Gerät (z. B. Taste halten + Doppeltipp), Hitze pro Triebwerk, Warnstufen |
+| 70 | Gemeinsame Energiereserve | später (nach 69), Grundfunktionen bleiben immer nutzbar |
+| 71 | Präzisionsarbeit im Flug | **Phase 8b** (deckt auch einen Teil von 36 ab) |
+| 72 | Physische Notfallreparatur mit dem Kran | Phase 10 (Minispiele) als Alternative zum Takt-Spiel |
+| 73 | Manöveransagen | Phase 15: kurze Signale („Bremsen“, „Schub aus“, „Links drehen“, „Werkzeug bereit“) in Slotfarbe, optionaler Ton, keine Rollen |
+| 74 | Flugmanöver als Missionsziele | Phase 7 (Tore/Parcours), nutzt dieselbe Physik |
+| 75 | Stationen sichtbar wiederaufbauen | **Phase 8b** |
+| 76 | Lokale Folgen von Aufträgen | Phase 16 (Welt reagiert) |
+| 77 | Freiwillige Zusatzbergung | Phase 14 |
+| 78 | Rettung mit Platz- und Gewichtsentscheidung, NPCs tauchen wieder auf | Phase 14 (Entscheidung) + Phase 12/13 (Wiederauftauchen) |
+| 79 | Verborgene Wege durch Gefahrenzonen | Phase 16, Hinweise im Logbuch (Phase 13) |
+| 80 | Unfall-Wiederholung | später: die Simulation ist deterministisch, also genügen Zustandsschnappschuss + Eingaben der letzten Sekunden |
+| 81 | Schiffsname und Plaketten | Phase 17 (Persönlichkeit) |
+| 82 | Crew-Logbuch mit Erlebnissen und Notizen | Phase 17, zusammen mit dem Logbuch aus Phase 13 |
+
 ## Entscheidungen
 
 - **Runde 3, Rückfragen (beantwortet):**
@@ -220,6 +249,28 @@ online funktionieren.
 ---
 
 ## Protokoll
+
+### Runde 3 – Phase 8: Regeln, Aufträge, Atmosphäre (erledigt)
+
+- **53** Schild lädt nach: `shield_regen`/`shield_delay` pro Schiff (Hornisse schnell, Lastesel
+  langsam). Jeder Treffer setzt den Zähler zurück, während einer Sonneneruption lädt nichts.
+  Beschädigte Triebwerke brauchen weiter Reparatur (oder später das Minispiel).
+- **52** Hülle regeneriert nie von selbst. Neues Upgrade „Reparaturdrohnen“ flickt 0,5 Punkte
+  pro Sekunde, auch im Flug.
+- **43** Richtzeit pro Auftrag (`Mission::par`, aus Strecke und Art berechnet, im Menü
+  angezeigt). Abrechnung: Grundbelohnung + Zeitbonus (15 %, wenn unter Richtzeit) +
+  Sauberkeitsbonus (10 %, ohne Kollision und Schaden). Die Auswertung schlüsselt das auf.
+- **39** Passagiere (`MissionKind::Passengers`, neuer Auftraggeber Lio Tanaka, Fährdienst, und
+  Yara in Vega): Zufriedenheit sinkt bei Beschleunigung über 10 m/s², bei Stößen (−5 % pro
+  Kollision) und bei schnellem Kreiseln. Bezahlt wird 30 % + 70 % × Zufriedenheit. Die
+  HUD-Zeile zeigt die Zufriedenheit live.
+- **46** Funk (`radio.ron`, `ui/radio.rs`): Sprüche beim Anflug, Andocken und Abdocken,
+  allgemein und pro Ort, mit leisen Lore-Fetzen (Terraforming-Masten, ein Signal aus der Tiefe,
+  eine Kolonie für zehntausend mit elf Leuten). Reine Anzeige, Panel links über den Balken.
+- Vorführszene `DRIFTCREW_SCENE=rules`.
+- Tests: 62 grün (neu `shield_recharges_but_hull_needs_drones`,
+  `passengers_pay_by_comfort_and_bonuses_apply`, `every_offer_has_a_par_time`; der
+  Schwerlast-Test prüft jetzt auch die Boni).
 
 ### Runde 3 – Phase 6: Welt, Ereignisse, Erkunden (erledigt)
 

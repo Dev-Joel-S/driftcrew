@@ -70,6 +70,7 @@ pub fn stats_for(data: &GameData, upgrades: &[String]) -> ShipStats {
             UpgradeEffect::DrillRate(m) => s.drill_mul *= m,
             UpgradeEffect::FuelTank(f) => s.fuel_mul += f,
             UpgradeEffect::ScanRange(m) => s.scan_mul *= m,
+            UpgradeEffect::RepairDrones(r) => s.hull_regen += r,
         }
     }
     s

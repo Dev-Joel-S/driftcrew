@@ -10,6 +10,8 @@ use super::world::Owner;
 use super::{Body, BodyKind, SimEvent, SimState, ToastKind};
 
 pub const MAX_ACTIVE: usize = 4;
+/// Ab dieser Beschleunigung (m/s²) wird es den Passagieren ungemütlich.
+pub const COMFORT_ACCEL: f32 = 10.0;
 /// Kollisionsradius einer Schwerlastkiste.
 pub const CRATE_RADIUS: f32 = 1.5;
 
@@ -35,6 +37,14 @@ pub enum MissionKind {
         ore: Ore,
         amount: f32,
         to: usize,
+    },
+    /// Passagiere: Zufriedenheit 0..1 sinkt bei harter Beschleunigung, Stößen und Kreiseln.
+    Passengers {
+        from: usize,
+        to: usize,
+        count: u32,
+        comfort: f32,
+        aboard: bool,
     },
     Tow {
         site: Vec2,
@@ -62,6 +72,8 @@ pub struct Mission {
     /// Statistikstand bei Annahme (für die Auswertung).
     pub start: Option<Box<CrewStats>>,
     pub top_speed: f32,
+    /// Richtzeit in Sekunden (Zeitbonus, wenn schneller).
+    pub par: f32,
 }
 
 /// Rufstufen: Punkte ab denen die Stufe gilt, und ihre Namen.
@@ -86,6 +98,7 @@ impl Mission {
             MissionKind::Delivery { .. } => MissionType::Delivery,
             MissionKind::Haul { .. } => MissionType::Haul,
             MissionKind::Mining { .. } => MissionType::Mining,
+            MissionKind::Passengers { .. } => MissionType::Passengers,
             MissionKind::Tow { .. } => MissionType::Tow,
             MissionKind::Capsules { .. } => MissionType::Capsules,
         }
@@ -108,6 +121,9 @@ impl Mission {
         match &self.kind {
             MissionKind::Delivery { to, cargo, .. } => format!("Liefern: {cargo} → {}", st(*to)),
             MissionKind::Haul { to, cargo, .. } => format!("Schwerlast: {cargo} → {}", st(*to)),
+            MissionKind::Passengers { to, count, .. } => {
+                format!("Passagiere: {count} Personen → {}", st(*to))
+            }
             MissionKind::Mining { ore, amount, to } => {
                 format!("Abbau: {amount:.0} t {} → {}", ore.label(), st(*to))
             }
@@ -127,6 +143,21 @@ impl Mission {
                     "{mass:.1} t Fracht, Abholung an {}",
                     s.world.owner_name(*from)
                 )
+            }
+            MissionKind::Passengers {
+                from,
+                comfort,
+                aboard,
+                ..
+            } => {
+                if *aboard {
+                    format!(
+                        "Zufriedenheit {:.0} % – sanft beschleunigen, nicht anecken",
+                        comfort * 100.0
+                    )
+                } else {
+                    format!("Abholung an {}", s.world.stations[*from].name)
+                }
             }
             MissionKind::Haul { from, mass, .. } => format!(
                 "{mass:.0} t Kiste am Kran schleppen, Abholung an {}",
@@ -171,6 +202,9 @@ impl Mission {
         let station = |i: usize| s.world.stations[i].pos;
         match &self.kind {
             MissionKind::Delivery { to, .. } => Some(station(*to)),
+            MissionKind::Passengers {
+                from, to, aboard, ..
+            } => Some(station(if *aboard { *to } else { *from })),
             MissionKind::Mining { ore, amount, to } => {
                 if s.ship.ore_amount(*ore) + 1e-3 >= *amount {
                     Some(station(*to))
@@ -324,6 +358,7 @@ impl SimState {
             MissionType::Delivery => n_st > 1,
             MissionType::Haul => n_st > 1 && level >= 1,
             MissionType::Mining => ores_exist,
+            MissionType::Passengers => n_st > 1,
             MissionType::Shipment | MissionType::Tow | MissionType::Capsules => false,
         });
         if types.is_empty() {
@@ -336,6 +371,24 @@ impl SimState {
         let ty = types[self.rng.index(types.len())];
         let bonus = 1.0 + 0.1 * level as f32;
         let (kind, reward) = match ty {
+            MissionType::Passengers => {
+                let mut to = self.rng.index(n_st - 1);
+                if to >= si {
+                    to += 1;
+                }
+                let count = self.rng.range_u32(md.passengers.0, md.passengers.1);
+                let dist = (self.world.stations[to].pos - self.world.stations[si].pos).length();
+                (
+                    MissionKind::Passengers {
+                        from: si,
+                        to,
+                        count,
+                        comfort: 1.0,
+                        aboard: false,
+                    },
+                    count as f32 * md.fare_per_person + dist * md.reward_per_distance,
+                )
+            }
             MissionType::Delivery | MissionType::Haul => {
                 let mut to = self.rng.index(n_st - 1);
                 if to >= si {
@@ -395,6 +448,7 @@ impl SimState {
                 )
             }
         };
+        let par = self.par_time(&kind);
         Mission {
             id,
             kind,
@@ -403,7 +457,35 @@ impl SimState {
             giver,
             start: None,
             top_speed: 0.0,
+            par,
         }
+    }
+
+    /// Richtzeit: Strecke durch ein gemütliches Tempo plus Zeit fürs Hantieren.
+    pub fn par_time(&self, kind: &MissionKind) -> f32 {
+        let st = |i: usize| self.world.stations[i].pos;
+        let at = |o: Owner| match o {
+            Owner::Station(i) => st(i),
+            Owner::Planet(i) => self.world.planets[i].pos,
+        };
+        let t = match kind {
+            MissionKind::Delivery { from, to, .. } => (at(*from) - st(*to)).length() / 10.0 + 60.0,
+            MissionKind::Passengers { from, to, .. } => (st(*from) - st(*to)).length() / 8.0 + 60.0,
+            MissionKind::Haul { from, to, .. } => (st(*from) - st(*to)).length() / 6.0 + 90.0,
+            MissionKind::Mining { amount, to, .. } => {
+                // Grob: hin zur nächsten Quelle und zurück, plus Abbau.
+                let src = self
+                    .world
+                    .planets
+                    .iter()
+                    .map(|p| (p.pos - st(*to)).length())
+                    .fold(f32::MAX, f32::min);
+                src.min(2000.0) * 2.0 / 12.0 + amount * 12.0 + 60.0
+            }
+            MissionKind::Tow { site, to, .. } => (*site - st(*to)).length() / 6.0 + 150.0,
+            MissionKind::Capsules { site, to, .. } => (*site - st(*to)).length() / 10.0 + 240.0,
+        };
+        (t / 10.0).round() * 10.0
     }
 
     /// Außenposten verschicken ihr Erz als Ladung zu einer Station.
@@ -419,19 +501,22 @@ impl SimState {
         let ore = self.world.planets[pi].ore;
         let mass = (self.rng.range(3.0, 7.0) * 2.0).round() / 2.0;
         let dist = (self.world.stations[to].pos - self.world.planets[pi].pos).length();
+        let kind = MissionKind::Delivery {
+            from: Owner::Planet(pi),
+            to,
+            cargo: format!("{}-Ladung", ore.label()),
+            mass,
+        };
+        let par = self.par_time(&kind);
         Mission {
             id,
-            kind: MissionKind::Delivery {
-                from: Owner::Planet(pi),
-                to,
-                cargo: format!("{}-Ladung", ore.label()),
-                mass,
-            },
+            kind,
             reward: round5(mass * md.shipment_per_t + dist * md.reward_per_distance),
             origin: Some(Owner::Planet(pi)),
             giver,
             start: None,
             top_speed: 0.0,
+            par,
         }
     }
 
@@ -454,38 +539,39 @@ impl SimState {
                     .total_cmp(&(self.world.stations[*b].pos - site).length())
             })
             .unwrap_or(0);
-        if self.rng.chance(0.5) {
+        let (kind, reward) = if self.rng.chance(0.5) {
             let name = md.derelict_names[self.rng.index(md.derelict_names.len())].clone();
-            Mission {
-                id,
-                kind: MissionKind::Tow {
+            (
+                MissionKind::Tow {
                     site,
                     to,
                     name,
                     body: None,
                 },
-                reward: round5(self.rng.range(md.tow_reward.0, md.tow_reward.1)),
-                origin: None,
-                giver: None,
-                start: None,
-                top_speed: 0.0,
-            }
+                self.rng.range(md.tow_reward.0, md.tow_reward.1),
+            )
         } else {
             let total = self.rng.range_u32(md.capsule_count.0, md.capsule_count.1);
-            Mission {
-                id,
-                kind: MissionKind::Capsules {
+            (
+                MissionKind::Capsules {
                     site,
                     total,
                     delivered: 0,
                     to,
                 },
-                reward: round5(self.rng.range(md.capsule_reward.0, md.capsule_reward.1)),
-                origin: None,
-                giver: None,
-                start: None,
-                top_speed: 0.0,
-            }
+                self.rng.range(md.capsule_reward.0, md.capsule_reward.1),
+            )
+        };
+        let par = self.par_time(&kind);
+        Mission {
+            id,
+            kind,
+            reward: round5(reward),
+            origin: None,
+            giver: None,
+            start: None,
+            top_speed: 0.0,
+            par,
         }
     }
 
@@ -527,6 +613,17 @@ impl SimState {
                     );
                     return;
                 }
+            }
+            MissionKind::Passengers { from, aboard, .. } => {
+                if self.docked_station() != Some(*from) {
+                    let name = self.world.stations[*from].name.clone();
+                    self.toast(
+                        format!("Die Passagiere warten in {name} – dort andocken"),
+                        ToastKind::Warn,
+                    );
+                    return;
+                }
+                *aboard = true;
             }
             MissionKind::Haul {
                 from,
@@ -675,15 +772,39 @@ impl SimState {
 
     fn complete_mission(&mut self, idx: usize) {
         let m = self.active.remove(idx);
-        self.crew.credits += m.reward;
+        let start = m.start.as_deref().cloned().unwrap_or_default();
+        let stats = self.stats.since(&start, m.top_speed);
+        let md = &self.data.missions;
+        // Passagiere zahlen nach Zufriedenheit (mindestens 30 %).
+        let comfort = match m.kind {
+            MissionKind::Passengers { comfort, .. } => Some(comfort),
+            _ => None,
+        };
+        let base = match comfort {
+            Some(c) => round5(m.reward as f32 * (0.3 + 0.7 * c)),
+            None => m.reward,
+        };
+        let collisions: u32 = stats.slots.iter().map(|x| x.collisions).sum();
+        let bonus_time = if stats.time <= m.par {
+            round5(base as f32 * md.time_bonus)
+        } else {
+            0
+        };
+        let bonus_clean = if collisions == 0 && stats.damage < 1.0 {
+            round5(base as f32 * md.clean_bonus)
+        } else {
+            0
+        };
+        let paid = base + bonus_time + bonus_clean;
+        self.crew.credits += paid;
         self.crew.missions_done += 1;
         let title = m.title(self);
         self.events.push(SimEvent::MissionCompleted {
             id: m.id,
-            reward: m.reward,
+            reward: paid,
         });
         self.toast(
-            format!("Auftrag erfüllt: {title}  +{} Credits", m.reward),
+            format!("Auftrag erfüllt: {title}  +{paid} Credits"),
             ToastKind::Good,
         );
         // Ruf: bei der Station, die den Auftrag vergeben hat – bei Notrufen und Lieferungen
@@ -718,13 +839,16 @@ impl SimState {
             }
             (name, after, gain)
         });
-        let start = m.start.as_deref().cloned().unwrap_or_default();
         self.report = Some(MissionReport {
             mission: m.id,
             title,
-            reward: m.reward,
+            reward: base,
+            bonus_time,
+            bonus_clean,
+            comfort,
+            par: m.par,
             reputation,
-            stats: self.stats.since(&start, m.top_speed),
+            stats,
             thruster_slots: self.ship.thrusters.iter().map(|t| t.slot).collect(),
         });
         self.cleanup_mission(&m);
@@ -775,6 +899,7 @@ impl SimState {
             let m = self.active[i].clone();
             let finished = match &m.kind {
                 MissionKind::Delivery { to, .. } => *to == si,
+                MissionKind::Passengers { to, aboard, .. } => *aboard && *to == si,
                 MissionKind::Mining { ore, amount, to } => {
                     if *to == si && self.ship.ore_amount(*ore) + 1e-3 >= *amount {
                         self.ship.take_ore(*ore, *amount);

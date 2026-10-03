@@ -536,3 +536,102 @@ fn random_events_cover_all_kinds() {
     assert!(shower && flare);
     assert!(offers_after > offers_before, "spontane Notsignale");
 }
+
+#[test]
+fn shield_recharges_but_hull_needs_drones() {
+    let mut s = sim();
+    free_at(&mut s, Vec2::new(0.0, 500.0));
+    s.ship.shield = 0.0;
+    s.ship.hull = 50.0;
+    s.ship.since_hit = 0.0;
+    for _ in 0..60 {
+        s.step(&TickInput::default());
+    }
+    assert_eq!(s.ship.shield, 0.0, "erst nach der Pause");
+    for _ in 0..(6 * 60) {
+        s.step(&TickInput::default());
+    }
+    assert!(s.ship.shield > 5.0, "lädt nach: {}", s.ship.shield);
+    assert_eq!(s.ship.hull, 50.0, "Hülle heilt nicht von selbst");
+    // Reparaturdrohnen kaufen → Hülle flickt sich langsam.
+    s.dock_at_station(0);
+    cmd(
+        &mut s,
+        Command::Buy {
+            purchase: Purchase::Upgrade("drones".into()),
+            voter: 0,
+        },
+    );
+    assert!(s.ship.hull_regen > 0.0);
+    free_at(&mut s, Vec2::new(0.0, 500.0));
+    let h = s.ship.hull;
+    for _ in 0..(4 * 60) {
+        s.step(&TickInput::default());
+    }
+    assert!(s.ship.hull > h + 1.0);
+}
+
+#[test]
+fn passengers_pay_by_comfort_and_bonuses_apply() {
+    let mut s = sim();
+    let nova = s.data.station_index("nova").unwrap();
+    let kepler = s.data.station_index("kepler").unwrap();
+    let id = s.next_id();
+    let kind = MissionKind::Passengers {
+        from: nova,
+        to: kepler,
+        count: 4,
+        comfort: 1.0,
+        aboard: false,
+    };
+    let par = s.par_time(&kind);
+    assert!(par > 60.0);
+    s.offers.push(super::missions::Mission {
+        id,
+        kind,
+        reward: 400,
+        origin: Some(Owner::Station(nova)),
+        giver: None,
+        start: None,
+        top_speed: 0.0,
+        par,
+    });
+    cmd(&mut s, Command::AcceptMission { id });
+    assert_eq!(s.active.len(), 1);
+    // Vollgas: mehr als 10 m/s² → die Zufriedenheit sinkt.
+    free_at(&mut s, Vec2::new(0.0, 500.0));
+    let all = (1u32 << s.ship.thrusters.len()) - 1;
+    for _ in 0..180 {
+        s.step(&TickInput {
+            slots: all,
+            aims: vec![0.0; MAX_SLOTS],
+            commands: vec![],
+        });
+    }
+    let comfort = match s.active[0].kind {
+        MissionKind::Passengers { comfort, .. } => comfort,
+        _ => unreachable!(),
+    };
+    assert!(comfort < 0.99 && comfort > 0.5, "Zufriedenheit {comfort}");
+    let before = s.crew.credits;
+    s.ship.docked = None;
+    s.dock_at_station(kepler);
+    s.on_docked(Owner::Station(kepler));
+    let r = s.report.as_ref().unwrap();
+    assert_eq!(r.comfort, Some(comfort));
+    assert!(r.reward < 400, "weniger als voll bezahlt");
+    assert!(r.bonus_time > 0, "schnell erledigt");
+    assert!(r.bonus_clean > 0, "ohne Kollision");
+    assert_eq!(
+        s.crew.credits - before,
+        r.reward + r.bonus_time + r.bonus_clean
+    );
+}
+
+#[test]
+fn every_offer_has_a_par_time() {
+    let s = sim();
+    for m in &s.offers {
+        assert!(m.par >= 60.0, "{:?}", m.kind);
+    }
+}

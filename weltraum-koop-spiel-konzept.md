@@ -28,6 +28,7 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - **Lebensbalken** statt Sofort-Tod. Schaden abhängig von der Aufprallgeschwindigkeit
 - Meteoriten verursachen Schaden bis hin zur Explosion
 - Treffer können **einzelne Triebwerke** beschädigen: erst Stottern, dann Ausfall. Reparatur an Stationen
+- **Schild lädt nach** einigen Sekunden ohne Treffer nach, die **Hülle nie von selbst** (Reparatur kostet; Upgrade: Reparaturdrohnen)
 - **Kein Game Over:** Bei Hülle 0 wird eine Rettungskapsel ausgestoßen, das Schiff wird zur Heimatstation geborgen, die Bergungskosten zahlt die gemeinsame Kasse
 - **Treibstoff:** Tank pro Schiff, Verbrauch je feuerndem Triebwerk nach Schub. Leer bedeutet nicht Stillstand, sondern Notreserve mit 25 % Schub (ohne Reibung könnte eine Crew sonst endgültig festsitzen). Tanken an Stationen
 
@@ -91,6 +92,9 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - **Material verschicken:** Erzladungen von Planeten-Außenposten zu Stationen
 - Aufträge kommen von **Auftraggebern** (Name, Rolle, Porträt, Sprüche; Daten in `npcs.ron`)
 - **Ruf pro Station:** mehr und besser bezahlte Aufträge, Schwerlast ab Stufe 1, Rabatt im Service
+- **Passagiere:** sanft fliegen, sonst sinkt die Bezahlung
+- **Richtzeit, Zeit- und Sauberkeitsbonus** bei jedem Auftrag
+- **Funk** beim Anflug und Andocken, erzählt nebenbei Bruchstücke der Welt
 - **Auswertung** nach jedem Auftrag mit Spaßstatistik pro Slot (meiste Schubzeit, meiste Kollisionen …)
 - Weitere Typen später erweiterbar
 

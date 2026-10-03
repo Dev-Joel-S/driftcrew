@@ -4,6 +4,7 @@ pub mod hud;
 pub mod lobby;
 pub mod map;
 pub mod pause;
+pub mod radio;
 pub mod report;
 pub mod station;
 pub mod title;
@@ -58,6 +59,7 @@ impl Plugin for UiPlugin {
                 map::MapPlugin,
                 pause::PausePlugin,
                 report::ReportPlugin,
+                radio::RadioPlugin,
             ));
     }
 }

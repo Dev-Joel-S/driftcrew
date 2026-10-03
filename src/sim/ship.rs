@@ -34,6 +34,7 @@ pub struct ShipStats {
     pub drill_mul: f32,
     pub fuel_mul: f32,
     pub scan_mul: f32,
+    pub hull_regen: f32,
 }
 
 impl Default for ShipStats {
@@ -49,6 +50,7 @@ impl Default for ShipStats {
             drill_mul: 1.0,
             fuel_mul: 1.0,
             scan_mul: 1.0,
+            hull_regen: 0.0,
         }
     }
 }
@@ -202,6 +204,12 @@ pub struct Ship {
     pub max_fuel: f32,
     pub fuel_burn: f32,
     pub scan_range: f32,
+    pub shield_regen: f32,
+    pub shield_delay: f32,
+    /// Sekunden seit dem letzten Treffer (für das Nachladen des Schilds).
+    pub since_hit: f32,
+    /// Reparaturdrohnen: Hüllenpunkte pro Sekunde.
+    pub hull_regen: f32,
 
     pub docked: Option<usize>,
     pub dock_timer: f32,
@@ -340,6 +348,10 @@ impl Ship {
             max_fuel,
             fuel_burn: def.fuel_burn,
             scan_range: 450.0 * stats.scan_mul,
+            shield_regen: def.shield_regen,
+            shield_delay: def.shield_delay,
+            since_hit: 0.0,
+            hull_regen: stats.hull_regen,
             docked: None,
             dock_timer: 0.0,
             dock_cooldown: 0.0,

@@ -87,7 +87,14 @@ pub struct Award {
 pub struct MissionReport {
     pub mission: u32,
     pub title: String,
+    /// Grundbelohnung (bei Passagieren schon nach Zufriedenheit).
     pub reward: u32,
+    pub bonus_time: u32,
+    pub bonus_clean: u32,
+    /// Zufriedenheit der Passagiere (0..1), falls welche an Bord waren.
+    pub comfort: Option<f32>,
+    /// Richtzeit in Sekunden.
+    pub par: f32,
     /// Station, Rufstufe danach, gewonnene Punkte.
     pub reputation: Option<(String, u8, u32)>,
     pub stats: CrewStats,
@@ -176,6 +183,10 @@ mod tests {
             mission: 1,
             title: "Test".into(),
             reward: 100,
+            bonus_time: 0,
+            bonus_clean: 0,
+            comfort: None,
+            par: 100.0,
             reputation: None,
             stats,
             thruster_slots: vec![0, 1],

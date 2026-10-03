@@ -108,6 +108,9 @@ das Schwarze Loch sind gefährlich. Treffer in der Nähe eines Triebwerks besch�
 **stottert** es (setzt zufällig aus und schiebt schwächer), dann **fällt es aus**. Die Slot-Leiste
 zeigt das an, repariert wird im Stationsservice.
 
+Der **Schild lädt sich** nach ein paar Sekunden ohne Treffer wieder auf, die **Hülle nicht** –
+Reparaturen kosten an Stationen (oder man baut Reparaturdrohnen ein, die langsam flicken).
+
 Bei Hülle 0 gibt es **kein Game Over**: Die Crew wird in einer **Rettungskapsel** ausgestoßen
 (die Kamera folgt ihr), das Schiff wird zur letzten Station geborgen. Die Bergungskosten
 (fester Betrag + Anteil der Kasse) gehen von der gemeinsamen Kasse ab und werden angezeigt.
@@ -184,6 +187,12 @@ Service.
 - **Material verschicken** – an einem Planeten-Außenposten eine Erzladung aufnehmen und zu einer
   Station bringen. Die Ladung verschiebt Masse und Schwerpunkt.
 - **Schwerlast** – eine Kiste, die in keinen Frachtraum passt, am Kran zu Station B schleppen.
+- **Passagiere** – Leute von A nach B bringen. Harte Beschleunigung, Stöße und Kreiseln senken
+  ihre Zufriedenheit und damit die Bezahlung.
+
+Jeder Auftrag hat eine **Richtzeit**. Wer darunter bleibt, bekommt einen Zeitbonus, wer ohne
+Kollision und Schaden fliegt, einen Sauberkeitsbonus. Beim Anflug und Andocken meldet sich die
+Station per **Funk**.
 - **Abbauen** – bestimmtes Erz abbauen und an der Station abliefern.
 - **Notrufe** – überall annehmbar (Karte mit **Tab**): treibendes Wrack mit dem Kran zur Station
   schleppen oder Rettungskapseln einsammeln und abliefern.
@@ -257,6 +266,7 @@ in die Binärdatei eingebettet; liegt `assets/data/` im Arbeitsverzeichnis (z. B
   Schrott, Startkapital, Bergungsgebühr, Lackfarben, Flammenfarben, Bauteile aus Wracks.
 - `missions.ron` – Vorlagen für Aufträge und Notrufe; Fracht mit `towed: true` ist Schwerlast.
 - `npcs.ron` – Auftraggeber: Name, Rolle, Ort, welche Aufträge sie vergeben, Porträtfarben, Sprüche.
+- `radio.ron` – Funksprüche beim Anflug, Andocken und Abdocken, allgemein und pro Ort.
 
 ---
 

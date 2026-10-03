@@ -177,6 +177,11 @@ pub struct ShipDef {
     pub angular_damping: f32,
     #[serde(default = "default_min_thrusters")]
     pub min_thrusters: u8,
+    /// Schild lädt sich nach `shield_delay` Sekunden ohne Treffer mit `shield_regen` pro Sekunde auf.
+    #[serde(default = "default_shield_regen")]
+    pub shield_regen: f32,
+    #[serde(default = "default_shield_delay")]
+    pub shield_delay: f32,
     /// Empfohlene Crewgröße (von, bis). Slots belegen nur Menschen, keine Bots.
     #[serde(default = "default_crew")]
     pub crew: (u8, u8),
@@ -197,6 +202,12 @@ fn default_ang_damp() -> f32 {
 }
 fn default_min_thrusters() -> u8 {
     2
+}
+fn default_shield_regen() -> f32 {
+    4.0
+}
+fn default_shield_delay() -> f32 {
+    4.0
 }
 fn default_crew() -> (u8, u8) {
     (1, 4)
@@ -600,6 +611,8 @@ pub enum UpgradeEffect {
     FuelTank(f32),
     /// Scanner-Reichweite (Faktor).
     ScanRange(f32),
+    /// Reparaturdrohnen: Hülle flickt sich im Flug (Punkte pro Sekunde).
+    RepairDrones(f32),
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -701,6 +714,16 @@ pub struct MissionsDef {
     /// Für welche Crewgröße eine Auftragsart gedacht ist (von, bis).
     #[serde(default)]
     pub crew: Vec<(MissionType, (u8, u8))>,
+    /// Passagiere: Anzahl (von, bis) und Bezahlung pro Person.
+    #[serde(default = "default_passengers")]
+    pub passengers: (u32, u32),
+    #[serde(default = "default_fare")]
+    pub fare_per_person: f32,
+    /// Bonus für Abschluss innerhalb der Richtzeit und für sauberes Fliegen (Anteil der Belohnung).
+    #[serde(default = "default_time_bonus")]
+    pub time_bonus: f32,
+    #[serde(default = "default_clean_bonus")]
+    pub clean_bonus: f32,
     pub distress_offers: u32,
     pub delivery_cargo: Vec<CargoTemplate>,
     pub reward_per_distance: f32,
@@ -709,6 +732,43 @@ pub struct MissionsDef {
     pub capsule_reward: P,
     pub capsule_count: (u32, u32),
     pub derelict_names: Vec<String>,
+}
+
+fn default_passengers() -> (u32, u32) {
+    (2, 6)
+}
+fn default_fare() -> f32 {
+    45.0
+}
+fn default_time_bonus() -> f32 {
+    0.15
+}
+fn default_clean_bonus() -> f32 {
+    0.10
+}
+
+// ---------------------------------------------------------------------------
+// Funk
+// ---------------------------------------------------------------------------
+
+/// Funksprüche (Platzhalter: `{station}`, `{ship}`). Reine Anzeige.
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct RadioDef {
+    pub approach: Vec<String>,
+    pub docked: Vec<String>,
+    pub undock: Vec<String>,
+    /// Zusätzliche Sprüche einzelner Orte (Station- oder Planeten-Kennung).
+    pub places: Vec<RadioPlace>,
+}
+
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct RadioPlace {
+    pub at: String,
+    pub speaker: String,
+    pub approach: Vec<String>,
+    pub docked: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -726,6 +786,8 @@ pub enum MissionType {
     Tow,
     /// Notruf: Rettungskapseln einsammeln.
     Capsules,
+    /// Passagiere befördern: sanft fliegen, sonst sinkt die Bezahlung.
+    Passengers,
 }
 
 /// Aussehen des Porträts (wird im Menü aus einfachen Formen gebaut).
@@ -819,6 +881,7 @@ pub struct GameData {
     pub shop: ShopDef,
     pub missions: MissionsDef,
     pub npcs: Vec<NpcDef>,
+    pub radio: RadioDef,
 }
 
 const SHIPS_RON: &str = include_str!("../../assets/data/ships.ron");
@@ -826,6 +889,7 @@ const WORLD_RON: &str = include_str!("../../assets/data/world.ron");
 const SHOP_RON: &str = include_str!("../../assets/data/shop.ron");
 const MISSIONS_RON: &str = include_str!("../../assets/data/missions.ron");
 const NPCS_RON: &str = include_str!("../../assets/data/npcs.ron");
+const RADIO_RON: &str = include_str!("../../assets/data/radio.ron");
 
 fn read_or(name: &str, embedded: &str) -> String {
     let path = std::path::Path::new("assets/data").join(name);
@@ -845,6 +909,7 @@ impl GameData {
             shop: parse("shop.ron", &read_or("shop.ron", SHOP_RON))?,
             missions: parse("missions.ron", &read_or("missions.ron", MISSIONS_RON))?,
             npcs: parse("npcs.ron", &read_or("npcs.ron", NPCS_RON))?,
+            radio: parse("radio.ron", &read_or("radio.ron", RADIO_RON))?,
         };
         data.validate()?;
         Ok(data)
@@ -859,6 +924,7 @@ impl GameData {
             shop: parse("shop.ron", SHOP_RON)?,
             missions: parse("missions.ron", MISSIONS_RON)?,
             npcs: parse("npcs.ron", NPCS_RON)?,
+            radio: parse("radio.ron", RADIO_RON)?,
         };
         data.validate()?;
         Ok(data)

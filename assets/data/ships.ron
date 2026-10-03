@@ -3,6 +3,7 @@
 // links/rechts, dann Mitte, dann außen links/rechts.
 // Nicht belegte Triebwerke verschwinden, die belegten werden nach `thruster_layouts`
 // symmetrisch neu angeordnet.
+// shield_regen/shield_delay = Schild lädt nach so vielen Sekunden ohne Treffer (Standard 4/4),
 // crew = empfohlene Crewgröße (von, bis), fuel_capacity = Tank, fuel_burn = Verbrauch pro Schubeinheit und Sekunde (Standard 0.0065).
 [
     (
@@ -53,6 +54,8 @@
         max_hull: 70.0,
         max_shield: 60.0,
         max_ammo: 14,
+        shield_regen: 6.0,
+        shield_delay: 3.5,
         fuel_capacity: 70.0,
         fuel_burn: 0.006,
         angular_damping: 0.18,
@@ -85,6 +88,8 @@
         max_hull: 110.0,
         max_shield: 90.0,
         max_ammo: 24,
+        shield_regen: 7.0,
+        shield_delay: 3.0,
         fuel_capacity: 90.0,
         fuel_burn: 0.007,
         angular_damping: 0.2,
@@ -121,6 +126,8 @@
         max_hull: 170.0,
         max_shield: 50.0,
         max_ammo: 10,
+        shield_regen: 3.0,
+        shield_delay: 5.0,
         fuel_capacity: 160.0,
         angular_damping: 0.1,
         min_thrusters: 2,
@@ -165,6 +172,8 @@
         max_hull: 150.0,
         max_shield: 40.0,
         max_ammo: 0,
+        shield_regen: 3.5,
+        shield_delay: 4.5,
         fuel_capacity: 140.0,
         angular_damping: 0.14,
         min_thrusters: 2,

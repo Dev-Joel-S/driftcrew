@@ -359,6 +359,8 @@ pub struct SimState {
     /// Kartografie: mit dem Scanner erfasste Zellen und noch nicht verkaufte Daten.
     pub surveyed: explore::Exploration,
     pub charts_unsold: u32,
+    /// Geschwindigkeit im letzten Tick (für die Beschleunigung, die Passagiere spüren).
+    pub prev_vel: Vec2,
 }
 
 impl SimState {
@@ -437,6 +439,7 @@ impl SimState {
             blips: Vec::new(),
             surveyed,
             charts_unsold: save.charts_unsold,
+            prev_vel: Vec2::ZERO,
         };
         s.populate_fields();
         s.populate_wrecks();
@@ -565,6 +568,7 @@ impl SimState {
         self.update_sectors();
         self.update_missions();
         self.update_tracking();
+        self.update_regen();
         self.check_ship_health();
         for p in &mut self.pings {
             p.life -= DT;
@@ -630,6 +634,22 @@ impl SimState {
         String::new()
     }
 
+    /// Schild lädt nach einer Pause ohne Treffer nach (nicht während einer Sonneneruption),
+    /// Reparaturdrohnen flicken die Hülle langsam. Die Hülle heilt sonst nie von selbst.
+    fn update_regen(&mut self) {
+        if self.ship.destroyed {
+            return;
+        }
+        self.ship.since_hit += DT;
+        if self.ship.since_hit > self.ship.shield_delay && !self.flare() {
+            self.ship.shield =
+                (self.ship.shield + self.ship.shield_regen * DT).min(self.ship.max_shield);
+        }
+        if self.ship.hull_regen > 0.0 && self.ship.hull > 0.0 {
+            self.ship.hull = (self.ship.hull + self.ship.hull_regen * DT).min(self.ship.max_hull);
+        }
+    }
+
     /// Erkundung und Statistik nachführen (läuft jeden Tick, deckt alle 15 Ticks auf).
     fn update_tracking(&mut self) {
         if self.ship.destroyed {
@@ -652,8 +672,20 @@ impl SimState {
                 }
             }
         }
+        // Passagiere spüren Beschleunigung, Stöße und schnelles Drehen.
+        let acc = (self.ship.vel - self.prev_vel).length() / DT;
+        self.prev_vel = self.ship.vel;
+        let spin = self.ship.ang_vel.abs();
+        let flying = self.ship.docked.is_none();
         for m in &mut self.active {
             m.top_speed = m.top_speed.max(speed);
+            if let missions::MissionKind::Passengers { comfort, .. } = &mut m.kind
+                && flying
+            {
+                let loss = (acc - missions::COMFORT_ACCEL).max(0.0).min(400.0) * 0.004
+                    + (spin - 1.8).max(0.0) * 0.03;
+                *comfort = (*comfort - loss * DT).max(0.0);
+            }
         }
     }
 
