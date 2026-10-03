@@ -1,6 +1,7 @@
 //! Automatischer Vorführmodus für Screenshots und Rauchtests:
 //! `DRIFTCREW_DEMO=<ordner>` fliegt ein Skript ab, speichert Bildschirmfotos und
-//! beendet sich danach. `DRIFTCREW_SCENE=tour|ui|systems|progress|coop|sectors|rules|rebuild` wählt das Skript.
+//! beendet sich danach. `DRIFTCREW_SCENE=tour|ui|systems|progress|coop|sectors|rules|rebuild|
+//! courses|finance|minigames|workshop|traffic` wählt das Skript.
 
 use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
@@ -1295,6 +1296,191 @@ fn workshop_scene() -> Vec<(f32, Act)> {
     ]
 }
 
+/// Ein NPC-Schiff an einen Ort setzen (nur für Vorführungen).
+fn put_npc(c: &mut Ctx, name: &str, pos: Vec2, angle: f32, nav: crate::sim::npc::Nav) {
+    let s = &mut c.sim.0;
+    if let Some(n) = s.npcs.iter_mut().find(|n| n.name == name) {
+        n.ship.pos = pos;
+        n.ship.prev_pos = pos;
+        n.ship.angle = angle;
+        n.ship.prev_angle = angle;
+        n.ship.vel = Vec2::ZERO;
+        n.ship.ang_vel = 0.0;
+        n.nav = nav;
+    }
+}
+
+/// Phase 12: NPC-Verkehr mit voller Physik, Piraten, Geleitschutz, Zoll, Händlerin.
+fn traffic_scene() -> Vec<(f32, Act)> {
+    use crate::sim::missions::{Mission, MissionKind};
+    use crate::sim::npc::{Nav, Role};
+    vec![
+        (0.5, |c| {
+            keyboard_crew(c, false);
+            c.next.set(AppState::Playing);
+        }),
+        // Kepler: Juno landet im Leitstrahl, Kranich hebt ab.
+        (2.0, |c| {
+            let kepler = station(c, "kepler");
+            let st = c.sim.0.world.stations[kepler].pos;
+            teleport(c, st + Vec2::new(-40.0, 18.0), 0.0, 0.0);
+            let pad4 = c.sim.0.world.stations[kepler].pads[0];
+            let p = c.sim.0.world.pads[pad4].clone();
+            put_npc(
+                c,
+                "Juno",
+                p.center + p.normal * 15.0,
+                0.15,
+                Nav::Landing {
+                    pad: pad4,
+                    timer: 0.0,
+                },
+            );
+            put_npc(
+                c,
+                "Kranich",
+                st + Vec2::new(-30.0, 45.0),
+                0.6,
+                Nav::Hold {
+                    target: st + Vec2::new(-140.0, 90.0),
+                },
+            );
+        }),
+        (4.6, |c| shot(c, "verkehr_leitstrahl")),
+        // Piratennest: Drohnen greifen an.
+        (5.4, |c| {
+            let n = &c.sim.0.data.traffic.nests[0];
+            let nest = Vec2::new(n.center.0, n.center.1);
+            teleport(c, nest, 70.0, 1.2);
+            let me = c.sim.0.ship.pos;
+            c.sim.0.ship.invulnerable = 20.0;
+            for k in 0..3 {
+                let at = me + rot(Vec2::X, 0.3 + k as f32 * 1.2) * 18.0;
+                c.sim.0.spawn_drone(at, Some(0), None);
+            }
+        }),
+        (8.2, |c| shot(c, "piraten")),
+        // Geleitschutz: Frachter auf halber Strecke, Hinterhalt.
+        (9.0, |c| {
+            let kepler = station(c, "kepler");
+            let s = &mut c.sim.0;
+            s.npcs.retain(|n| !n.hostile);
+            let id = s.next_id();
+            let convoy = s.spawn_convoy("Frachter Lerche", id, 0, kepler);
+            s.active.push(Mission {
+                id,
+                kind: MissionKind::Escort {
+                    from: 0,
+                    to: kepler,
+                    name: "Frachter Lerche".into(),
+                    npc: Some(convoy),
+                    ambushed: true,
+                },
+                reward: 520,
+                origin: Some(crate::sim::world::Owner::Station(0)),
+                giver: None,
+                start: None,
+                top_speed: 0.0,
+                max_strain: None,
+                par: 300.0,
+            });
+            let mid = Vec2::new(640.0, -110.0);
+            if let Some(n) = s.npcs.iter_mut().find(|n| n.id == convoy) {
+                n.role = Role::Convoy {
+                    mission: id,
+                    to: kepler,
+                    departed: true,
+                };
+                n.ship.pos = mid;
+                n.ship.prev_pos = mid;
+                n.ship.angle = -1.75;
+                n.ship.prev_angle = n.ship.angle;
+                n.ship.hull *= 0.72;
+                n.nav = Nav::Path {
+                    points: vec![mid + Vec2::new(300.0, -60.0)],
+                    idx: 0,
+                    land: None,
+                };
+            }
+            for k in 0..3 {
+                let at = mid + rot(Vec2::X, 0.4 + k as f32 * 2.1) * 20.0;
+                s.spawn_drone(at, None, Some(convoy));
+            }
+            teleport(c, mid + Vec2::new(26.0, -8.0), 0.0, 0.0);
+            c.sim.0.ship.invulnerable = 20.0;
+        }),
+        (11.6, |c| shot(c, "geleitschutz")),
+        // Schmuggel: mit Ware im Radius der Zollboje bei Kepler.
+        (12.4, |c| {
+            let neb = station(c, "nebelhafen");
+            let kepler = station(c, "kepler");
+            let s = &mut c.sim.0;
+            s.npcs
+                .retain(|n| !n.hostile && !matches!(n.role, Role::Convoy { .. }));
+            s.active.clear();
+            let id = s.next_id();
+            s.active.push(Mission {
+                id,
+                kind: MissionKind::Smuggle {
+                    from: neb,
+                    to: kepler,
+                    cargo: "Nebelperlen".into(),
+                    mass: 2.0,
+                },
+                reward: 610,
+                origin: Some(crate::sim::world::Owner::Station(neb)),
+                giver: None,
+                start: None,
+                top_speed: 0.0,
+                max_strain: None,
+                par: 300.0,
+            });
+            s.ship.store(
+                crate::sim::ship::CargoKind::Container {
+                    mission: id,
+                    name: "Nebelperlen".into(),
+                },
+                2.0,
+            );
+            let cp = &s.data.traffic.checkpoints[1];
+            let buoy = Vec2::new(cp.pos.0, cp.pos.1);
+            teleport(c, buoy, 22.0, 2.4);
+        }),
+        (14.2, |c| shot(c, "zollscan")),
+        // Händlerin Juno in Kepler: Sonderangebote ins Crew-Lager.
+        (15.0, |c| {
+            let kepler = station(c, "kepler");
+            let s = &mut c.sim.0;
+            s.active.clear();
+            s.ship
+                .remove_cargo(|k| matches!(k, crate::sim::ship::CargoKind::Container { .. }));
+            s.customs = None;
+            let pad4 = s.world.stations[kepler].pads[0];
+            let p = s.world.pads[pad4].clone();
+            if let Some(n) = s.npcs.iter_mut().find(|n| n.name == "Juno") {
+                let rest = n.ship.rest_height();
+                n.ship.pos = p.center + p.normal * (rest + 0.02);
+                n.ship.prev_pos = n.ship.pos;
+                n.ship.angle = p.ship_angle();
+                n.ship.prev_angle = n.ship.angle;
+                n.nav = Nav::Docked {
+                    pad: pad4,
+                    wait: 120.0,
+                };
+            }
+            s.crew.credits = 1800;
+            s.ship.docked = None;
+            s.dock_at_station(kepler);
+        }),
+        (16.0, |c| c.menu.left = true),
+        (17.6, |c| shot(c, "haendlerin")),
+        (18.4, |c| c.menu.tab = true),
+        (20.0, |c| shot(c, "karte_verkehr")),
+        (20.8, |c| c.menu.tab = true),
+        (21.4, |_| {}),
+    ]
+}
+
 fn ui_scene() -> Vec<(f32, Act)> {
     vec![
         (2.5, |c| shot(c, "titel")),
@@ -1365,6 +1551,7 @@ fn demo_script(
         "finance" => finance_scene(),
         "minigames" => minigame_scene(),
         "workshop" => workshop_scene(),
+        "traffic" => traffic_scene(),
         _ => tour(),
     };
     let mut pad = pads.iter().next();

@@ -1190,6 +1190,19 @@ impl SimState {
             t.level += (target - t.level) * (DT * 16.0).min(1.0);
         }
         if docked {
+            // Angedockt steht das Schiff fest – die Crew prallt trotzdem daran ab.
+            if self.ship.docked.is_none()
+                && !self.ship.destroyed
+                && let Some((imp, at)) = collide_two_ships(&mut self.ship, &mut npc.ship)
+                && imp > 1.5
+            {
+                self.events.push(SimEvent::Impact {
+                    pos: at,
+                    normal: Vec2::Y,
+                    strength: imp,
+                });
+                self.count_collision(at);
+            }
             return;
         }
         if let Some((target, angle, max_speed)) = beam {
@@ -1544,6 +1557,13 @@ impl SimState {
             to += 1;
         }
         to
+    }
+
+    /// Steht ein NPC-Schiff auf dieser Plattform?
+    pub fn npc_on_pad(&self, pad: usize) -> bool {
+        self.npcs
+            .iter()
+            .any(|n| n.alive && n.docked_pad() == Some(pad))
     }
 
     /// Hat die Händlerin an der Station angedockt, an der die Crew gerade steht?

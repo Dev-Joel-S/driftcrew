@@ -104,7 +104,7 @@ pub fn light_color(l: crate::sim::dock::Light) -> Color {
 }
 
 const RADAR: f32 = 210.0;
-const RADAR_RANGE: f32 = 900.0;
+pub const RADAR_RANGE: f32 = 900.0;
 
 fn spawn_hud(mut commands: Commands) {
     commands
@@ -1009,7 +1009,27 @@ fn update_radar(
             );
         }
     }
+    // NPC-Schiffe: Piraten rot, Händlerin gold, Rivalen orange, Konvoi gelb, sonst hellblau.
+    for n in s.npcs.iter().filter(|n| n.alive) {
+        if (n.ship.pos - me).length() > reach.min(RADAR_RANGE) {
+            continue;
+        }
+        spawn_dot(&mut commands, place(n.ship.pos), 5.0, npc_color(n), false);
+    }
     spawn_dot(&mut commands, Vec2::splat(half), 8.0, Color::WHITE, true);
+}
+
+/// Farbe eines NPC-Schiffs auf Radar, Karte und in Markern.
+pub fn npc_color(n: &crate::sim::npc::Npc) -> Color {
+    use crate::sim::npc::Role;
+    match n.role {
+        Role::Drone { .. } => Color::srgb(1.0, 0.25, 0.2),
+        Role::Merchant { .. } => Color::srgb(1.0, 0.82, 0.3),
+        Role::Rival { .. } => Color::srgb(1.0, 0.5, 0.2),
+        Role::Convoy { .. } => Color::srgb(1.0, 0.95, 0.4),
+        Role::Miner { .. } => Color::srgb(0.85, 0.75, 0.5),
+        Role::Trader { .. } => Color::srgb(0.6, 0.8, 1.0),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1218,6 +1238,29 @@ fn update_markers(
             );
         }
     }
+    // NPC-Schiffe in der Nähe beschriften (Konvois mit Hüllenzustand).
+    for n in s.npcs.iter().filter(|n| n.alive) {
+        if (n.ship.pos - s.ship.pos).length() > 220.0 {
+            continue;
+        }
+        let anchor = n.ship.pos + Vec2::Y * (n.ship.bound_radius() + 2.0);
+        let on_screen = cam
+            .world_to_viewport(cam_t, anchor.extend(0.0))
+            .is_ok_and(|v| v.x > 0.0 && v.y > 0.0 && v.x < size.x && v.y < size.y);
+        if !on_screen {
+            continue;
+        }
+        let label = match n.role {
+            crate::sim::npc::Role::Drone { .. } => "☠ Piratendrohne".to_string(),
+            crate::sim::npc::Role::Convoy { .. } => format!(
+                "{} · Hülle {:.0} %",
+                n.name,
+                n.ship.hull / n.ship.max_hull * 100.0
+            ),
+            _ => format!("{} · {}", n.name, n.label()),
+        };
+        add(&mut commands, anchor, label, npc_color(n), false);
+    }
     // Pings der Crew in Spielerfarbe.
     for p in &s.pings {
         let who = format!("◆ Spieler {}", p.player + 1);
@@ -1262,6 +1305,12 @@ fn update_center(
                 s.ship.respawn_timer.max(0.0).ceil(),
                 fmt_num(s.salvage_fee)
             ),
+        )
+    } else if let Some(c) = &s.customs {
+        let name = &s.data.traffic.checkpoints[c.checkpoint].name;
+        (
+            format!("ZOLLSCAN {:.0} %", c.progress * 100.0),
+            format!("\n{name} scannt den Frachtraum – raus aus dem Radius, sonst ist die Ware weg"),
         )
     } else {
         (String::new(), String::new())

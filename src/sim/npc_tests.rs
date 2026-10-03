@@ -531,3 +531,25 @@ fn traffic_is_deterministic() {
         assert_eq!(x.nav, y.nav);
     }
 }
+
+#[test]
+fn crew_cannot_dock_on_a_pad_with_an_npc_ship() {
+    let mut s = sim();
+    let pad = npc(&s, "Möwe").docked_pad().unwrap();
+    let p = s.world.pads[pad].clone();
+    let above = p.center + p.normal * (s.ship.rest_height() + 6.0);
+    float_at(&mut s, above);
+    assert!(s.dock_guide().is_none_or(|g| g.pad != pad));
+    // Wer dort trotzdem hinfliegt, prallt am Frachter ab.
+    s.ship.vel = -p.normal * 3.0;
+    let mut bumped = false;
+    for _ in 0..120 {
+        s.step(&TickInput::default());
+        bumped |= s
+            .events
+            .iter()
+            .any(|e| matches!(e, SimEvent::Impact { .. }));
+    }
+    assert!(bumped);
+    assert_ne!(s.ship.docked, Some(pad));
+}

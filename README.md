@@ -33,7 +33,10 @@ eigener Name, eigener Look, alle Grafiken und Klänge werden beim Start prozedur
 | ![Notreparatur der Hülle](docs/screenshots/notreparatur.jpg) | ![Andockport hacken](docs/screenshots/port_hacken.jpg) |
 | ![Ersatzteil mit dem Kran einsetzen](docs/screenshots/kran_ersatzteil.jpg) | ![Werft-Editor: Bauplätze](docs/screenshots/werft_bau.jpg) |
 | ![Module für einen Bauplatz](docs/screenshots/bauplatz_module.jpg) | ![Umgebauter Driftkutter](docs/screenshots/umbau.jpg) |
-| ![Upgrades pro Schiffsteil](docs/screenshots/upgrades_teile.jpg) | |
+| ![Upgrades pro Schiffsteil](docs/screenshots/upgrades_teile.jpg) | ![Händlerin Juno landet im Leitstrahl](docs/screenshots/verkehr_leitstrahl.jpg) |
+| ![Piratendrohnen am Nest](docs/screenshots/piraten.jpg) | ![Geleitschutz mit Hinterhalt](docs/screenshots/geleitschutz.jpg) |
+| ![Zollscan beim Schmuggeln](docs/screenshots/zollscan.jpg) | ![Sonderangebot der Händlerin](docs/screenshots/haendlerin.jpg) |
+| ![Karte mit Verkehr und Piratennest](docs/screenshots/karte_verkehr.jpg) | |
 
 *(Screenshots aus dem automatischen Vorführmodus, gerendert mit Software-Vulkan.)*
 
@@ -231,7 +234,28 @@ Kollision und Schaden fliegt, einen Sauberkeitsbonus. Beim Anflug und Andocken m
 Station per **Funk**.
 - **Abbauen** – bestimmtes Erz abbauen und an der Station abliefern.
 - **Notrufe** – überall annehmbar (Karte mit **Tab**): treibendes Wrack mit dem Kran zur Station
-  schleppen oder Rettungskapseln einsammeln und abliefern.
+  schleppen oder Rettungskapseln einsammeln und abliefern. Die Rivalen-Crew **Kestrel** jagt
+  dieselben Notrufe – wer zuerst annimmt, hat ihn.
+- **Geleitschutz** – ein Frachter legt mit euch ab (abdocken und in der Nähe bleiben) und fliegt
+  zum Ziel. Unterwegs greifen Piratendrohnen ihn an; über ihm steht seine Hülle. Kommt er an,
+  ist der Auftrag erfüllt.
+- **Schmuggel** – Vex im Nebelhafen gibt heiße Ware mit. Vor Nova, Kepler und Vega stehen
+  **Zollbojen**: Wer mit der Ware 3,5 s in ihrem Radius bleibt, verliert sie, zahlt Strafe und
+  Ruf. Im Bogen fliegen oder schnell durch.
+
+### Verkehr: andere Schiffe
+
+Die Welt ist nicht leer. Frachter pendeln zwischen den Stationen, Schürfroboter bauen im
+Kobaltschwarm ab, Piratendrohnen kommen aus ihren Nestern, wenn ihr in der Nähe seid. Alle
+NPC-Schiffe sind echte Schiffe mit derselben Physik: Man kann sie anstoßen, abschießen, sie
+blockieren Plattformen. Stationen führen sie beim Start und bei der Landung mit einem
+**Leitstrahl** (die hellblauen Linien).
+
+- **Juno**, die Händlerin, fliegt mit ihrem Pelikan eine feste Route. Wo sie angedockt hat, gibt
+  es den Reiter **Händlerin** mit Material und Bauteilen direkt ins Crew-Lager.
+- **Orsk**, der Mechaniker der Werft Orion, verkauft dort Feintuning-Upgrades ohne Zusatzmasse.
+- **Piraten** halten Abstand und schießen mit Vorhalt (rote Geschosse). Zerstörte Drohnen
+  hinterlassen ein Bauteil. Die Nester stehen auf der Karte, sobald sie entdeckt sind.
 
 ### Minispiele für einzelne Slots
 
@@ -347,7 +371,8 @@ Eine offene 2D-Ebene von gut 5 km Durchmesser, dargestellt in 3D (2.5D) mit Para
 - **Splittergürtel** und **Kobaltschwarm** – Asteroidenfelder
 - **Glutstrom** und **Sturzfeld** – Meteoritenschauer
 - **Wrackring** im Schiffsfriedhof – ein langsam drehender Ringfrachter mit zwei Öffnungen
-- **Nebelhafen** im Schleiernebel – Schmugglernest mit gesichertem Andockport
+- **Nebelhafen** im Schleiernebel – Schmugglernest mit gesichertem Andockport, nahe dem Nest
+  der **Nebelpiraten**; ein zweites Nest liegt am Schlund
 - **Gravitationsanomalie** im Südosten – wer zu nah kommt, wird hineingezogen
 - **Schlund** im Südwesten – ein Schwarzes Loch mit starkem Sog und Ereignishorizont
 
@@ -395,6 +420,10 @@ in die Binärdatei eingebettet; liegt `assets/data/` im Arbeitsverzeichnis (z. B
   Die Bauplätze selbst stehen in `ships.ron` (`mounts`).
 - `courses.ron` – Parcours aus Schritten (`Gate`, `Pass`, `Face`, `Hold`, `Dock`) mit Hinweisen,
   Medaillenzeiten und Prämien, Strafzeiten und die Orte für Messflüge.
+- `traffic.ron` – NPC-Verkehr: Andockplätze mit Anflugwegen, Frachter mit Routen, Piratennester,
+  Schürfroboter, Zollbojen, Händlerin mit Sortiment, Rivalen-Crew, Schiff und Hinterhalt für
+  Geleitschutz. Die NPC-Schiffe selbst (`drohne`, `schuerfer` und alle Crew-Schiffe) stehen in
+  `ships.ron`.
 
 ---
 
@@ -417,6 +446,8 @@ src/
     sector.rs   Sektoreffekte, Zufallsereignisse, Scanner-Impulse, Kartendaten
     precision.rs Präzisionsarbeit (Erzadern, Wrackverbindungen)
     project.rs  Wiederaufbau von Stationen in Etappen
+    npc.rs      NPC-Schiffe: Leitstrahl, Wegfindung um Hindernisse, Frachter, Drohnen,
+                Schürfer, Konvois, Händlerin, Rivalen, Zollbojen
     world.rs    Stationen aus Rastern, Planeten, Plattformen, Landezonen, Anomalien
     rng.rs      PCG32 – kein Zufall ohne Seed
   input.rs    Geräte → Slots, reservierte Tasten, Zielen
@@ -436,7 +467,7 @@ Damit ist der Weg zu Rollback-Netcode vorbereitet.
 
 **Vorführmodus:** `DRIFTCREW_DEMO=<ordner> DRIFTCREW_SCENE=<szene> cargo run` fliegt ein
 Skript ab, speichert Screenshots und beendet sich. Szenen: `tour`, `ui`, `systems`, `progress`,
-`coop`, `sectors`, `rules`, `rebuild`, `courses`, `finance`, `minigames`, `workshop`.
+`coop`, `sectors`, `rules`, `rebuild`, `courses`, `finance`, `minigames`, `workshop`, `traffic`.
 
 ---
 

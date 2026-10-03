@@ -290,7 +290,8 @@ fn play_event_sounds(
     let mut impacts = 0;
     for SimMsg(e) in events.read() {
         match e {
-            SimEvent::Shot { .. } => one_shot(&mut commands, &s.shot, 0.5),
+            SimEvent::Shot { pos, .. } => one_shot(&mut commands, &s.shot, 0.5 * by_dist(*pos)),
+            SimEvent::CustomsScan { .. } => one_shot(&mut commands, &s.blip, 0.6),
             SimEvent::EmptyGun => one_shot(&mut commands, &s.click, 0.6),
             SimEvent::Explosion { pos, size, .. } => one_shot(
                 &mut commands,

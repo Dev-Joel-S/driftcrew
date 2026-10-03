@@ -88,6 +88,10 @@ impl SimState {
             {
                 continue;
             }
+            // Hier steht schon ein NPC-Schiff.
+            if self.npc_on_pad(pi) {
+                continue;
+            }
             let rel = self.ship.pos - pad.center;
             let dist = rel.length();
             if dist > 28.0 || best.is_some_and(|b| b.distance < dist) {
@@ -186,6 +190,7 @@ impl SimState {
         let Some(st) = self.world.stations.get(si) else {
             return;
         };
+        // Freie Plattformen zuerst (dort steht kein NPC-Schiff).
         let Some(&pad) = st
             .pads
             .iter()
@@ -193,7 +198,9 @@ impl SimState {
             .min_by(|a, b| {
                 let da = (self.world.pads[**a].center - st.pos).length();
                 let db = (self.world.pads[**b].center - st.pos).length();
-                da.total_cmp(&db)
+                (self.npc_on_pad(**a), da)
+                    .partial_cmp(&(self.npc_on_pad(**b), db))
+                    .unwrap()
             })
         else {
             return;

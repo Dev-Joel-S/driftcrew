@@ -161,7 +161,7 @@ online funktionieren.
 | 33 | Modular erweitern (Raft-Prinzip) | Jeder Rumpf hat feste Bauplätze (Daten). Teile aus Material und Bauteilen craften und dort anbauen; Masse/Schwerpunkt/Trägheit rechnen sich wie bisher aus den Teilen |
 | 34 | Schiffseditor | in der Werft: Bauplätze belegen und umbauen; die Belegung steht im Spielstand und lässt sich als RON-Datei exportieren. Neue Rümpfe nur über die Daten |
 
-### Phase 12 – NPC-Schiffe (Architektur, Rückfrage)
+### Phase 12 – NPC-Schiffe mit voller Physik (erledigt, siehe Protokoll)
 
 | Nr. | Punkt | Umsetzung |
 |---|---|---|
@@ -250,6 +250,72 @@ Der Rest wird in die bestehenden Phasen einsortiert bzw. bekommt eigene Phasen.
 ---
 
 ## Protokoll
+
+### Runde 3 – Phase 12: NPC-Schiffe mit voller Physik (erledigt)
+
+Wie in der Rückfrage entschieden: **volle Physik**. Die Simulation führt eine Liste von
+NPC-Schiffen (`SimState::npcs`), jedes ein normales `Ship` aus `ships.ron`, gesteuert über
+echte Triebwerke (zwei, wie eine Zwei-Personen-Crew) und denselben Kontaktcode wie das
+Crew-Schiff. Alles deterministisch im Simulationsschritt.
+
+- **Gemeinsame Physik:** Statische Kontakte, Kontaktauflösung und Schiff-gegen-Schiff stehen
+  jetzt als freie Funktionen in `sim/physics.rs` (`static_contacts`, `resolve_static`,
+  `collide_two_ships`); Crew und NPCs nutzen sie gleichermaßen. Der Autopilot
+  (`Autopilot::steer_ship`) steuert jedes Schiff. Stöße zwischen Crew und NPC wirken auf beide
+  (Schaden nach Masse), auch an angedockten NPC-Schiffen prallt die Crew ab.
+- **Flugführung (`sim/npc.rs`):** Im freien Raum fliegt der Autopilot Wegpunkte ab – mit
+  Umwegen um Stationen und Rotoren (`open_path`), Tempolimit nahe Stationen (6 m/s) und in
+  Asteroidenfeldern (5 m/s, vorausschauend). Stationsnah übernimmt ein **Leitstrahl** der
+  Station: eine gedämpfte Kraft, die das Schiff beim Start über die Plattform und den
+  Anflugweg hinaus- und bei der Ankunft hineinführt und sanft aufsetzt. Grund: Mit nur zwei
+  Hecktriebwerken pendelte der Autopilot im Nova-Ring und beim Endanflug minutenlang (Sinken
+  geht ohne Schwerkraft nur mit der Nase nach unten). Der Leitstrahl ist im Bild zu sehen.
+  Belegte Plattformen werden reserviert; ist keine frei, wartet das Schiff vor der Station
+  statt auf seiner Plattform (sonst blockierten sich zwei Schiffe gegenseitig). Ein
+  Bergungsdienst holt festgefahrene Schiffe nach 30 s – nie in Sichtweite der Crew.
+- **17 Frachter:** Möwe (Lastesel) und Kranich (Driftkutter) pendeln auf eigenen Routen
+  zwischen Nova, Kepler, Vega und Werft Orion. Andockplätze und Anflugwege stehen in
+  `traffic.ron` (neu), ebenso Nester, Schürfer, Zollbojen, Händlerin und Rivalen.
+- **21 Gegner:** Zwei Piratennester (Nebelpiraten nahe dem Nebelhafen, Schlundpiraten am
+  Schwarzen Loch) füllen Drohnen auf, solange die Crew in der Nähe ist. Drohnen
+  (`drohne`, 20 Hülle) halten Abstand, umkreisen und schießen mit Vorhalt; ihre Geschosse sind
+  rot und treffen Crew und Konvois, nicht andere Drohnen. Crew-Geschosse treffen NPC-Schiffe.
+  Zerstörte Drohnen hinterlassen ein Bauteil. Zwei Schürfroboter (`schuerfer`) bauen im
+  Kobaltschwarm ab und liefern in Kepler – sie leeren dieselben Asteroiden wie die Crew;
+  werden sie zerstört, fällt ihre Ladung als Erzbrocken heraus.
+- **40 Geleitschutz:** Neue Auftragsart `Escort` (Mara in Nova, Selin in Kepler). Der Frachter
+  wartet an einer Plattform (oder vor der Station), bis die Crew abgedockt und in der Nähe
+  ist, und fliegt dann zum Ziel. Bei 40 % der Strecke schlägt ein Hinterhalt aus drei Drohnen
+  zu, die nur den Frachter angreifen. Kommt er an, ist der Auftrag erfüllt; wird er zerstört,
+  scheitert er. Konvoi-Marker zeigen die Hülle des Frachters.
+- **41 Schmuggel:** Neue Auftragsart `Smuggle` (Vex im Nebelhafen). Die Ware liegt im
+  Frachtraum; Zollbojen vor Nova, Kepler und Vega scannen jedes Schiff mit Schmuggelware in
+  ihrem Radius. Bleibt die Crew 3,5 s drin, ist die Ware weg, 250 Cr Strafe, der Ruf bei der
+  nächsten Station sinkt um 2. Wer im Bogen fliegt oder schnell durchrauscht, kommt durch.
+  Bojen als Modell mit Licht, Radius im Overlay (gelb mit Ware an Bord, rot mit Fortschritt
+  beim Scan), Anzeige „ZOLLSCAN %“ in der Bildmitte.
+- **44 Wiederkehrende NPCs:** Händlerin **Juno** fliegt mit ihrem Pelikan eine feste Route; wo
+  sie angedockt hat, gibt es im Stationsmenü den Reiter „Händlerin“ mit Material und
+  Bauteilen direkt ins Crew-Lager (günstiger als Abbauen, nur solange sie da ist).
+  Mechaniker **Orsk** arbeitet in der Werft Orion und verkauft dort Feintuning-Upgrades ohne
+  Zusatzmasse (`vendor` in `shop.ron`). Die Rivalen-Crew **Kestrel** (Hornisse) startet in Vega
+  zu offenen Notrufen und übernimmt sie, wenn sie vor der Crew dort ist („war schneller“).
+- **Darstellung (`render/npc_vis.rs`):** NPC-Modelle aus denselben Schiffsdaten mit eigener
+  Lackierung und Triebwerksflammen, Positionslichtern; Zollbojen und Piratennester als feste
+  Bauten. Overlay: Leitstrahl, Bohrstrahl der Schürfer, Zollradien, Gefahrenzone um Nester.
+  HUD: NPC-Punkte auf dem Radar (Farbe nach Rolle), Namen in der Nähe, Karte mit Verkehr,
+  Nestern und Bojen.
+- **Spielstand:** NPCs werden nicht gespeichert, sie starten bei jedem Laden neu an ihren
+  Plattformen (Verkehr ist Kulisse und Gelegenheit, kein Fortschritt).
+- Vorführszene `DRIFTCREW_SCENE=traffic` (Leitstrahl in Kepler, Piraten, Geleitschutz mit
+  Hinterhalt, Zollscan, Händlerin-Reiter, Karte).
+- Tests: 115 grün, neu in `npc_tests.rs`: Verkehr startet angedockt ohne Doppelbelegung,
+  Frachter schaffen ihre Etappen in 8 Minuten ohne nennenswerte Schäden, Stoß Crew–Frachter,
+  Drohnen aus dem Nest schießen auf die Crew, Crew-Schüsse zerstören Drohnen (Bauteil bleibt),
+  Geleitschutz (wartet, Hinterhalt, Ankunft = erfüllt), zerstörter Konvoi = gescheitert,
+  Zollscan (erwischt, Strafe) und schnelles Durchfliegen mit Lieferung, Händlerin nur, wo sie
+  angedockt hat, Orsk-Upgrades nur in der Werft Orion, Rivalen übernehmen Notrufe,
+  Determinismus des Verkehrs, keine Andockung auf NPC-Plattformen.
 
 ### Runde 3 – Phase 11: Crew-Lager, Bauplätze, Werft-Editor, Upgrades pro Teil (erledigt)
 

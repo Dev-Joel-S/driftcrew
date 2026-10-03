@@ -176,7 +176,8 @@ Was sich gegenüber der ersten Fassung geändert hat (Begründungen und Details 
 - **Runde 2, Zerstörung:** Rettungskapsel und Bergungskosten statt einfachem Neustart an der Station
 - **Runde 2, Zielen:** Werkzeuge zielen ausschließlich mit dem Gerät des Slot-Besitzers
 - **Runde 3, Training und Zeitrennen:** in der offenen Welt mit Toren statt eigener Trainingsszenarien, Bestenliste pro Spielstand *(umgesetzt in Phase 7)*
-- **Runde 3, NPC-Schiffe:** volle Physik wie das Crew-Schiff, gesteuert per Autopilot über echte Triebwerke *(entschieden, Umsetzung in Phase 12)*
+- **Runde 3, NPC-Schiffe:** volle Physik wie das Crew-Schiff, gesteuert per Autopilot über echte Triebwerke *(umgesetzt in Phase 12)*. Ergänzung: Nahe Stationen führt ein **Leitstrahl** der Station die NPC-Schiffe (Start, Anflugweg, Landung) als gedämpfte Kraft – mit nur zwei Hecktriebwerken ist präzises Sinken ohne Schwerkraft sonst kaum möglich. Die Crew selbst landet weiter ohne Hilfe
+- **Runde 3, Verkehr im Spielstand:** NPC-Schiffe werden nicht gespeichert, sie starten nach dem Laden neu an ihren Plattformen
 - **Runde 3, Modulbau und Schiffseditor:** feste Bauplätze pro Rumpf (Daten) statt freiem Raster; die Belegung steht im Spielstand und lässt sich als RON exportieren *(umgesetzt in Phase 11)*
 - **Runde 3, Material:** gemeinsames Crew-Lager wie die Kasse *(umgesetzt in Phase 11)*
 - **Runde 3, Upgrades:** pro Schiffsteil mit Masse als Nachteil und Materialkosten; sie gelten weiter für die Crew (nicht pro Rumpf), Module dagegen gehören zum Rumpf

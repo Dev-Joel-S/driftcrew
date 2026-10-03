@@ -232,8 +232,14 @@ fn draw_map(
     let s = &sim.0;
     let its = items(s);
     let blink = (time.elapsed_secs() * 2.0) as u32 % 2;
+    let traffic: Vec<(i32, i32)> = s
+        .npcs
+        .iter()
+        .filter(|n| n.alive && !n.hostile)
+        .map(|n| ((n.ship.pos.x / 20.0) as i32, (n.ship.pos.y / 20.0) as i32))
+        .collect();
     let key = format!(
-        "{:.0}|{:.0}|{}|{:?}|{}|{}|{:?}",
+        "{traffic:?}|{:.0}|{:.0}|{}|{:?}|{}|{}|{:?}",
         s.ship.pos.x / 8.0,
         s.ship.pos.y / 8.0,
         blink,
@@ -403,6 +409,37 @@ fn draw_map(
                 dot(m, at, 6.0, core, true);
                 label(m, at, name, core);
             }
+            // Piratennester und Zollbojen, sobald entdeckt.
+            for n in &s.data.traffic.nests {
+                let c = Vec2::new(n.center.0, n.center.1);
+                if !seen(c) {
+                    continue;
+                }
+                let at = to_map(c);
+                dot(
+                    m,
+                    at,
+                    n.radius * scale * 2.0,
+                    Color::srgba(1.0, 0.15, 0.1, 0.22),
+                    true,
+                );
+                label(m, at, format!("☠ {}", n.name), Color::srgb(1.0, 0.35, 0.3));
+            }
+            for cp in &s.data.traffic.checkpoints {
+                let c = Vec2::new(cp.pos.0, cp.pos.1);
+                if !seen(c) {
+                    continue;
+                }
+                let at = to_map(c);
+                dot(
+                    m,
+                    at,
+                    (cp.radius * scale * 2.0).max(8.0),
+                    Color::srgba(1.0, 0.75, 0.2, 0.3),
+                    true,
+                );
+                dot(m, at, 4.0, Color::srgb(1.0, 0.75, 0.2), true);
+            }
             for w in s
                 .data
                 .world
@@ -462,6 +499,24 @@ fn draw_map(
                     format!("⚑ {name}"),
                     flag,
                 );
+            }
+            // Verkehr: Frachter, Händlerin, Rivalen, Konvois (Piraten nur in Radarnähe).
+            for n in s.npcs.iter().filter(|n| n.alive) {
+                let near = (n.ship.pos - s.ship.pos).length() < super::hud::RADAR_RANGE;
+                if (n.hostile && !near) || !seen(n.ship.pos) {
+                    continue;
+                }
+                let at = to_map(n.ship.pos);
+                let c = super::hud::npc_color(n);
+                dot(m, at, 5.0, c, false);
+                if matches!(
+                    n.role,
+                    crate::sim::npc::Role::Merchant { .. }
+                        | crate::sim::npc::Role::Rival { .. }
+                        | crate::sim::npc::Role::Convoy { .. }
+                ) {
+                    label(m, at - Vec2::new(0.0, 4.0), n.name.clone(), c);
+                }
             }
             for mi in &s.active {
                 if let Some(t) = mi.nav_target(s)
