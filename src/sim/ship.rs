@@ -103,9 +103,20 @@ impl Thruster {
 #[derive(Clone, Debug, PartialEq)]
 pub enum CraneState {
     Idle,
-    Extending { len: f32, dir: Vec2 },
-    Retracting { len: f32, dir: Vec2 },
-    Attached { body: u32, rope: f32 },
+    Extending {
+        len: f32,
+        dir: Vec2,
+    },
+    Retracting {
+        len: f32,
+        dir: Vec2,
+    },
+    /// `local`: Angriffspunkt am Körper (lokal, mitgedreht) – lange Teile pendeln am Ende.
+    Attached {
+        body: u32,
+        rope: f32,
+        local: Vec2,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -126,6 +137,8 @@ pub struct Tool {
     pub cooldown: f32,
     pub crane: CraneState,
     pub drill: Option<DrillHit>,
+    /// Seilbelastung 0..1 (1 = reißt gleich), geglättet für die Anzeige.
+    pub strain: f32,
 }
 
 impl Tool {
@@ -283,6 +296,7 @@ impl Ship {
                 cooldown: 0.0,
                 crane: CraneState::Idle,
                 drill: None,
+                strain: 0.0,
             });
             slot += 1;
         }

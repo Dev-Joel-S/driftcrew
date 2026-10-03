@@ -6,7 +6,7 @@
 [
     (
         id: "mara", name: "Mara Okonkwo", role: "Frachtmeisterin", at: "nova",
-        gives: [Delivery, Haul],
+        gives: [Delivery, Haul, Bulky],
         look: (skin: "#8d5a3b", hair: "#1c1a1a", suit: "#c4602c"),
         lines: [
             "Fracht wartet nicht. Ihr hoffentlich auch nicht.",
@@ -43,7 +43,7 @@
     ),
     (
         id: "kofi", name: "Kofi Mensah", role: "Schwerlast-Koordinator", at: "kepler",
-        gives: [Haul],
+        gives: [Haul, Bulky],
         look: (skin: "#5b3a29", hair: "#111111", suit: "#ff4fa3", helmet: true),
         lines: [
             "Zwölf Tonnen am Seil sind kein Spaziergang. Ruhig ziehen.",
@@ -52,7 +52,7 @@
     ),
     (
         id: "yara", name: "Yara Lindqvist", role: "Werftleiterin", at: "vega",
-        gives: [Delivery, Haul, Mining, Passengers],
+        gives: [Delivery, Haul, Mining, Passengers, Bulky],
         look: (skin: "#f0c8b0", hair: "#d9c27a", suit: "#e0a526"),
         lines: [
             "Der Pelikan zieht euch jedes Wrack aus dem Dreck.",
@@ -84,6 +84,15 @@
         lines: [
             "Ionit ist empfindlich. Bitte keine Kollisionen mit meinen Proben.",
             "Die Ringe sehen von nahem weniger romantisch aus.",
+        ],
+    ),
+    (
+        id: "ines", name: "Ines Varga", role: "Funktechnikerin", at: "relais",
+        gives: [Delivery, Mining],
+        look: (skin: "#c99a7c", hair: "#3b2f5c", suit: "#4fd8ff", helmet: true),
+        lines: [
+            "Ohne euch wäre hier immer noch nur Rauschen.",
+            "Das Relais hat damals als Letztes gesendet. Was, weiß keiner mehr.",
         ],
     ),
 ]

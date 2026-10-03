@@ -17,8 +17,10 @@ pub mod geom;
 pub mod hazards;
 pub mod missions;
 pub mod physics;
+pub mod precision;
 #[cfg(test)]
 mod progress_tests;
+pub mod project;
 pub mod rng;
 pub mod sector;
 pub mod ship;
@@ -89,6 +91,8 @@ pub enum Command {
     },
     /// Kartendaten an der Station verkaufen.
     SellCharts,
+    /// Material und Bauteile für den Wiederaufbau der angedockten Station abgeben.
+    DeliverProject,
     /// Slots neu verteilt (z. B. Hot-Join mitten im Flug): Schiff umbauen.
     SetLoadout {
         thrusters: u8,
@@ -181,6 +185,11 @@ pub enum SimEvent {
         pos: Vec2,
         range: f32,
     },
+    /// Wiederaufbau: eine Etappe ist fertig.
+    StageCompleted {
+        station: usize,
+        stage: u8,
+    },
 }
 
 /// Markierung eines Crewmitglieds (Ping), verblasst nach [`PING_SECONDS`].
@@ -202,6 +211,8 @@ pub enum BodyKind {
         ore_left: f32,
         hp: f32,
         field: usize,
+        /// Reiche Erzader an einer Stelle der Oberfläche (Präzisionsarbeit).
+        vein: bool,
     },
     Meteor,
     OreChunk {
@@ -234,6 +245,28 @@ pub enum BodyKind {
     },
     /// Treibender Schrott in Trümmerzonen.
     Debris,
+    /// Sperriges Bergungsobjekt (Antenne, Ringsegment, Rumpfplatte): passt in keinen
+    /// Frachtraum. Form = Kette aus Kreisen entlang der lokalen x-Achse.
+    Bulky {
+        mission: u32,
+        name: String,
+        half_len: f32,
+        thick: f32,
+    },
+}
+
+/// Kollisionskreise eines Körpers (Weltposition, Radius). Runde Körper haben einen,
+/// sperrige eine Kette.
+#[derive(Clone, Copy, Debug)]
+pub struct Circles {
+    pub list: [(Vec2, f32); 9],
+    pub n: usize,
+}
+
+impl Circles {
+    pub fn iter(&self) -> impl Iterator<Item = (Vec2, f32)> + '_ {
+        self.list[..self.n].iter().copied()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -255,7 +288,41 @@ pub struct Body {
 
 impl Body {
     pub fn inertia(&self) -> f32 {
-        0.5 * self.mass * self.radius * self.radius
+        match self.kind {
+            BodyKind::Bulky {
+                half_len, thick, ..
+            } => self.mass * ((2.0 * half_len).powi(2) / 12.0 + 0.5 * thick * thick),
+            _ => 0.5 * self.mass * self.radius * self.radius,
+        }
+    }
+
+    pub fn circles(&self) -> Circles {
+        let mut c = Circles {
+            list: [(self.pos, self.radius); 9],
+            n: 1,
+        };
+        if let BodyKind::Bulky {
+            half_len, thick, ..
+        } = self.kind
+        {
+            let axis = Vec2::new(self.angle.cos(), self.angle.sin());
+            let n = ((2.0 * half_len / thick).ceil() as usize + 1).clamp(2, 9);
+            for k in 0..n {
+                let t = -half_len + 2.0 * half_len * k as f32 / (n - 1) as f32;
+                c.list[k] = (self.pos + axis * t, thick);
+            }
+            c.n = n;
+        }
+        c
+    }
+
+    /// Punkt im Körper (lokal, mitgedreht) in Weltkoordinaten.
+    pub fn anchor(&self, local: Vec2) -> Vec2 {
+        self.pos + geom::rot(local, self.angle)
+    }
+
+    pub fn point_velocity(&self, world: Vec2) -> Vec2 {
+        self.vel + geom::cross_sv(self.ang_vel, world - self.pos)
     }
     pub fn grabbable(&self) -> bool {
         !matches!(self.kind, BodyKind::Meteor)
@@ -361,6 +428,10 @@ pub struct SimState {
     pub charts_unsold: u32,
     /// Geschwindigkeit im letzten Tick (für die Beschleunigung, die Passagiere spüren).
     pub prev_vel: Vec2,
+    /// Wiederaufbau pro Station (nur Stationen mit Projekt haben einen Eintrag).
+    pub projects: Vec<project::ProjectState>,
+    /// Laufende Präzisionsarbeit mit dem Bohrer (Erzader, Wrackverbindung).
+    pub precision: Option<precision::Precision>,
 }
 
 impl SimState {
@@ -440,7 +511,10 @@ impl SimState {
             surveyed,
             charts_unsold: save.charts_unsold,
             prev_vel: Vec2::ZERO,
+            projects: Vec::new(),
+            precision: None,
         };
+        s.load_projects(save);
         s.populate_fields();
         s.populate_wrecks();
         s.refresh_offers();
@@ -526,6 +600,7 @@ impl SimState {
             liveries: self.crew.liveries.clone(),
             surveyed: self.surveyed.to_hex(),
             charts_unsold: self.charts_unsold,
+            projects: self.save_projects(),
         }
     }
 
@@ -568,6 +643,7 @@ impl SimState {
         self.update_sectors();
         self.update_missions();
         self.update_tracking();
+        self.update_precision();
         self.update_regen();
         self.check_ship_health();
         for p in &mut self.pings {
@@ -613,6 +689,7 @@ impl SimState {
                 BodyKind::Wreck { idx, .. } => self.data.world.wrecks[*idx].name.clone(),
                 BodyKind::Salvage { name, .. } => name.clone(),
                 BodyKind::Debris => "Trümmer".into(),
+                BodyKind::Bulky { name, .. } => name.clone(),
             };
         }
         if let Some(st) = self

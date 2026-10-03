@@ -209,7 +209,7 @@ impl SimState {
         let mut contacts: Vec<(Contact, Vec2, Surface)> = Vec::new();
         let mut tmp = Vec::new();
         for col in &self.world.colliders {
-            if !col.aabb.overlaps(&bound) {
+            if !col.enabled || !col.aabb.overlaps(&bound) {
                 continue;
             }
             for q in &quads {
@@ -305,9 +305,11 @@ impl SimState {
             if !b.alive || (b.pos - self.ship.pos).length() > reach + b.radius + 0.5 {
                 continue;
             }
-            for q in &quads {
-                if let Some(c) = poly_circle(q, b.pos, b.radius) {
-                    tmp.push((bi, c));
+            for (cp, cr) in b.circles().iter() {
+                for q in &quads {
+                    if let Some(c) = poly_circle(q, cp, cr) {
+                        tmp.push((bi, c));
+                    }
                 }
             }
         }
@@ -374,17 +376,20 @@ impl SimState {
             }
             let (pos, r) = (self.bodies[bi].pos, self.bodies[bi].radius);
             let bound = Aabb::around(pos, r);
+            let circles = self.bodies[bi].circles();
             let mut contacts: Vec<(Contact, Vec2)> = Vec::new();
             for col in &self.world.colliders {
-                if !col.aabb.overlaps(&bound) {
+                if !col.enabled || !col.aabb.overlaps(&bound) {
                     continue;
                 }
-                let c = match col.shape {
-                    Shape::Poly(q) => poly_circle(&q, pos, r),
-                    Shape::Circle { c, r: pr } => circle_circle(c, pr, pos, r),
-                };
-                if let Some(c) = c {
-                    contacts.push((c, Vec2::ZERO));
+                for (cp, cr) in circles.iter() {
+                    let c = match col.shape {
+                        Shape::Poly(q) => poly_circle(&q, cp, cr),
+                        Shape::Circle { c, r: pr } => circle_circle(c, pr, cp, cr),
+                    };
+                    if let Some(c) = c {
+                        contacts.push((c, Vec2::ZERO));
+                    }
                 }
             }
             for (si, sp) in self.world.spinners.iter().enumerate() {
@@ -392,8 +397,10 @@ impl SimState {
                     continue;
                 }
                 for arm in sp.quads() {
-                    if let Some(c) = poly_circle(&arm, pos, r) {
-                        contacts.push((c, self.world.spinner_velocity(si, c.point)));
+                    for (cp, cr) in circles.iter() {
+                        if let Some(c) = poly_circle(&arm, cp, cr) {
+                            contacts.push((c, self.world.spinner_velocity(si, c.point)));
+                        }
                     }
                 }
             }
@@ -440,7 +447,22 @@ impl SimState {
                     continue;
                 }
                 let (a, b) = (&self.bodies[i], &self.bodies[j]);
-                let Some(c) = circle_circle(a.pos, a.radius, b.pos, b.radius) else {
+                if (a.pos - b.pos).length() > a.radius + b.radius {
+                    continue;
+                }
+                // Tiefster Kontakt zwischen den Kreisen beider Körper.
+                let (ca, cb) = (a.circles(), b.circles());
+                let mut best: Option<Contact> = None;
+                for (pa, ra) in ca.iter() {
+                    for (pb, rb) in cb.iter() {
+                        if let Some(c) = circle_circle(pa, ra, pb, rb)
+                            && best.is_none_or(|x| c.depth > x.depth)
+                        {
+                            best = Some(c);
+                        }
+                    }
+                }
+                let Some(c) = best else {
                     continue;
                 };
                 let meteor_a = matches!(a.kind, BodyKind::Meteor);
@@ -639,7 +661,8 @@ impl SimState {
             out.points.push(p);
             let bound = Aabb::around(p, r);
             let hit = self.world.colliders.iter().any(|c| {
-                c.aabb.overlaps(&bound)
+                c.enabled
+                    && c.aabb.overlaps(&bound)
                     && match c.shape {
                         Shape::Poly(q) => poly_circle(&q, p, r).is_some(),
                         Shape::Circle { c, r: cr } => (p - c).length() < cr + r,

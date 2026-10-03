@@ -1,6 +1,6 @@
 //! Automatischer Vorführmodus für Screenshots und Rauchtests:
 //! `DRIFTCREW_DEMO=<ordner>` fliegt ein Skript ab, speichert Bildschirmfotos und
-//! beendet sich danach. `DRIFTCREW_SCENE=tour|ui|systems|progress|coop|sectors|rules` wählt das Skript.
+//! beendet sich danach. `DRIFTCREW_SCENE=tour|ui|systems|progress|coop|sectors|rules|rebuild` wählt das Skript.
 
 use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
@@ -297,6 +297,7 @@ fn systems_scene() -> Vec<(f32, Act)> {
             s.ship.tools[ci].crane = crate::sim::ship::CraneState::Attached {
                 body: id,
                 rope: 9.0,
+                local: Vec2::ZERO,
             };
         }),
         (23.0, |c| shot(c, "seil_schlaff")),
@@ -400,7 +401,11 @@ fn progress_scene() -> Vec<(f32, Act)> {
             if let (Some(ci), Some((id, wpos))) = (ci, w) {
                 let mount = s.ship.tool_world_pos(ci);
                 let rope = (wpos - mount).length();
-                s.ship.tools[ci].crane = crate::sim::ship::CraneState::Attached { body: id, rope };
+                s.ship.tools[ci].crane = crate::sim::ship::CraneState::Attached {
+                    body: id,
+                    rope,
+                    local: Vec2::ZERO,
+                };
                 s.ship.vel = (mount - wpos).normalize() * 5.0;
             }
         }),
@@ -564,6 +569,141 @@ fn rules_scene() -> Vec<(f32, Act)> {
     ]
 }
 
+fn give_ore(c: &mut Ctx, ore: crate::sim::data::Ore, t: f32) {
+    c.sim.0.ship.store(crate::sim::ship::CargoKind::Ore(ore), t);
+}
+
+fn give_parts(c: &mut Ctx, n: u32) {
+    for _ in 0..n {
+        c.sim.0.ship.store(
+            crate::sim::ship::CargoKind::Salvage {
+                name: "Funkmodul".into(),
+                value: 60,
+            },
+            1.5,
+        );
+    }
+}
+
+/// Phase 8b: Wiederaufbau, sperrige Bergung, Präzisionsarbeit.
+fn rebuild_scene() -> Vec<(f32, Act)> {
+    use crate::sim::data::Ore;
+    vec![
+        (0.5, |c| {
+            keyboard_crew(c, false);
+            c.next.set(AppState::Playing);
+        }),
+        (2.0, |c| {
+            let si = station(c, "relais");
+            c.sim.0.ship.docked = None;
+            c.sim.0.dock_at_station(si);
+        }),
+        (4.0, |c| shot(c, "relais_verstummt")),
+        (5.5, |c| {
+            give_ore(c, Ore::Ferrit, 8.0);
+            give_parts(c, 1);
+            c.pending.0.push(Command::DeliverProject);
+        }),
+        (7.5, |c| shot(c, "relais_notstrom")),
+        (9.0, |c| {
+            give_ore(c, Ore::Kobalt, 6.0);
+            give_ore(c, Ore::Schrott, 6.0);
+            give_parts(c, 2);
+            c.pending.0.push(Command::DeliverProject);
+        }),
+        (10.5, |c| {
+            // Auf die neue Plattform der zweiten Etappe stellen.
+            let si = station(c, "relais");
+            let pad = c.sim.0.world.stations[si]
+                .pads
+                .iter()
+                .copied()
+                .find(|p| c.sim.0.world.pads[*p].stage == 2);
+            if let Some(pad) = pad {
+                land_on(c, pad);
+            }
+        }),
+        (12.5, |c| shot(c, "relais_ausgebaut")),
+        (14.0, |c| {
+            teleport(c, Vec2::new(-200.0, 600.0), 0.0, 0.0);
+            let s = &mut c.sim.0;
+            let ci = s
+                .ship
+                .tools
+                .iter()
+                .position(|t| t.kind == crate::sim::data::ToolKind::Crane)
+                .unwrap_or(0);
+            let mount = s.ship.tool_world_pos(ci);
+            let id = s.next_id();
+            let pos = mount + Vec2::new(5.0, -7.0);
+            s.bodies.push(crate::sim::Body {
+                id,
+                kind: crate::sim::BodyKind::Bulky {
+                    mission: 0,
+                    name: "Antennenmast".into(),
+                    half_len: 4.6,
+                    thick: 0.45,
+                },
+                pos,
+                vel: Vec2::ZERO,
+                angle: 0.4,
+                ang_vel: 0.0,
+                radius: 5.05,
+                mass: 7.0,
+                prev_pos: pos,
+                prev_angle: 0.4,
+                alive: true,
+                seed: 5,
+                age: 0.0,
+            });
+            s.ship.tools[ci].crane = crate::sim::ship::CraneState::Attached {
+                body: id,
+                rope: 6.0,
+                local: Vec2::new(-4.6, 0.0),
+            };
+            c.slots.0 = 0b11111;
+        }),
+        (15.3, |c| c.slots.0 = 0b10110),
+        (15.9, |c| shot(c, "sperrig_am_kran")),
+        (16.2, |c| c.slots.0 = 0),
+        (18.0, |c| {
+            let s = &mut c.sim.0;
+            let bi = s.bodies.iter().position(|b| {
+                matches!(b.kind, crate::sim::BodyKind::Asteroid { ore: Some(_), .. })
+                    && b.radius > 3.0
+            });
+            if let Some(bi) = bi {
+                if let crate::sim::BodyKind::Asteroid { vein, .. } = &mut s.bodies[bi].kind {
+                    *vein = true;
+                }
+                s.bodies[bi].vel = Vec2::ZERO;
+                s.bodies[bi].ang_vel = 0.0;
+                let id = s.bodies[bi].id;
+                let target = crate::sim::precision::precision_target(&s.bodies[bi])
+                    .unwrap()
+                    .0;
+                let out = (target - s.bodies[bi].pos).normalize();
+                s.ship.docked = None;
+                s.ship.angle = (-out).to_angle() - std::f32::consts::FRAC_PI_2;
+                s.ship.prev_angle = s.ship.angle;
+                s.ship.pos = target + out * 5.0;
+                s.ship.prev_pos = s.ship.pos;
+                s.ship.vel = Vec2::ZERO;
+                s.ship.ang_vel = 0.0;
+                s.precision = Some(crate::sim::precision::Precision {
+                    body: id,
+                    kind: crate::sim::precision::PrecisionKind::Vein,
+                    progress: 0.62,
+                    offset: 0.3,
+                    idle: -100.0,
+                });
+            }
+        }),
+        (20.0, |c| shot(c, "praezision")),
+        (21.5, |_| {}),
+    ]
+}
+
 fn ui_scene() -> Vec<(f32, Act)> {
     vec![
         (2.5, |c| shot(c, "titel")),
@@ -629,6 +769,7 @@ fn demo_script(
         "coop" => coop_scene(),
         "sectors" => sectors_scene(),
         "rules" => rules_scene(),
+        "rebuild" => rebuild_scene(),
         _ => tour(),
     };
     let mut pad = pads.iter().next();

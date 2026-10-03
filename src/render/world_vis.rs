@@ -89,6 +89,15 @@ pub fn spawn_world(
             ..default()
         });
         let block = art.block.clone();
+        // Verstummte Stationen (Wiederaufbau): Fenster dunkel und Leuchtfeuer aus bis Etappe 1.
+        let has_project = data.0.world.stations[si].project.is_some();
+        let dark_window = mats.add(StandardMaterial {
+            base_color: srgb(darker(main, 0.35)),
+            base_color_texture: Some(art.window_alb.clone()),
+            perceptual_roughness: 0.4,
+            metallic: 0.3,
+            ..default()
+        });
         let root = commands
             .spawn((
                 Transform::default(),
@@ -113,6 +122,21 @@ pub fn spawn_world(
                             Transform::from_translation(pos),
                         ))
                         .id();
+                    if cell.stage > 0 {
+                        commands.entity(e).insert(StageVis::from(si, cell.stage));
+                    }
+                    if has_project && cell.kind == CellKind::Window {
+                        commands.entity(e).insert(StageVis::from(si, 1));
+                        let d = commands
+                            .spawn((
+                                Mesh3d(block.clone()),
+                                MeshMaterial3d(dark_window.clone()),
+                                Transform::from_translation(pos),
+                                StageVis::until(si, 0),
+                            ))
+                            .id();
+                        commands.entity(root).add_child(d);
+                    }
                     commands.entity(root).add_child(e);
                 }
                 CellKind::Slope(ch) => {
@@ -129,6 +153,19 @@ pub fn spawn_world(
                     commands.entity(root).add_child(e);
                 }
                 CellKind::Light => {
+                    let parent = if has_project {
+                        let h = commands
+                            .spawn((
+                                Transform::default(),
+                                Visibility::default(),
+                                StageVis::from(si, 1),
+                            ))
+                            .id();
+                        commands.entity(root).add_child(h);
+                        h
+                    } else {
+                        root
+                    };
                     spawn_beacon(
                         &mut commands,
                         &mut art,
@@ -136,7 +173,7 @@ pub fn spawn_world(
                         pos,
                         srgb(accent),
                         rng.range(0.0, 6.0),
-                        Some(root),
+                        Some(parent),
                     );
                 }
             }
@@ -157,7 +194,7 @@ pub fn spawn_world(
             let tip = mats.add(art.emissive_mat(srgb([1.0, 0.25, 0.2]), 10.0));
             let vent = art.bevel_box(&mut meshes, Vec3::new(1.5, 0.4, 1.8));
             for cell in &st.cells {
-                if !matches!(cell.kind, CellKind::Block | CellKind::Accent) {
+                if !matches!(cell.kind, CellKind::Block | CellKind::Accent) || cell.stage > 0 {
                     continue;
                 }
                 for (dir, dr) in [(1.0f32, -1), (-1.0f32, 1)] {
@@ -254,6 +291,9 @@ pub fn spawn_world(
             );
             // Kran oder Containerstapel an einem Ende der Plattform (Deko, hinter der Ebene).
             let pd = sim.0.world.pads[pad].clone();
+            if pd.stage > 0 || has_project {
+                continue;
+            }
             let side = if rng.chance(0.5) { 1.0 } else { -1.0 };
             let end = pd.center + pd.tangent() * side * (pd.half_width + 0.9);
             if rng.chance(0.6) {
@@ -892,6 +932,15 @@ fn spawn_pad(
     color: Color,
 ) {
     let p = &sim.world.pads[pad];
+    // Alle Teile hängen an einem Halter, damit Etappen-Plattformen gemeinsam erscheinen.
+    let holder = commands
+        .spawn((Transform::default(), Visibility::default()))
+        .id();
+    if p.stage > 0
+        && let crate::sim::world::Owner::Station(si) = p.owner
+    {
+        commands.entity(holder).insert(StageVis::from(si, p.stage));
+    }
     let angle = p.ship_angle();
     let width = p.half_width * 2.0 / 0.92;
     let rot = Quat::from_rotation_z(angle);
@@ -909,6 +958,7 @@ fn spawn_pad(
     );
     let housing_mat = mats.add(art.panel_mat(Color::srgb(0.16, 0.17, 0.19), 0.45, 0.6));
     commands.spawn((
+        ChildOf(holder),
         Mesh3d(housing),
         MeshMaterial3d(housing_mat),
         to_world(Vec2::new(0.0, -0.22), 0.0),
@@ -928,6 +978,7 @@ fn spawn_pad(
         ..default()
     });
     commands.spawn((
+        ChildOf(holder),
         Mesh3d(plate),
         MeshMaterial3d(plate_mat),
         to_world(Vec2::new(0.0, -0.06), 0.0),
@@ -939,6 +990,7 @@ fn spawn_pad(
     for i in 0..count {
         let x = (i as f32 + 0.5) / count as f32 * (width - 0.8) - (width - 0.8) * 0.5;
         commands.spawn((
+            ChildOf(holder),
             Mesh3d(bulb.clone()),
             MeshMaterial3d(lights.idle.clone()),
             to_world(Vec2::new(x, -0.24), 1.84),
@@ -964,6 +1016,7 @@ fn spawn_pad(
     let white = mats.add(art.panel_mat(Color::srgb(0.85, 0.86, 0.84), 0.5, 0.1));
     for side in [-1.0f32, 1.0] {
         commands.spawn((
+            ChildOf(holder),
             Mesh3d(chevron.clone()),
             MeshMaterial3d(white.clone()),
             to_world(Vec2::new(side * (width * 0.5 - 0.45), -0.2), 1.83),
@@ -975,12 +1028,14 @@ fn spawn_pad(
             -1.6,
         );
         commands.spawn((
+            ChildOf(holder),
             Mesh3d(art.cylinder.clone()),
             MeshMaterial3d(white.clone()),
             pole.with_scale(Vec3::new(0.07, mast_h, 0.07)),
         ));
         let lamp = mats.add(art.emissive_mat(color, 5.0));
         commands.spawn((
+            ChildOf(holder),
             Mesh3d(art.sphere.clone()),
             MeshMaterial3d(lamp),
             to_world(Vec2::new(side * (width * 0.5 + 0.35), mast_h - 0.3), -1.6)
@@ -988,6 +1043,7 @@ fn spawn_pad(
         ));
     }
     commands.spawn((
+        ChildOf(holder),
         PointLight {
             color: Color::srgb(1.0, 0.92, 0.8),
             intensity: 90_000.0,
@@ -1007,6 +1063,7 @@ fn spawn_pad(
     });
     let gc = p.center + p.normal * 1.6;
     commands.spawn((
+        ChildOf(holder),
         Mesh3d(art.quad.clone()),
         MeshMaterial3d(glow),
         Transform::from_xyz(gc.x, gc.y, 1.9)
@@ -1414,5 +1471,44 @@ pub fn update_dust(
         tr.rotation = Quat::from_rotation_z(f(12) * std::f32::consts::TAU + t * spin)
             * Quat::from_rotation_x(f(20) * std::f32::consts::TAU + t * spin * 0.7);
         tr.scale = Vec3::splat(0.6 + f(2) * 1.1);
+    }
+}
+
+/// Sichtbarkeit nach Wiederaufbau-Etappe einer Station.
+#[derive(Component)]
+pub struct StageVis {
+    pub station: usize,
+    pub from: u8,
+    pub until: u8,
+}
+
+impl StageVis {
+    pub fn from(station: usize, from: u8) -> Self {
+        StageVis {
+            station,
+            from,
+            until: u8::MAX,
+        }
+    }
+    pub fn until(station: usize, until: u8) -> Self {
+        StageVis {
+            station,
+            from: 0,
+            until,
+        }
+    }
+}
+
+pub fn update_stage_vis(sim: Res<Sim>, mut q: Query<(&StageVis, &mut Visibility)>) {
+    for (sv, mut vis) in &mut q {
+        let stage = sim.0.world.stations[sv.station].stage;
+        let want = if stage >= sv.from && stage <= sv.until {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        if *vis != want {
+            *vis = want;
+        }
     }
 }

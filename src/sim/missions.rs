@@ -38,6 +38,16 @@ pub enum MissionKind {
         amount: f32,
         to: usize,
     },
+    /// Sperrige Bergung: Objekt liegt am Fundort, muss außen am Kran in die Ablage.
+    Bulky {
+        site: Vec2,
+        to: usize,
+        name: String,
+        body: Option<u32>,
+        mass: f32,
+        half_len: f32,
+        thick: f32,
+    },
     /// Passagiere: Zufriedenheit 0..1 sinkt bei harter Beschleunigung, Stößen und Kreiseln.
     Passengers {
         from: usize,
@@ -99,6 +109,7 @@ impl Mission {
             MissionKind::Haul { .. } => MissionType::Haul,
             MissionKind::Mining { .. } => MissionType::Mining,
             MissionKind::Passengers { .. } => MissionType::Passengers,
+            MissionKind::Bulky { .. } => MissionType::Bulky,
             MissionKind::Tow { .. } => MissionType::Tow,
             MissionKind::Capsules { .. } => MissionType::Capsules,
         }
@@ -124,6 +135,7 @@ impl Mission {
             MissionKind::Passengers { to, count, .. } => {
                 format!("Passagiere: {count} Personen → {}", st(*to))
             }
+            MissionKind::Bulky { name, to, .. } => format!("Bergung: {name} → {}", st(*to)),
             MissionKind::Mining { ore, amount, to } => {
                 format!("Abbau: {amount:.0} t {} → {}", ore.label(), st(*to))
             }
@@ -159,6 +171,17 @@ impl Mission {
                     format!("Abholung an {}", s.world.stations[*from].name)
                 }
             }
+            MissionKind::Bulky {
+                mass,
+                half_len,
+                thick,
+                to,
+                ..
+            } => format!(
+                "{mass:.0} t, {:.0} m lang – außen am Kran, in die Ablage von {}",
+                2.0 * (half_len + thick),
+                s.world.stations[*to].name
+            ),
             MissionKind::Haul { from, mass, .. } => format!(
                 "{mass:.0} t Kiste am Kran schleppen, Abholung an {}",
                 s.world.stations[*from].name
@@ -227,6 +250,17 @@ impl Mission {
                     })
                 }
             }
+            MissionKind::Bulky { site, to, body, .. } => {
+                let attached = s.ship.tools.iter().any(
+                    |t| matches!(t.crane, CraneState::Attached { body: b, .. } if Some(b) == *body),
+                );
+                if attached {
+                    Some(s.drop_point(*to).0)
+                } else {
+                    body.and_then(|id| s.bodies.iter().find(|b| b.id == id).map(|b| b.pos))
+                        .or(Some(*site))
+                }
+            }
             MissionKind::Haul { from, to, body, .. } => {
                 let attached = s.ship.tools.iter().any(
                     |t| matches!(t.crane, CraneState::Attached { body: b, .. } if Some(b) == *body),
@@ -281,6 +315,41 @@ fn round5(x: f32) -> u32 {
 }
 
 impl SimState {
+    /// Ablagezone einer Station für sperrige Bergung (Mitte, Radius). Ohne eigene Zone gilt
+    /// die Nähe der Station.
+    pub fn drop_point(&self, si: usize) -> (Vec2, f32) {
+        let st = &self.world.stations[si];
+        match self.data.world.stations[si].drop_zone {
+            Some((off, r)) => (st.pos + v(off), r),
+            None => (
+                st.pos,
+                (st.bounds.max - st.bounds.min).length() * 0.5 + 25.0,
+            ),
+        }
+    }
+
+    /// Schafft das aktuelle Schiff ein sperriges Objekt dieser Masse? (Kran nötig, und mit der
+    /// Last am Seil muss noch genug Beschleunigung bleiben.)
+    pub fn bulky_feasible(&self, mass: f32) -> Result<(), String> {
+        if !self.ship.has_tool(ToolKind::Crane) {
+            return Err("Braucht einen belegten Kran".into());
+        }
+        let thrust: f32 = self
+            .ship
+            .thrusters
+            .iter()
+            .map(|t| t.effective_thrust())
+            .sum();
+        let accel = thrust / (self.ship.mass + mass);
+        if accel < 1.6 {
+            let name = &self.data.ship(&self.crew.current_ship).name;
+            return Err(format!(
+                "Zu schwer für den {name} mit dieser Crew ({accel:.1} m/s² mit Last)"
+            ));
+        }
+        Ok(())
+    }
+
     /// Rufstufe bei einer Station.
     pub fn rep_level_at(&self, si: usize) -> u8 {
         rep_level(self.crew.reputation.get(si).copied().unwrap_or(0))
@@ -359,6 +428,7 @@ impl SimState {
             MissionType::Haul => n_st > 1 && level >= 1,
             MissionType::Mining => ores_exist,
             MissionType::Passengers => n_st > 1,
+            MissionType::Bulky => !md.bulky.is_empty(),
             MissionType::Shipment | MissionType::Tow | MissionType::Capsules => false,
         });
         if types.is_empty() {
@@ -371,6 +441,26 @@ impl SimState {
         let ty = types[self.rng.index(types.len())];
         let bonus = 1.0 + 0.1 * level as f32;
         let (kind, reward) = match ty {
+            MissionType::Bulky => {
+                let t = md.bulky[self.rng.index(md.bulky.len())].clone();
+                // Fundort: ein Notrufort oder Wrack in der Welt, leicht verstreut.
+                let sites = self.data.world.distress_sites.clone();
+                let site = v(sites[self.rng.index(sites.len())])
+                    + Vec2::new(self.rng.range(-40.0, 40.0), self.rng.range(-40.0, 40.0));
+                let dist = (site - self.world.stations[si].pos).length();
+                (
+                    MissionKind::Bulky {
+                        site,
+                        to: si,
+                        name: t.name.clone(),
+                        body: None,
+                        mass: t.mass,
+                        half_len: t.half_len,
+                        thick: t.thick,
+                    },
+                    t.reward as f32 + dist * md.reward_per_distance,
+                )
+            }
             MissionType::Passengers => {
                 let mut to = self.rng.index(n_st - 1);
                 if to >= si {
@@ -483,6 +573,7 @@ impl SimState {
                 src.min(2000.0) * 2.0 / 12.0 + amount * 12.0 + 60.0
             }
             MissionKind::Tow { site, to, .. } => (*site - st(*to)).length() / 6.0 + 150.0,
+            MissionKind::Bulky { site, to, .. } => (*site - st(*to)).length() / 6.0 + 180.0,
             MissionKind::Capsules { site, to, .. } => (*site - st(*to)).length() / 10.0 + 240.0,
         };
         (t / 10.0).round() * 10.0
@@ -613,6 +704,44 @@ impl SimState {
                     );
                     return;
                 }
+            }
+            MissionKind::Bulky {
+                site,
+                name,
+                body,
+                mass,
+                half_len,
+                thick,
+                ..
+            } => {
+                if let Err(reason) = self.bulky_feasible(*mass) {
+                    self.toast(reason, ToastKind::Warn);
+                    return;
+                }
+                let bid = self.next_id();
+                let pos = *site;
+                let angle = self.rng.range(0.0, 6.2);
+                self.bodies.push(Body {
+                    id: bid,
+                    kind: BodyKind::Bulky {
+                        mission: m.id,
+                        name: name.clone(),
+                        half_len: *half_len,
+                        thick: *thick,
+                    },
+                    pos,
+                    vel: Vec2::ZERO,
+                    angle,
+                    ang_vel: self.rng.range(-0.15, 0.15),
+                    radius: *half_len + *thick,
+                    mass: *mass,
+                    prev_pos: pos,
+                    prev_angle: angle,
+                    alive: true,
+                    seed: hash32(bid),
+                    age: 0.0,
+                });
+                *body = Some(bid);
             }
             MissionKind::Passengers { from, aboard, .. } => {
                 if self.docked_station() != Some(*from) {
@@ -748,6 +877,7 @@ impl SimState {
                 BodyKind::Capsule { mission }
                 | BodyKind::Derelict { mission, .. }
                 | BodyKind::Crate { mission, .. }
+                | BodyKind::Bulky { mission, .. }
                     if *mission == mid =>
                 {
                     b.alive = false;
@@ -817,7 +947,10 @@ impl SimState {
             _ => None,
         };
         let reputation = rep_station.map(|si| {
-            let gain = if matches!(m.kind, MissionKind::Haul { .. } | MissionKind::Tow { .. }) {
+            let gain = if matches!(
+                m.kind,
+                MissionKind::Haul { .. } | MissionKind::Tow { .. } | MissionKind::Bulky { .. }
+            ) {
                 2
             } else {
                 1
@@ -859,19 +992,30 @@ impl SimState {
     pub(crate) fn update_missions(&mut self) {
         let mut done = None;
         for (i, m) in self.active.iter().enumerate() {
-            let (to, bid) = match &m.kind {
+            let (to, bid, bulky) = match &m.kind {
                 MissionKind::Tow {
                     to, body: Some(b), ..
                 }
                 | MissionKind::Haul {
                     to, body: Some(b), ..
-                } => (*to, *b),
+                } => (*to, *b, false),
+                MissionKind::Bulky {
+                    to, body: Some(b), ..
+                } => (*to, *b, true),
                 _ => continue,
             };
-            let st = &self.world.stations[to];
-            let reach = (st.bounds.max - st.bounds.min).length() * 0.5 + 25.0;
+            // Sperriges gehört in die Ablagezone, alles andere nur in die Nähe der Station.
+            let (target, reach) = if bulky {
+                self.drop_point(to)
+            } else {
+                let st = &self.world.stations[to];
+                (
+                    st.pos,
+                    (st.bounds.max - st.bounds.min).length() * 0.5 + 25.0,
+                )
+            };
             if let Some(b) = self.bodies.iter().find(|b| b.id == bid && b.alive)
-                && (b.pos - st.pos).length() < reach
+                && (b.pos - target).length() < reach
             {
                 done = Some((i, bid));
                 break;

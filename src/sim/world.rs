@@ -91,6 +91,18 @@ pub struct Cell {
     pub center: Vec2,
     pub col: i32,
     pub row: i32,
+    /// Ab welcher Wiederaufbau-Etappe es diese Zelle gibt (0 = immer).
+    pub stage: u8,
+}
+
+/// Etappe eines Rasterzeichens: `1`–`3` Blöcke, `a`–`c` Plattformen.
+pub fn stage_of(ch: char) -> u8 {
+    match ch {
+        '1' | 'a' => 1,
+        '2' | 'b' => 2,
+        '3' | 'c' => 3,
+        _ => 0,
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -103,6 +115,9 @@ pub struct Pad {
     pub half_width: f32,
     /// Freie Landezone auf einem Planeten (kein Menü, Werkzeuge bleiben aktiv).
     pub zone: bool,
+    /// Wiederaufbau: Plattform gibt es erst ab dieser Etappe.
+    pub stage: u8,
+    pub enabled: bool,
 }
 
 impl Pad {
@@ -135,6 +150,10 @@ pub struct StaticCollider {
     pub shape: Shape,
     pub aabb: Aabb,
     pub surface: Surface,
+    /// Wiederaufbau: Teile, die es noch nicht gibt, kollidieren nicht.
+    pub enabled: bool,
+    pub stage: u8,
+    pub station: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -152,6 +171,9 @@ pub struct Station {
     pub accent_color: [f32; 3],
     pub prices: Prices,
     pub ships_for_sale: Vec<String>,
+    /// Erreichte Wiederaufbau-Etappe und die Dienste, die die Station von Anfang an hat.
+    pub stage: u8,
+    pub base_services: Vec<Service>,
 }
 
 impl Station {
@@ -321,7 +343,7 @@ impl World {
                     rows[row as usize][col as usize]
                 }
             };
-            let solid = |ch: char| matches!(ch, '#' | 'X' | 'W');
+            let solid = |ch: char| matches!(ch, '#' | 'X' | 'W' | '1' | '2' | '3');
 
             let mut station = Station {
                 id: sd.id.clone(),
@@ -340,6 +362,8 @@ impl World {
                 accent_color: super::data::hex(&sd.accent_color),
                 prices: sd.prices.clone(),
                 ships_for_sale: sd.ships_for_sale.clone(),
+                stage: 0,
+                base_services: sd.services.clone(),
             };
 
             for row in 0..h {
@@ -348,7 +372,7 @@ impl World {
                 while col < wcols {
                     let ch = at(col, row);
                     let kind = match ch {
-                        '#' => Some(CellKind::Block),
+                        '#' | '1' | '2' | '3' => Some(CellKind::Block),
                         'X' => Some(CellKind::Accent),
                         'W' => Some(CellKind::Window),
                         'L' => Some(CellKind::Light),
@@ -366,12 +390,16 @@ impl World {
                             center: center_of(col, row),
                             col,
                             row,
+                            stage: stage_of(ch),
                         });
                     }
                     if solid(ch) {
+                        // Läufe nur innerhalb derselben Etappe zusammenfassen.
+                        let stage = stage_of(ch);
                         let start = col;
                         col += 1;
-                        while col < wcols && solid(at(col, row)) {
+                        while col < wcols && solid(at(col, row)) && stage_of(at(col, row)) == stage
+                        {
                             let k = match at(col, row) {
                                 'X' => CellKind::Accent,
                                 'W' => CellKind::Window,
@@ -382,6 +410,7 @@ impl World {
                                 center: center_of(col, row),
                                 col,
                                 row,
+                                stage,
                             });
                             col += 1;
                         }
@@ -389,7 +418,7 @@ impl World {
                         let b = center_of(col - 1, row);
                         let c = (a + b) * 0.5;
                         let half = Vec2::new((b.x - a.x) * 0.5 + cell * 0.5, cell * 0.5);
-                        w.push_quad(Poly::obb(c, half, 0.0), Surface::Block);
+                        w.push_staged(Poly::obb(c, half, 0.0), Surface::Block, si, stage);
                         continue;
                     }
                     col += 1;
@@ -398,9 +427,13 @@ impl World {
                 let mut col = 0;
                 while col < wcols {
                     let ch = at(col, row);
-                    if matches!(ch, '^' | 'v' | '<' | '>') {
+                    if matches!(ch, '^' | 'v' | '<' | '>' | 'a' | 'b' | 'c') {
+                        let stage = stage_of(ch);
                         let start = col;
-                        while col < wcols && at(col, row) == ch && matches!(ch, '^' | 'v') {
+                        while col < wcols
+                            && at(col, row) == ch
+                            && matches!(ch, '^' | 'v' | 'a' | 'b' | 'c')
+                        {
                             col += 1;
                         }
                         if col == start {
@@ -412,7 +445,7 @@ impl World {
                         let mid = (a + b) * 0.5;
                         let span = (b - a).length() * 0.5 + cell * 0.5;
                         let normal = match ch {
-                            '^' => Vec2::Y,
+                            '^' | 'a' | 'b' | 'c' => Vec2::Y,
                             'v' => -Vec2::Y,
                             '<' => -Vec2::X,
                             _ => Vec2::X,
@@ -425,13 +458,17 @@ impl World {
                             normal,
                             half_width: span * 0.92,
                             zone: false,
+                            stage,
+                            enabled: stage == 0,
                         });
                         station.pads.push(pad_idx);
                         let plate_c = surface_center - normal * (PAD_THICKNESS * 0.5);
                         let angle = f32::atan2(-normal.x, normal.y);
-                        w.push_quad(
+                        w.push_staged(
                             Poly::obb(plate_c, Vec2::new(span, PAD_THICKNESS * 0.5), angle),
                             Surface::Pad(pad_idx),
+                            si,
+                            stage,
                         );
                         continue;
                     }
@@ -460,6 +497,9 @@ impl World {
                 },
                 aabb: Aabb::around(pos, pd.radius),
                 surface: Surface::Planet(pi),
+                enabled: true,
+                stage: 0,
+                station: None,
             });
             let outpost = pd.outpost_angle.map(|a| a.to_radians());
             if let Some(a) = outpost {
@@ -472,6 +512,8 @@ impl World {
                     normal: n,
                     half_width: 2.6,
                     zone: false,
+                    stage: 0,
+                    enabled: true,
                 });
                 planet.pad = Some(pad_idx);
                 let angle = f32::atan2(-n.x, n.y);
@@ -501,6 +543,8 @@ impl World {
                     normal: n,
                     half_width: ZONE_HALF * 0.92,
                     zone: true,
+                    stage: 0,
+                    enabled: true,
                 });
                 planet.zones.push(pad_idx);
                 let angle = f32::atan2(-n.x, n.y);
@@ -572,7 +616,43 @@ impl World {
             shape: Shape::Poly(q),
             aabb: q.aabb(),
             surface,
+            enabled: true,
+            stage: 0,
+            station: None,
         });
+    }
+
+    /// Kollider, der zu einer Wiederaufbau-Etappe einer Station gehört.
+    fn push_staged(&mut self, q: Poly, surface: Surface, station: usize, stage: u8) {
+        self.colliders.push(StaticCollider {
+            shape: Shape::Poly(q),
+            aabb: q.aabb(),
+            surface,
+            enabled: stage == 0,
+            stage,
+            station: Some(station),
+        });
+    }
+
+    /// Etappe einer Station setzen: Teile und Plattformen bis zu dieser Etappe existieren,
+    /// die Dienste sind Grunddienste plus alles, was die Etappen freischalten.
+    pub fn set_stage(&mut self, si: usize, stage: u8, unlocked: &[Service]) {
+        for c in &mut self.colliders {
+            if c.station == Some(si) {
+                c.enabled = c.stage <= stage;
+            }
+        }
+        for &p in &self.stations[si].pads {
+            self.pads[p].enabled = self.pads[p].stage <= stage;
+        }
+        let st = &mut self.stations[si];
+        st.stage = stage;
+        st.services = st.base_services.clone();
+        for s in unlocked {
+            if !st.services.contains(s) {
+                st.services.push(*s);
+            }
+        }
     }
 
     /// Anziehung an einem Punkt – nur Anomalien und Schwarze Löcher, Planeten nicht.
@@ -620,7 +700,7 @@ mod tests {
                 .layout
                 .iter()
                 .flat_map(|r| r.chars())
-                .filter(|c| matches!(c, '#' | 'X' | 'W'))
+                .filter(|c| matches!(c, '#' | 'X' | 'W' | '1' | '2' | '3'))
                 .count();
             let cells = st
                 .cells

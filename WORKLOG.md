@@ -250,6 +250,43 @@ Der Rest wird in die bestehenden Phasen einsortiert bzw. bekommt eigene Phasen.
 
 ## Protokoll
 
+### Backlog – Phase 8b: Sperrige Bergung, Präzisionsarbeit, Wiederaufbau (erledigt)
+
+Kleine spielbare Varianten wie vorgegeben.
+
+- **65** Sperrige Bergungsobjekte: Körper können jetzt eine zusammengesetzte Form haben
+  (`Body::circles`, Kette aus Kreisen entlang der Längsachse) – Kollisionen mit Stationen,
+  Schiff, anderen Körpern und Geschossen laufen über alle Kreise, Stöße an einem Ende drehen den
+  Körper. Neuer Körper `BodyKind::Bulky` (Antennenmast, Stationsring-Segment, Rumpfplatte,
+  Sonnensegel-Träger in `missions.ron`), neuer Auftrag „Bergung“ (Mara, Kofi, Yara): Objekt am
+  Fundort, muss außen am Kran in die **Ablagezone** der Station (`drop_zone` in `world.ron`;
+  bei Nova-Hub im Ring, erreichbar nur durch die Seitenöffnungen – die Engstelle). Der Kran greift
+  dort, wo er trifft (`CraneState::Attached { local }`), das Seil wirkt am Angriffspunkt mit
+  Hebel: am Ende gegriffen pendelt und dreht ein langer Mast deutlich. Machbarkeit
+  (`bulky_feasible`): Kran belegt und mit Last noch mindestens 1,6 m/s² Beschleunigung, sonst ist
+  der Auftrag ausgegraut mit Begründung.
+- **66 (Teil)** Seilbelastung sichtbar: `Tool::strain` (geglättet, schnell hoch, langsam runter),
+  Seilfarbe Slotfarbe → Gelb → Rot und heller, Warnung kurz vor dem Reißen. Zwei Kräne an einer
+  Last folgen in Phase 14.
+- **71** Präzisionsarbeit (`sim/precision.rs`): 20 % der großen erzhaltigen Asteroiden haben
+  eine **Erzader**, Wracks pro verbleibendem Bauteil einen **Verbindungsbolzen** an einer festen,
+  mitdrehenden Stelle (aus dem Seed). Der Bohrpunkt muss 4 s (Ader) bzw. 3 s (Bolzen) innerhalb
+  von 0,7 m bleiben; abgerutscht bröckelt der Fortschritt. Ergebnis: Kristallkern (wertvolles
+  Bauteil) bzw. ein gelöstes Wrackteil. Markierungen im Bild (gold/türkis), Fortschritt und
+  Abweichung unten Mitte für alle.
+- **75** Wiederaufbau (`sim/project.rs`): neue Station **Relais Ost** (verstummt). Raster-Zeichen
+  `1`–`3` sind Blöcke, `a`–`c` Plattformen, die es erst ab dieser Etappe gibt – ihre Kollider
+  und Plattformen sind vorher abgeschaltet (`StaticCollider::enabled`, `Pad::enabled`). Drei
+  Etappen (Notstrom/Licht → Andockflügel/Werkstatt → Sendemast) mit Material und Bauteilen,
+  Abgabe als `Command::DeliverProject`, Teillieferungen möglich. Nach jeder Etappe: Fenster und
+  Leuchtfeuer an (Etappe 1), neuer Flügel mit Plattform (2), Mast (3), dazu Dienste, Bezahlung,
+  +3 Ruf, Meldung mit der Wirkung. Fortschritt im Spielstand (`projects`), neue
+  Auftraggeberin Ines Varga ab Etappe 2.
+- Vorführszene `DRIFTCREW_SCENE=rebuild`.
+- Tests: 67 grün (neu `relay_station_is_rebuilt_in_stages`, `rod_collides_along_its_length`,
+  `rod_grabbed_at_the_end_swings`, `bulky_salvage_needs_the_drop_zone_and_a_capable_ship`,
+  `precision_drilling_frees_a_vein_only_when_held_on_target`).
+
 ### Runde 3 – Phase 8: Regeln, Aufträge, Atmosphäre (erledigt)
 
 - **53** Schild lädt nach: `shield_regen`/`shield_delay` pro Schiff (Hornisse schnell, Lastesel

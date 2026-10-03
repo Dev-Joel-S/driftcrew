@@ -79,6 +79,9 @@ impl SimState {
         }
         let mut best: Option<DockGuide> = None;
         for (pi, pad) in self.world.pads.iter().enumerate() {
+            if !pad.enabled {
+                continue;
+            }
             let rel = self.ship.pos - pad.center;
             let dist = rel.length();
             if dist > 28.0 || best.is_some_and(|b| b.distance < dist) {
@@ -176,11 +179,16 @@ impl SimState {
         let Some(st) = self.world.stations.get(si) else {
             return;
         };
-        let Some(&pad) = st.pads.iter().min_by(|a, b| {
-            let da = (self.world.pads[**a].center - st.pos).length();
-            let db = (self.world.pads[**b].center - st.pos).length();
-            da.total_cmp(&db)
-        }) else {
+        let Some(&pad) = st
+            .pads
+            .iter()
+            .filter(|p| self.world.pads[**p].enabled)
+            .min_by(|a, b| {
+                let da = (self.world.pads[**a].center - st.pos).length();
+                let db = (self.world.pads[**b].center - st.pos).length();
+                da.total_cmp(&db)
+            })
+        else {
             return;
         };
         let p = self.world.pads[pad].clone();

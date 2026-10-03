@@ -45,6 +45,11 @@
             docked: ["Ember: Seit dem Signal aus der Tiefe schlafen hier alle schlecht."],
         ),
         (
+            at: "relais", speaker: "Relais Ost",
+            approach: ["Relais Ost: … kkhh … Notstrom … bitte … kkhh …"],
+            docked: ["Relais Ost: Ihr seid die Ersten seit Jahren. Wir brauchen Material und Bauteile."],
+        ),
+        (
             at: "azura", speaker: "Station Azura",
             approach: ["Azura: Wir messen Störungen aus den Ringen. Bitte kein Feuerwerk."],
             docked: ["Azura: Die Kolonie hier sollte zehntausend Leute fassen. Wir sind elf."],

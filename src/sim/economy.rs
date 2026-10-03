@@ -301,6 +301,7 @@ impl SimState {
                 Command::SwitchShip { id } => self.switch_ship(id),
                 Command::Ping { player, pos } => self.add_ping(*player, *pos),
                 Command::SellCharts => self.sell_charts(),
+                Command::DeliverProject => self.deliver_project(),
                 Command::SetLoadout {
                     thrusters,
                     tools,

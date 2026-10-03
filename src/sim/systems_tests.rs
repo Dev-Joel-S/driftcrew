@@ -260,6 +260,7 @@ fn crane_rope_is_a_hard_length_limit() {
     s.ship.tools[ci].crane = CraneState::Attached {
         body: id,
         rope: TOW_ROPE,
+        local: Vec2::ZERO,
     };
     // Vollgas nach oben: die Kiste muss mitkommen, das Seil bleibt höchstens etwas gedehnt.
     let all = (1u32 << s.ship.thrusters.len()) - 1;

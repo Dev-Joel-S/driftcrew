@@ -97,6 +97,7 @@ impl SimState {
         } else {
             None
         };
+        let vein = ore.is_some() && r >= 2.5 && self.rng.chance(0.2);
         let id = self.next_id();
         let vel = Vec2::new(self.rng.range(-1.0, 1.0), self.rng.range(-1.0, 1.0)) * 1.2;
         let ang_vel = self.rng.range(-0.6, 0.6);
@@ -108,6 +109,7 @@ impl SimState {
                 ore_left: if ore.is_some() { r * 1.6 } else { 0.0 },
                 hp: asteroid_hp(r),
                 field,
+                vein,
             },
             pos,
             vel,
@@ -327,14 +329,16 @@ impl SimState {
                 if !b.alive {
                     continue;
                 }
-                if let Some(t) = ray_circle(from, dir, len, b.pos, b.radius)
-                    && hit.is_none_or(|(ht, _)| t < ht)
-                {
-                    hit = Some((t, Some(bi)));
+                for (cp, cr) in b.circles().iter() {
+                    if let Some(t) = ray_circle(from, dir, len, cp, cr)
+                        && hit.is_none_or(|(ht, _)| t < ht)
+                    {
+                        hit = Some((t, Some(bi)));
+                    }
                 }
             }
             for col in &self.world.colliders {
-                if !col.aabb.expand(len).contains(from) {
+                if !col.enabled || !col.aabb.expand(len).contains(from) {
                     continue;
                 }
                 let t = match col.shape {

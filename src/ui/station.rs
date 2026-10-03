@@ -46,6 +46,7 @@ enum Tab {
     Missions,
     Market,
     Ships,
+    Project,
 }
 
 impl Tab {
@@ -57,6 +58,7 @@ impl Tab {
             Tab::Missions => "Aufträge",
             Tab::Market => "Markt",
             Tab::Ships => "Werft",
+            Tab::Project => "Aufbau",
         }
     }
 }
@@ -68,8 +70,86 @@ enum Act {
     Abandon(u32),
     Sell,
     SellCharts,
+    Deliver,
     Switch(String),
     Undock,
+}
+
+/// Reiter „Aufbau“: was die laufende Etappe braucht, was schon da ist, was an Bord ist.
+fn project_items(sim: &SimState, v: &mut Vec<Item<Act>>) {
+    let Some(p) = sim.project_here() else { return };
+    let Some(def) = sim.data.world.stations[p.station].project.as_ref() else {
+        return;
+    };
+    let total = def.stages.len();
+    let Some(stage) = def.stages.get(p.stage as usize) else {
+        v.push(
+            Item::new(format!("{} – abgeschlossen", def.name), Act::Deliver)
+                .detail("Alle Etappen fertig. Danke, Crew.")
+                .enabled(false),
+        );
+        return;
+    };
+    let aboard_parts = sim
+        .ship
+        .cargo
+        .iter()
+        .filter(|c| matches!(c.kind, crate::sim::ship::CargoKind::Salvage { .. }))
+        .count() as u32;
+    let mut useful = false;
+    let mut needs = Vec::new();
+    for (ore, n) in &stage.needs {
+        let have = p.delivered_of(*ore);
+        // `+ 0.0` macht aus einer negativen Null eine positive (sonst „-0.0“).
+        let aboard = sim.ship.ore_amount(*ore).max(0.0) + 0.0;
+        if have + 1e-3 < *n && aboard > 0.01 {
+            useful = true;
+        }
+        needs.push(format!(
+            "{} {:.1}/{:.0} t (an Bord {:.1})",
+            ore.label(),
+            have,
+            n,
+            aboard
+        ));
+    }
+    if stage.parts > 0 {
+        if p.parts < stage.parts && aboard_parts > 0 {
+            useful = true;
+        }
+        needs.push(format!(
+            "Bauteile {}/{} (an Bord {aboard_parts})",
+            p.parts, stage.parts
+        ));
+    }
+    v.push(
+        Item::new(
+            format!("Etappe {}/{total}: {}", p.stage + 1, stage.name),
+            Act::Deliver,
+        )
+        .right(format!("+{} Cr", stage.reward))
+        .detail(stage.effect.clone())
+        .enabled(false),
+    );
+    v.push(
+        Item::new("Material abgeben", Act::Deliver)
+            .detail(needs.join(" · "))
+            .enabled(useful),
+    );
+    for (i, s) in def.stages.iter().enumerate() {
+        let state = if (i as u8) < p.stage {
+            "✓ fertig"
+        } else if i as u8 == p.stage {
+            "läuft"
+        } else {
+            "später"
+        };
+        v.push(
+            Item::new(format!("{}. {}", i + 1, s.name), Act::Deliver)
+                .right(state)
+                .enabled(false),
+        );
+    }
 }
 
 /// Zustand der Triebwerke in einer Zeile, z. B. „Links 40 % stottert · Mitte ausgefallen“.
@@ -109,6 +189,9 @@ fn tabs_for(sim: &SimState) -> Vec<Tab> {
         Some(Owner::Station(si)) => {
             let st = &sim.world.stations[si];
             let mut v = Vec::new();
+            if sim.project_here().is_some() {
+                v.push(Tab::Project);
+            }
             if st.has(Service::Ammo)
                 || st.has(Service::Shield)
                 || st.has(Service::Repair)
@@ -260,6 +343,7 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                 }
             }
         }
+        Tab::Project => project_items(sim, &mut v),
         Tab::Paint => {
             use crate::render::srgb;
             use crate::sim::data::hex;
@@ -357,10 +441,18 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                     MissionKind::Haul { from, .. } => {
                         here == Some(Owner::Station(*from)) && has_crane
                     }
+                    MissionKind::Bulky { mass, .. } => sim.bulky_feasible(*mass).is_ok(),
                     MissionKind::Passengers { from, .. } => here == Some(Owner::Station(*from)),
                     _ => true,
                 } && sim.active.len() < crate::sim::missions::MAX_ACTIVE;
                 let detail = match &m.kind {
+                    MissionKind::Bulky { mass, .. } => match sim.bulky_feasible(*mass) {
+                        Ok(()) => format!(
+                            "{} – Form, Masse und Engstellen machen es schwer",
+                            m.detail(sim)
+                        ),
+                        Err(reason) => format!("{} – {reason}", m.detail(sim)),
+                    },
                     MissionKind::Passengers { .. } => {
                         "Sanft beschleunigen, nicht anecken – sonst sinkt die Bezahlung".into()
                     }
@@ -604,6 +696,7 @@ fn station_menu(
             Some(Act::Abandon(id)) => pending.0.push(Command::AbandonMission { id }),
             Some(Act::Sell) => pending.0.push(Command::SellOre),
             Some(Act::SellCharts) => pending.0.push(Command::SellCharts),
+            Some(Act::Deliver) => pending.0.push(Command::DeliverProject),
             Some(Act::Switch(id)) => pending.0.push(Command::SwitchShip { id }),
             Some(Act::Undock) => pending.0.push(Command::Undock),
             None => {}

@@ -224,7 +224,11 @@ fn wreck_gives_scrap_and_tears_parts() {
         .unwrap();
     let mount = s.ship.tool_world_pos(ci);
     let rope = (s.bodies.iter().find(|b| b.id == wid).unwrap().pos - mount).length();
-    s.ship.tools[ci].crane = CraneState::Attached { body: wid, rope };
+    s.ship.tools[ci].crane = CraneState::Attached {
+        body: wid,
+        rope,
+        local: Vec2::ZERO,
+    };
     s.ship.vel = (mount - wpos).normalize() * 6.0;
     let parts = |s: &SimState| match s.bodies.iter().find(|b| b.id == wid).unwrap().kind {
         BodyKind::Wreck { parts, .. } => parts,
@@ -634,4 +638,275 @@ fn every_offer_has_a_par_time() {
     for m in &s.offers {
         assert!(m.par >= 60.0, "{:?}", m.kind);
     }
+}
+
+#[test]
+fn relay_station_is_rebuilt_in_stages() {
+    let mut s = sim();
+    let si = s.data.station_index("relais").expect("Relais Ost");
+    assert_eq!(s.world.stations[si].stage, 0);
+    assert!(s.world.stations[si].services.is_empty());
+    let staged_pads: Vec<usize> = s.world.stations[si]
+        .pads
+        .iter()
+        .copied()
+        .filter(|p| s.world.pads[*p].stage > 0)
+        .collect();
+    assert!(!staged_pads.is_empty());
+    assert!(staged_pads.iter().all(|p| !s.world.pads[*p].enabled));
+    let disabled = s
+        .world
+        .colliders
+        .iter()
+        .filter(|c| c.station == Some(si) && !c.enabled)
+        .count();
+    assert!(
+        disabled > 0,
+        "Teile späterer Etappen kollidieren noch nicht"
+    );
+
+    // Etappe 1: 8 t Ferrit + 1 Bauteil, in zwei Lieferungen.
+    s.ship.docked = None;
+    s.dock_at_station(si);
+    s.ship.store(CargoKind::Ore(Ore::Ferrit), 5.0);
+    cmd(&mut s, Command::DeliverProject);
+    assert_eq!(s.world.stations[si].stage, 0);
+    assert!((s.project_here().unwrap().delivered_of(Ore::Ferrit) - 5.0).abs() < 1e-3);
+    s.ship.store(CargoKind::Ore(Ore::Ferrit), 5.0);
+    s.ship.store(
+        CargoKind::Salvage {
+            name: "Funkmodul".into(),
+            value: 60,
+        },
+        1.5,
+    );
+    let credits = s.crew.credits;
+    cmd(&mut s, Command::DeliverProject);
+    assert_eq!(s.world.stations[si].stage, 1);
+    assert!(s.world.stations[si].has(crate::sim::data::Service::Market));
+    assert!(s.crew.credits > credits, "Station zahlt für die Etappe");
+    assert!(
+        (s.ship.ore_amount(Ore::Ferrit) - 2.0).abs() < 1e-3,
+        "Rest bleibt an Bord"
+    );
+
+    // Gespeichert und wieder geladen: Etappe bleibt.
+    let t = sim_from(&s.to_save());
+    assert_eq!(t.world.stations[si].stage, 1);
+    assert!(t.world.stations[si].has(crate::sim::data::Service::Fuel));
+}
+
+fn spawn_rod(s: &mut SimState, pos: Vec2, half_len: f32, mass: f32, mission: u32) -> u32 {
+    let id = s.next_id();
+    s.bodies.push(super::Body {
+        id,
+        kind: BodyKind::Bulky {
+            mission,
+            name: "Antennenmast".into(),
+            half_len,
+            thick: 0.45,
+        },
+        pos,
+        vel: Vec2::ZERO,
+        angle: 0.0,
+        ang_vel: 0.0,
+        radius: half_len + 0.45,
+        mass,
+        prev_pos: pos,
+        prev_angle: 0.0,
+        alive: true,
+        seed: 7,
+        age: 0.0,
+    });
+    id
+}
+
+#[test]
+fn rod_collides_along_its_length() {
+    let mut s = sim();
+    // Stab liegt waagrecht, nur sein rechtes Ende ragt in eine Wand – die Mitte ist frei.
+    let probe = Vec2::new(0.0, 900.0);
+    let id = spawn_rod(&mut s, probe, 4.5, 7.0, 0);
+    let bi = s.bodies.iter().position(|b| b.id == id).unwrap();
+    assert_eq!(
+        s.bodies[bi].circles().n,
+        9.min(((9.0f32 / 0.45).ceil() as usize + 1).max(2))
+    );
+    // Ein Körper genau am rechten Ende stößt den Stab an (und dreht ihn).
+    let end = s.bodies[bi].anchor(Vec2::new(4.5, 0.0));
+    let other = s.next_id();
+    s.bodies.push(super::Body {
+        id: other,
+        kind: BodyKind::Debris,
+        pos: end + Vec2::new(0.0, 1.0),
+        vel: Vec2::new(0.0, -6.0),
+        angle: 0.0,
+        ang_vel: 0.0,
+        radius: 0.6,
+        mass: 3.0,
+        prev_pos: end + Vec2::new(0.0, 1.0),
+        prev_angle: 0.0,
+        alive: true,
+        seed: 1,
+        age: 0.0,
+    });
+    for _ in 0..30 {
+        s.step(&TickInput::default());
+    }
+    let b = s.bodies.iter().find(|b| b.id == id).unwrap();
+    assert!(
+        b.ang_vel.abs() > 0.05,
+        "Stoß am Ende dreht den Stab: {}",
+        b.ang_vel
+    );
+}
+
+#[test]
+fn rod_grabbed_at_the_end_swings() {
+    let mut s = sim();
+    free_at(&mut s, Vec2::new(0.0, 900.0));
+    let ci = s
+        .ship
+        .tools
+        .iter()
+        .position(|t| t.kind == ToolKind::Crane)
+        .unwrap();
+    let mount = s.ship.tool_world_pos(ci);
+    let id = spawn_rod(&mut s, mount + Vec2::new(6.0, -6.0), 4.5, 7.0, 0);
+    s.ship.tools[ci].crane = CraneState::Attached {
+        body: id,
+        rope: 5.0,
+        local: Vec2::new(-4.5, 0.0),
+    };
+    let all = (1u32 << s.ship.thrusters.len()) - 1;
+    for _ in 0..120 {
+        s.step(&TickInput {
+            slots: all,
+            aims: vec![0.0; MAX_SLOTS],
+            commands: vec![],
+        });
+    }
+    let b = s.bodies.iter().find(|b| b.id == id).unwrap();
+    assert!(b.angle.abs() > 0.2, "Stab schwingt am Seil: {}", b.angle);
+    assert!(
+        s.ship.tools[ci].strain > 0.0,
+        "Seilbelastung wird angezeigt"
+    );
+}
+
+#[test]
+fn bulky_salvage_needs_the_drop_zone_and_a_capable_ship() {
+    let mut s = sim();
+    let nova = s.data.station_index("nova").unwrap();
+    assert!(s.bulky_feasible(14.0).is_ok());
+    assert!(s.bulky_feasible(500.0).is_err(), "viel zu schwer");
+    let id = s.next_id();
+    let kind = MissionKind::Bulky {
+        site: Vec2::new(300.0, 300.0),
+        to: nova,
+        name: "Antennenmast".into(),
+        body: None,
+        mass: 7.0,
+        half_len: 4.6,
+        thick: 0.45,
+    };
+    let par = s.par_time(&kind);
+    s.offers.push(super::missions::Mission {
+        id,
+        kind,
+        reward: 380,
+        origin: Some(Owner::Station(nova)),
+        giver: None,
+        start: None,
+        top_speed: 0.0,
+        par,
+    });
+    cmd(&mut s, Command::AcceptMission { id });
+    let bid = match s.active[0].kind {
+        MissionKind::Bulky { body: Some(b), .. } => b,
+        _ => panic!("Objekt fehlt"),
+    };
+    // Neben der Station, aber nicht in der Ablage: nicht erledigt.
+    let (zone, r) = s.drop_point(nova);
+    let outside = s.world.stations[nova].pos + Vec2::new(0.0, 70.0);
+    assert!((outside - zone).length() > r);
+    let b = s.bodies.iter_mut().find(|b| b.id == bid).unwrap();
+    b.pos = outside;
+    b.prev_pos = outside;
+    s.step(&TickInput::default());
+    assert_eq!(s.active.len(), 1, "außerhalb der Ablage zählt nicht");
+    let b = s.bodies.iter_mut().find(|b| b.id == bid).unwrap();
+    b.pos = zone;
+    b.prev_pos = zone;
+    b.vel = Vec2::ZERO;
+    s.step(&TickInput::default());
+    assert!(s.active.is_empty(), "in der Ablage erledigt");
+}
+
+#[test]
+fn precision_drilling_frees_a_vein_only_when_held_on_target() {
+    use super::precision::precision_target;
+    let mut s = sim();
+    // Einen erzhaltigen Asteroiden zur Ader machen und ruhigstellen.
+    let bi = s
+        .bodies
+        .iter()
+        .position(|b| matches!(b.kind, BodyKind::Asteroid { ore: Some(_), .. }) && b.radius > 2.0)
+        .unwrap();
+    if let BodyKind::Asteroid { vein, .. } = &mut s.bodies[bi].kind {
+        *vein = true;
+    }
+    let (apos, ar) = (Vec2::new(0.0, 1200.0), s.bodies[bi].radius);
+    let aid = s.bodies[bi].id;
+    let b = &mut s.bodies[bi];
+    b.pos = apos;
+    b.prev_pos = apos;
+    b.vel = Vec2::ZERO;
+    b.ang_vel = 0.0;
+    let (target, _) = precision_target(&s.bodies[bi]).unwrap();
+    let out = (target - apos).normalize();
+    let di = s
+        .ship
+        .tools
+        .iter()
+        .position(|t| t.kind == ToolKind::Drill)
+        .unwrap();
+    s.ship.docked = None;
+    // Nase (mit dem Bohrer) zeigt zum Asteroiden.
+    s.ship.angle = (-out).to_angle() - std::f32::consts::FRAC_PI_2;
+    s.ship.vel = Vec2::ZERO;
+    s.ship.ang_vel = 0.0;
+    let drill_local = crate::sim::geom::rot(s.ship.tools[di].pos - s.ship.com, s.ship.angle);
+    s.ship.pos = target + out * 2.4 - drill_local;
+    s.ship.prev_pos = s.ship.pos;
+    let slot = s.ship.tools[di].slot;
+    let mut cores = 0;
+    for _ in 0..(5 * 60) {
+        let body = s.bodies.iter().find(|b| b.id == aid).unwrap();
+        let t = precision_target(body).map(|x| x.0).unwrap_or(target);
+        let aim = (t - s.ship.tool_world_pos(di)).to_angle();
+        // Die Crew hält Schiff und Ziel ruhig (hier vereinfacht: beide stehen still).
+        s.ship.vel = Vec2::ZERO;
+        s.ship.ang_vel = 0.0;
+        if let Some(b) = s.bodies.iter_mut().find(|b| b.id == aid) {
+            b.vel = Vec2::ZERO;
+            b.ang_vel = 0.0;
+        }
+        s.step(&TickInput {
+            slots: 1 << slot,
+            aims: vec![aim; MAX_SLOTS],
+            commands: vec![],
+        });
+        cores = s
+            .bodies
+            .iter()
+            .filter(|b| matches!(&b.kind, BodyKind::Salvage { name, .. } if name.starts_with("Kristallkern")))
+            .count();
+        if cores > 0 {
+            break;
+        }
+    }
+    assert_eq!(cores, 1, "Kristallkern nach ruhigem Bohren (r = {ar})");
+    let body = s.bodies.iter().find(|b| b.id == aid).unwrap();
+    assert!(precision_target(body).is_none(), "Ader ist erschöpft");
 }

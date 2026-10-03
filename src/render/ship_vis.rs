@@ -1078,6 +1078,63 @@ pub fn sync_bodies(
                     .id();
                 kids.push(holder);
             }
+            BodyKind::Bulky {
+                half_len, thick, ..
+            } => {
+                let metal = mats.add(art.panel_mat(Color::srgb(0.55, 0.57, 0.6), 0.45, 0.7));
+                let band = mats.add(StandardMaterial {
+                    base_color: Color::srgb(0.95, 0.72, 0.12),
+                    base_color_texture: Some(art.stripes.clone()),
+                    perceptual_roughness: 0.6,
+                    ..default()
+                });
+                let bulb = mats.add(art.emissive_mat(Color::srgb(1.0, 0.3, 0.2), 8.0));
+                let len = 2.0 * (half_len + thick);
+                let bar = art.bevel_box(&mut meshes, Vec3::new(len, 2.0 * thick, thick * 1.4));
+                let end =
+                    art.bevel_box(&mut meshes, Vec3::new(0.5, 2.0 * thick + 0.1, thick * 1.5));
+                let (h, t) = (*half_len, *thick);
+                let holder = commands
+                    .spawn((Transform::default(), Visibility::default(), BodyMesh(b.id)))
+                    .with_children(|c| {
+                        c.spawn((Mesh3d(bar), MeshMaterial3d(metal.clone())));
+                        for x in [-h - t + 0.25, h + t - 0.25] {
+                            c.spawn((
+                                Mesh3d(end.clone()),
+                                MeshMaterial3d(band.clone()),
+                                Transform::from_xyz(x, 0.0, 0.0),
+                            ));
+                        }
+                        // Lange dünne Teile (Antennen) bekommen eine Schüssel am Ende.
+                        if t < 0.7 {
+                            c.spawn((
+                                Mesh3d(art.sphere.clone()),
+                                MeshMaterial3d(metal.clone()),
+                                Transform::from_xyz(h + t, 0.0, 0.2)
+                                    .with_scale(Vec3::new(0.25, 1.4, 1.4)),
+                            ));
+                        }
+                        c.spawn((
+                            Mesh3d(art.sphere.clone()),
+                            MeshMaterial3d(bulb),
+                            Transform::from_xyz(0.0, t + 0.1, t * 0.7)
+                                .with_scale(Vec3::splat(0.15)),
+                        ));
+                        c.spawn((
+                            PointLight {
+                                color: Color::srgb(1.0, 0.3, 0.2),
+                                intensity: 100_000.0,
+                                range: 10.0,
+                                shadow_maps_enabled: false,
+                                ..default()
+                            },
+                            Transform::from_xyz(0.0, t + 0.4, 1.5),
+                            BlinkLight(100_000.0),
+                        ));
+                    })
+                    .id();
+                kids.push(holder);
+            }
             BodyKind::Salvage { .. } => {
                 let shell = mats.add(art.panel_mat(Color::srgb(0.32, 0.34, 0.37), 0.4, 0.7));
                 let band = mats.add(art.panel_mat(Color::srgb(0.85, 0.55, 0.15), 0.5, 0.3));
@@ -1237,7 +1294,13 @@ pub fn sync_tools(
         (Without<RopeVis>, Without<ClawVis>, Without<DrillBeam>),
     >,
     mut ropes: Query<
-        (Entity, &RopeVis, &mut Transform, &mut Visibility),
+        (
+            Entity,
+            &RopeVis,
+            &mut Transform,
+            &mut Visibility,
+            &MeshMaterial3d<StandardMaterial>,
+        ),
         (Without<ToolHead>, Without<ClawVis>, Without<DrillBeam>),
     >,
     mut claws: Query<
@@ -1318,23 +1381,38 @@ pub fn sync_tools(
             .with_rotation(Quat::from_rotation_arc(Vec3::Y, (d / len).extend(0.0)))
             .with_scale(Vec3::new(thick, len, thick))
     };
-    for (e, r, mut t, mut vis) in &mut ropes {
+    for (e, r, mut t, mut vis, mat) in &mut ropes {
         let Some(tool) = ship.tools.get(r.0).filter(|t| t.kind == ToolKind::Crane) else {
             commands.entity(e).despawn();
             continue;
         };
+        // Belastung sichtbar: Slotfarbe → gelb → rot, je straffer, desto heller.
+        if r.1 == 0
+            && let Some(mut m) = mats.get_mut(&mat.0)
+        {
+            let base = slot_color(tool.slot).to_linear();
+            let k = tool.strain;
+            let warn = if k < 0.5 {
+                let f = k / 0.5;
+                base * (1.0 - f) + LinearRgba::rgb(1.0, 0.8, 0.1) * f
+            } else {
+                let f = (k - 0.5) / 0.5;
+                LinearRgba::rgb(1.0, 0.8, 0.1) * (1.0 - f) + LinearRgba::rgb(1.0, 0.15, 0.05) * f
+            };
+            m.emissive = warn * (0.9 + 4.0 * k);
+        }
         let mount = mount_world(r.0);
         let tip = match &tool.crane {
             CraneState::Idle => None,
             CraneState::Extending { len, dir } | CraneState::Retracting { len, dir } => {
                 Some((mount + *dir * *len, None))
             }
-            CraneState::Attached { body, rope } => sim
-                .0
-                .bodies
-                .iter()
-                .find(|b| b.id == *body)
-                .map(|b| (b.prev_pos.lerp(b.pos, alpha), Some(*rope))),
+            CraneState::Attached { body, rope, local } => {
+                sim.0.bodies.iter().find(|b| b.id == *body).map(|b| {
+                    let a = b.prev_angle + angle_diff(b.angle, b.prev_angle) * alpha;
+                    (b.prev_pos.lerp(b.pos, alpha) + rot(*local, a), Some(*rope))
+                })
+            }
         };
         match tip {
             Some((tip, len)) if !ship.destroyed => {

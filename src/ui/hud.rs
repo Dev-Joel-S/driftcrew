@@ -21,6 +21,7 @@ impl Plugin for HudPlugin {
                     update_info,
                     update_bars,
                     update_tint,
+                    update_precision,
                     update_slots,
                     update_radar,
                     update_markers,
@@ -62,6 +63,14 @@ struct RadarDot;
 struct MarkerLayer;
 #[derive(Component)]
 struct CenterText;
+/// Anzeige der Präzisionsarbeit (für alle sichtbar).
+#[derive(Component)]
+struct PrecisionPanel;
+#[derive(Component)]
+struct PrecisionFill;
+#[derive(Component)]
+struct PrecisionText;
+
 /// Bildschirmtönung bei Nebel und Sonneneruption.
 #[derive(Component)]
 struct SectorTint;
@@ -121,6 +130,51 @@ fn spawn_hud(mut commands: Commands) {
                 SectorTint,
                 Pickable::IGNORE,
             ));
+            // Präzisionsarbeit: Mitte unten über der Andockanzeige.
+            root.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    bottom: Val::Px(205.0),
+                    left: Val::Percent(50.0),
+                    margin: UiRect::left(Val::Px(-190.0)),
+                    width: Val::Px(380.0),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(4.0),
+                    padding: UiRect::all(Val::Px(8.0)),
+                    border_radius: BorderRadius::all(Val::Px(8.0)),
+                    display: Display::None,
+                    ..default()
+                },
+                BackgroundColor(BG.with_alpha(0.85)),
+                PrecisionPanel,
+                Pickable::IGNORE,
+            ))
+            .with_children(|p| {
+                p.spawn((text("", 13.0, TEXT), PrecisionText, Pickable::IGNORE));
+                p.spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: Val::Px(8.0),
+                        border_radius: BorderRadius::all(Val::Px(4.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.08)),
+                    Pickable::IGNORE,
+                ))
+                .with_children(|b| {
+                    b.spawn((
+                        Node {
+                            width: Val::Percent(0.0),
+                            height: Val::Percent(100.0),
+                            border_radius: BorderRadius::all(Val::Px(4.0)),
+                            ..default()
+                        },
+                        BackgroundColor(GOOD),
+                        PrecisionFill,
+                        Pickable::IGNORE,
+                    ));
+                });
+            });
             // Oben links: Kasse und Aufträge
             root.spawn((
                 Node {
@@ -482,6 +536,51 @@ fn update_info(
             p.spawn((text(t, size, c), Pickable::IGNORE));
         }
     });
+}
+
+#[allow(clippy::type_complexity)]
+fn update_precision(
+    sim: Res<Sim>,
+    mut panel: Query<&mut Node, (With<PrecisionPanel>, Without<PrecisionFill>)>,
+    mut fill: Query<
+        (&mut Node, &mut BackgroundColor),
+        (With<PrecisionFill>, Without<PrecisionPanel>),
+    >,
+    mut label: Query<&mut Text, With<PrecisionText>>,
+) {
+    let p = sim.0.precision.as_ref();
+    if let Ok(mut n) = panel.single_mut() {
+        let want = if p.is_some() {
+            Display::Flex
+        } else {
+            Display::None
+        };
+        if n.display != want {
+            n.display = want;
+        }
+    }
+    let Some(p) = p else { return };
+    let on = p.offset < crate::sim::precision::PRECISION_RADIUS;
+    if let Ok((mut n, mut bg)) = fill.single_mut() {
+        n.width = Val::Percent(p.progress.clamp(0.0, 1.0) * 100.0);
+        bg.0 = if on { GOOD } else { WARN };
+    }
+    if let Ok(mut t) = label.single_mut() {
+        let v = format!(
+            "PRÄZISION · {} – {}  ·  {:.0} %  ·  Abweichung {:.1} m",
+            p.kind.label(),
+            if on {
+                "genau drauf, ruhig halten"
+            } else {
+                "abgerutscht!"
+            },
+            p.progress * 100.0,
+            p.offset
+        );
+        if t.0 != v {
+            t.0 = v;
+        }
+    }
 }
 
 fn update_tint(

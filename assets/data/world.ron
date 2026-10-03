@@ -16,6 +16,8 @@
             name: "Nova-Hub",
             kind: Station,
             pos: (0.0, 0.0),
+            // Sperrige Bergung wird im Ring abgelegt – durch die Öffnungen links und rechts.
+            drop_zone: Some(((0.0, 2.0), 14.0)),
             cell: 4.0,
             main_color: "#e8322a",
             accent_color: "#ffb21f",
@@ -81,6 +83,8 @@
             name: "Werft Orion",
             kind: Shipyard,
             pos: (-1150.0, 380.0),
+            // Ablage in der Halle, Zugang nur durch die Öffnung unten in der Mitte.
+            drop_zone: Some(((0.0, 2.0), 12.0)),
             cell: 4.0,
             main_color: "#ff7a1a",
             accent_color: "#2f6bff",
@@ -140,6 +144,51 @@
                 (ship: "hornisse", cell: (7, 7)),
                 (ship: "pelikan", cell: (15, 7)),
             ],
+        ),
+        (
+            // Verstummtes Relais: wird in drei Etappen wieder aufgebaut. Zeichen 1–3 sind
+            // Blöcke, a–c Plattformen, die es erst ab dieser Etappe gibt.
+            id: "relais",
+            name: "Relais Ost",
+            kind: Outpost,
+            pos: (1200.0, 1800.0),
+            cell: 4.0,
+            main_color: "#6f7a86",
+            accent_color: "#4fd8ff",
+            services: [],
+            layout: [
+                "...........3...........",
+                "...........3...........",
+                "..........333..........",
+                "..........#W#..........",
+                ".....L....#W#....L.....",
+                ".....#....#W#....#.....",
+                ".bbb.#11..#W#..11#.^^^.",
+                "22222#####WWW######X##X",
+                ".222..##1#####1##......",
+                "......##...###...##....",
+                "........L.......L......",
+            ],
+            project: Some((
+                name: "Wiederaufbau Relais Ost",
+                stages: [
+                    (
+                        name: "Notstrom und Beleuchtung",
+                        needs: [(Ferrit, 8.0)], parts: 1, unlocks: [Fuel, Market], reward: 250,
+                        effect: "Licht und Leuchtfeuer brennen wieder, Tanken und Markt sind offen.",
+                    ),
+                    (
+                        name: "Andockflügel und Werkstatt",
+                        needs: [(Kobalt, 6.0), (Schrott, 6.0)], parts: 2, unlocks: [Repair, Ammo, Missions], reward: 450,
+                        effect: "Ein zweites Dock und die Werkstatt laufen, es gibt wieder Aufträge.",
+                    ),
+                    (
+                        name: "Sendemast",
+                        needs: [(Solarit, 5.0), (Ionit, 3.0)], parts: 3, unlocks: [Shield, Upgrades], reward: 700,
+                        effect: "Der Mast sendet wieder – das Relais ist zurück im Netz.",
+                    ),
+                ],
+            )),
         ),
     ],
     planets: [

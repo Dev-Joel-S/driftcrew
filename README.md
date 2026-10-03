@@ -22,6 +22,8 @@ eigener Name, eigener Look, alle Grafiken und Klänge werden beim Start prozedur
 | ![Auftraggeber im Stationsmenü](docs/screenshots/auftraggeber.jpg) | ![Auswertung nach dem Auftrag](docs/screenshots/auswertung.jpg) |
 | ![Wrack ausschlachten](docs/screenshots/wrack.jpg) | ![Karte mit Fog of War](docs/screenshots/karte_nebel.jpg) |
 | ![Trümmerzone](docs/screenshots/truemmer.jpg) | ![Schleiernebel](docs/screenshots/nebel.jpg) |
+| ![Relais Ost, verstummt](docs/screenshots/relais_verstummt.jpg) | ![Relais Ost nach Etappe 2](docs/screenshots/relais_ausgebaut.jpg) |
+| ![Sperrige Bergung am Kran](docs/screenshots/sperrig.jpg) | ![Präzisionsarbeit an einer Erzader](docs/screenshots/praezision.jpg) |
 
 *(Screenshots aus dem automatischen Vorführmodus, gerendert mit Software-Vulkan.)*
 
@@ -156,6 +158,20 @@ Slot-Leiste bleiben in Slotfarbe, damit man weiter sieht, wer schiebt.
 holt **Schrott** heraus (wird wie Erz verkauft), der Kran reißt mit einem kräftigen Ruck
 **Bauteile** ab, die man einholt und am Markt verkauft.
 
+**Seilbelastung:** Das Kranseil färbt sich von der Slotfarbe über Gelb nach Rot, je stärker es
+gezogen wird; kurz vor dem Reißen gibt es eine Warnung.
+
+**Präzisionsarbeit:** Manche Asteroiden haben eine reiche **Erzader**, manche Wracks
+**Verbindungsbolzen** (goldene bzw. türkise Markierung). Der Bohrer muss ein paar Sekunden genau
+darauf bleiben, während der Rest der Crew das Schiff ruhig hält. Fortschritt und Abweichung
+stehen für alle sichtbar unten in der Mitte. Belohnung: ein wertvoller Kristallkern bzw. ein
+Bauteil aus dem Wrack.
+
+**Stationen wieder aufbauen:** **Relais Ost** im Nordosten ist verstummt – dunkle Fenster,
+kein Leuchtfeuer, nur eine Plattform. Im Reiter „Aufbau“ gibt die Crew Material und Bauteile ab.
+Jede Etappe ändert das Aussehen (Licht, neuer Andockflügel, Sendemast) und bringt Dienste zurück;
+die Station bezahlt jede Etappe, der Fortschritt steht im Spielstand.
+
 **Sektoren und Ereignisse:** Manche Gegenden haben eigene Bedingungen – in der **Trümmerzone**
 treibt Schrott, im **Schleiernebel** sind Sicht, Radar und Scanner gestört, im
 **Sonnenwind-Korridor** schiebt es das Schiff seitlich. Unterwegs passieren ab und zu Dinge:
@@ -187,6 +203,11 @@ Service.
 - **Material verschicken** – an einem Planeten-Außenposten eine Erzladung aufnehmen und zu einer
   Station bringen. Die Ladung verschiebt Masse und Schwerpunkt.
 - **Schwerlast** – eine Kiste, die in keinen Frachtraum passt, am Kran zu Station B schleppen.
+- **Bergung** – sperrige Objekte (Antennenmast, Ringsegment, Rumpfplatte, Sonnensegel-Träger)
+  passen in keinen Frachtraum. Sie werden außen am Kran geschleppt und müssen in die
+  **Ablagezone** der Station – bei Nova-Hub nur durch die schmalen Ringöffnungen. Lange Teile
+  pendeln, wenn man sie am Ende greift. Angeboten wird nur, was das aktuelle Schiff mit seiner
+  Ausrüstung schaffen kann.
 - **Passagiere** – Leute von A nach B bringen. Harte Beschleunigung, Stöße und Kreiseln senken
   ihre Zufriedenheit und damit die Bezahlung.
 
@@ -259,12 +280,15 @@ in die Binärdatei eingebettet; liegt `assets/data/` im Arbeitsverzeichnis (z. B
   `landing_zones` (Winkel in Grad; daneben liegt jeweils ein Erzvorkommen). Anomalien mit
   `kind: BlackHole` sind Schwarze Löcher (`core_radius` = Ereignishorizont). Regionen können
   einen `effect` haben (`Debris(dichte)`, `Nebula(stärke)`, `SolarWind((x, y), m/s²)`), `events`
-  steuert die Zufallsereignisse. `known: false`
+  steuert die Zufallsereignisse. `project` beschreibt den Wiederaufbau einer Station in Etappen
+  (Raster-Zeichen `1`–`3` = Blöcke, `a`–`c` = Plattformen ab dieser Etappe), `drop_zone` die
+  Ablagezone für Bergungsobjekte. `known: false`
   versteckt eine Station, bis sie entdeckt ist. `wrecks` legt Wracks fest (Modell, Schrott,
   Bauteile). Dazu Asteroidenfelder, Meteoritenzonen, Rotoren, Nebelregionen und Notruf-Orte.
 - `shop.ron` – Services (inkl. Tanken und Triebwerksreparatur), Upgrades, Grundpreise für Erz und
   Schrott, Startkapital, Bergungsgebühr, Lackfarben, Flammenfarben, Bauteile aus Wracks.
-- `missions.ron` – Vorlagen für Aufträge und Notrufe; Fracht mit `towed: true` ist Schwerlast.
+- `missions.ron` – Vorlagen für Aufträge und Notrufe; Fracht mit `towed: true` ist Schwerlast,
+  `bulky` beschreibt sperrige Bergungsobjekte (Länge, Dicke, Masse).
 - `npcs.ron` – Auftraggeber: Name, Rolle, Ort, welche Aufträge sie vergeben, Porträtfarben, Sprüche.
 - `radio.ron` – Funksprüche beim Anflug, Andocken und Abdocken, allgemein und pro Ort.
 
@@ -287,6 +311,8 @@ src/
     explore.rs  Fog of War (Raster, im Spielstand als Hex-Bitfeld)
     stats.rs    Spaßstatistik pro Slot, Auswertung mit Auszeichnungen
     sector.rs   Sektoreffekte, Zufallsereignisse, Scanner-Impulse, Kartendaten
+    precision.rs Präzisionsarbeit (Erzadern, Wrackverbindungen)
+    project.rs  Wiederaufbau von Stationen in Etappen
     world.rs    Stationen aus Rastern, Planeten, Plattformen, Landezonen, Anomalien
     rng.rs      PCG32 – kein Zufall ohne Seed
   input.rs    Geräte → Slots, reservierte Tasten, Zielen

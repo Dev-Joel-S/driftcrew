@@ -93,6 +93,9 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 - Aufträge kommen von **Auftraggebern** (Name, Rolle, Porträt, Sprüche; Daten in `npcs.ron`)
 - **Ruf pro Station:** mehr und besser bezahlte Aufträge, Schwerlast ab Stufe 1, Rabatt im Service
 - **Passagiere:** sanft fliegen, sonst sinkt die Bezahlung
+- **Bergung sperriger Objekte:** außen am Kran, Form/Masse/Engstellen bestimmen die Schwierigkeit, nur machbare Aufträge werden angeboten
+- **Präzisionsarbeit:** Erzadern und Wrackverbindungen verlangen, dass der Bohrer ruhig auf einer Stelle bleibt – die anderen stabilisieren
+- **Stationen wieder aufbauen:** Etappen mit Material und Bauteilen, die Station ändert Aussehen und Dienste
 - **Richtzeit, Zeit- und Sauberkeitsbonus** bei jedem Auftrag
 - **Funk** beim Anflug und Andocken, erzählt nebenbei Bruchstücke der Welt
 - **Auswertung** nach jedem Auftrag mit Spaßstatistik pro Slot (meiste Schubzeit, meiste Kollisionen …)

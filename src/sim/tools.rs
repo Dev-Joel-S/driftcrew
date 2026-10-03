@@ -201,19 +201,36 @@ impl SimState {
                         if !b.alive || !b.grabbable() {
                             continue;
                         }
-                        if let Some(t) = ray_circle(mount, dir, len, b.pos, b.radius + 0.3)
-                            && best.is_none_or(|(bt, _)| t < bt)
-                        {
-                            best = Some((t, bi));
+                        for (cp, cr) in b.circles().iter() {
+                            if let Some(t) = ray_circle(mount, dir, len, cp, cr + 0.3)
+                                && best.is_none_or(|(bt, _)| t < bt)
+                            {
+                                best = Some((t, bi));
+                            }
                         }
                     }
                     let tip = mount + dir * len;
-                    if let Some((_, bi)) = best {
+                    if let Some((t, bi)) = best {
                         let slot = self.ship.tools[i].slot;
                         self.stats.slot(slot).grabs += 1;
                         let b = &self.bodies[bi];
-                        let rope = (b.pos - mount).length().max(b.radius + 1.5);
-                        self.events.push(SimEvent::CraneAttach { pos: b.pos });
+                        // Sperrige Teile werden dort gegriffen, wo der Greifer auftrifft,
+                        // runde in der Mitte.
+                        let local = if matches!(b.kind, BodyKind::Bulky { .. }) {
+                            let hit = mount + dir * t;
+                            let along = rot(hit - b.pos, -b.angle);
+                            match b.kind {
+                                BodyKind::Bulky { half_len, .. } => {
+                                    Vec2::new(along.x.clamp(-half_len, half_len), 0.0)
+                                }
+                                _ => Vec2::ZERO,
+                            }
+                        } else {
+                            Vec2::ZERO
+                        };
+                        let anchor = b.anchor(local);
+                        let rope = (anchor - mount).length().max(1.5);
+                        self.events.push(SimEvent::CraneAttach { pos: anchor });
                         let msg = match &b.kind {
                             BodyKind::Wreck { parts, .. } if *parts > 0 => Some(
                                 "Wrack am Haken – mit einem Ruck reißt der Kran ein Bauteil ab"
@@ -225,6 +242,9 @@ impl SimState {
                             BodyKind::Derelict { name, .. } => {
                                 Some(format!("{name} am Haken – zur Zielstation schleppen"))
                             }
+                            BodyKind::Bulky { name, .. } => Some(format!(
+                                "{name} am Haken – am Ende gegriffen pendelt es stärker"
+                            )),
                             _ => None,
                         };
                         if let Some(msg) = msg {
@@ -233,6 +253,7 @@ impl SimState {
                         CraneState::Attached {
                             body: self.bodies[bi].id,
                             rope,
+                            local,
                         }
                     } else if len >= range || self.point_in_static(tip) {
                         CraneState::Retracting { len, dir }
@@ -249,17 +270,20 @@ impl SimState {
                     CraneState::Retracting { len, dir }
                 }
             }
-            CraneState::Attached { body, rope } => {
+            CraneState::Attached { body, rope, local } => {
                 let Some(bi) = self.bodies.iter().position(|b| b.id == body && b.alive) else {
                     self.ship.tools[i].crane = CraneState::Idle;
+                    self.ship.tools[i].strain = 0.0;
                     return;
                 };
                 if just {
                     self.events.push(SimEvent::CraneRelease);
-                    let d = (self.bodies[bi].pos - mount).length();
+                    self.ship.tools[i].strain = 0.0;
+                    let a = self.bodies[bi].anchor(local);
+                    let d = (a - mount).length();
                     CraneState::Retracting {
                         len: d,
-                        dir: (self.bodies[bi].pos - mount).normalize_or_zero(),
+                        dir: (a - mount).normalize_or_zero(),
                     }
                 } else {
                     let stowable = self.bodies[bi].stowable();
@@ -270,23 +294,26 @@ impl SimState {
                         // Schwere Last: Seil langsam auf Schlepplänge einholen.
                         rope = (rope - 2.5 * DT).max(TOW_ROPE);
                     }
-                    let d = self.bodies[bi].pos - mount;
+                    let d = self.bodies[bi].anchor(local) - mount;
                     let dist = d.length();
                     if stowable && dist < self.bodies[bi].radius + 1.6 && self.try_stow(bi) {
                         self.ship.tools[i].crane = CraneState::Idle;
+                        self.ship.tools[i].strain = 0.0;
                         return;
                     }
                     let pull = if dist > rope * 1.8 + 6.0 {
                         None
                     } else {
-                        self.rope_constraint(bi, mount, rope)
+                        self.rope_constraint(bi, local, mount, rope)
                     };
                     let Some(pull) = pull else {
                         self.toast("Kranseil gerissen – zu harter Ruck!", ToastKind::Bad);
                         self.events.push(SimEvent::CraneRelease);
                         self.ship.tools[i].crane = CraneState::Idle;
+                        self.ship.tools[i].strain = 0.0;
                         return;
                     };
+                    self.note_strain(i, pull);
                     // Am Wrack: ein kräftiger Ruck reißt ein Bauteil ab, das dann am Haken hängt.
                     if pull > TEAR_IMPULSE
                         && let Some(piece) = self.tear_part(bi, mount)
@@ -295,10 +322,11 @@ impl SimState {
                         self.ship.tools[i].crane = CraneState::Attached {
                             body: self.bodies[piece].id,
                             rope: d,
+                            local: Vec2::ZERO,
                         };
                         return;
                     }
-                    CraneState::Attached { body, rope }
+                    CraneState::Attached { body, rope, local }
                 }
             }
         };
@@ -308,24 +336,31 @@ impl SimState {
     /// Seil als harte Längenbeschränkung: schlaff, solange die Last näher ist als die
     /// Seillänge; straff zieht es nur (nie drücken). Ein zu harter Ruck reißt das Seil
     /// (Rückgabe `false`). Aus dem Wechsel von straff und schlaff entsteht das Pendeln.
-    fn rope_constraint(&mut self, bi: usize, mount: Vec2, rope: f32) -> Option<f32> {
-        let d = self.bodies[bi].pos - mount;
+    fn rope_constraint(&mut self, bi: usize, local: Vec2, mount: Vec2, rope: f32) -> Option<f32> {
+        let anchor = self.bodies[bi].anchor(local);
+        let d = anchor - mount;
         let dist = d.length();
         if dist <= rope || dist < 1e-4 {
             return Some(0.0);
         }
         let n = d / dist;
         let bm = self.bodies[bi].mass;
+        let bi_inertia = self.bodies[bi].inertia();
         let anchored = self.ship.docked.is_some();
         let r = mount - self.ship.pos;
         let rn = cross(r, n);
+        // Hebel am Körper: zieht das Seil nicht durch die Mitte, dreht es den Körper mit.
+        let rb = anchor - self.bodies[bi].pos;
+        let rbn = cross(rb, n);
+        let body_k = 1.0 / bm + rbn * rbn / bi_inertia;
         let k = if anchored {
-            1.0 / bm
+            body_k
         } else {
-            1.0 / bm + 1.0 / self.ship.mass + rn * rn / self.ship.inertia
+            body_k + 1.0 / self.ship.mass + rn * rn / self.ship.inertia
         };
         // Trennungsgeschwindigkeit entlang des Seils (+ etwas Lagekorrektur).
-        let vrel = (self.bodies[bi].vel - self.ship.point_velocity(mount)).dot(n);
+        let vrel =
+            (self.bodies[bi].point_velocity(anchor) - self.ship.point_velocity(mount)).dot(n);
         let bias = ((dist - rope) * 0.2 / DT).min(8.0);
         let lambda = (vrel + bias) / k;
         if lambda <= 0.0 {
@@ -337,11 +372,31 @@ impl SimState {
             return None;
         }
         let lambda = lambda.min(ROPE_BREAK_IMPULSE);
-        self.bodies[bi].vel -= n * (lambda / bm);
+        let b = &mut self.bodies[bi];
+        b.vel -= n * (lambda / bm);
+        b.ang_vel -= cross(rb, n * lambda) / bi_inertia;
         if !anchored {
             self.ship.apply_impulse(n * lambda, mount);
         }
         Some(lambda)
+    }
+
+    /// Seilbelastung für die Anzeige glätten und vor dem Reißen warnen.
+    fn note_strain(&mut self, i: usize, pull: f32) {
+        let target = (pull / ROPE_BREAK_IMPULSE).clamp(0.0, 1.0);
+        let t = &mut self.ship.tools[i];
+        // Schnell hoch, langsam runter – so bleibt ein Ruck kurz sichtbar.
+        let k = if target > t.strain { 0.5 } else { 0.04 };
+        t.strain += (target - t.strain) * k;
+        if t.strain > 0.75 && self.border_warn <= 0.0 {
+            self.border_warn = 2.5;
+            self.toast("Kranseil kurz vor dem Reißen!", ToastKind::Warn);
+        }
+    }
+
+    /// Löst ein Bauteil (z. B. nach Präzisionsarbeit) auf der Seite von `toward`.
+    pub(crate) fn tear_part_at(&mut self, bi: usize, toward: Vec2) -> Option<usize> {
+        self.tear_part(bi, toward)
     }
 
     /// Reißt ein Bauteil aus einem Wrack. Gibt den Index des neuen Körpers zurück.
@@ -402,7 +457,7 @@ impl SimState {
 
     /// Angedockt: Seil hält die Last, ohne das Schiff zu bewegen; reißt nur bei Überdehnung.
     fn hold_while_docked(&mut self, i: usize) {
-        let CraneState::Attached { body, rope } = self.ship.tools[i].crane else {
+        let CraneState::Attached { body, rope, local } = self.ship.tools[i].crane else {
             return;
         };
         let Some(bi) = self.bodies.iter().position(|b| b.id == body && b.alive) else {
@@ -410,8 +465,8 @@ impl SimState {
             return;
         };
         let mount = self.ship.tool_world_pos(i);
-        let dist = (self.bodies[bi].pos - mount).length();
-        if dist > rope * 1.8 + 6.0 || self.rope_constraint(bi, mount, rope).is_none() {
+        let dist = (self.bodies[bi].anchor(local) - mount).length();
+        if dist > rope * 1.8 + 6.0 || self.rope_constraint(bi, local, mount, rope).is_none() {
             self.toast("Kranseil gerissen!", ToastKind::Bad);
             self.events.push(SimEvent::CraneRelease);
             self.ship.tools[i].crane = CraneState::Idle;
@@ -440,13 +495,15 @@ impl SimState {
             if !b.alive {
                 continue;
             }
-            if let Some(t) = ray_circle(mount, dir, DRILL_RANGE, b.pos, b.radius) {
-                consider(t, Target::Body(bi), &mut best);
+            for (cp, cr) in b.circles().iter() {
+                if let Some(t) = ray_circle(mount, dir, DRILL_RANGE, cp, cr) {
+                    consider(t, Target::Body(bi), &mut best);
+                }
             }
         }
         for col in &self.world.colliders {
             if let Shape::Poly(q) = col.shape {
-                if !col.aabb.expand(DRILL_RANGE).contains(mount) {
+                if !col.enabled || !col.aabb.expand(DRILL_RANGE).contains(mount) {
                     continue;
                 }
                 if let Some(t) = ray_poly(mount, dir, DRILL_RANGE, &q) {
@@ -490,6 +547,10 @@ impl SimState {
                 }
             }
             Target::Body(bi) => {
+                self.precision_drill(bi, point);
+                if !self.bodies.get(bi).is_some_and(|b| b.alive) {
+                    return;
+                }
                 if let BodyKind::Wreck { scrap, .. } = &mut self.bodies[bi].kind {
                     let amount = (rate * 0.8).min(*scrap).min(free);
                     if amount > 0.0 {
@@ -543,7 +604,8 @@ impl SimState {
 
     pub(crate) fn point_in_static(&self, p: Vec2) -> bool {
         self.world.colliders.iter().any(|c| {
-            c.aabb.contains(p)
+            c.enabled
+                && c.aabb.contains(p)
                 && match c.shape {
                     Shape::Poly(q) => q.contains(p),
                     Shape::Circle { c, r } => (p - c).length_squared() < r * r,

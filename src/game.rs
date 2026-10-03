@@ -183,6 +183,7 @@ fn react_to_events(
             | SimEvent::Purchased { .. }
             | SimEvent::MissionCompleted { .. }
             | SimEvent::Sold { .. }
+            | SimEvent::StageCompleted { .. }
             | SimEvent::Respawned => save = true,
             _ => {}
         }

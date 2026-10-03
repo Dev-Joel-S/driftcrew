@@ -59,6 +59,7 @@ impl Plugin for RenderPlugin {
                     ship_vis::update_wreck_embers,
                     ship_vis::blink_nav_lights,
                     world_vis::update_pad_lights,
+                    world_vis::update_stage_vis,
                 )
                     .chain(),
             )

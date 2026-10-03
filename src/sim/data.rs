@@ -399,6 +399,39 @@ pub struct StationDef {
     /// Von Anfang an auf der Karte (sonst erst, wenn die Gegend erkundet ist).
     #[serde(default = "default_true")]
     pub known: bool,
+    /// Wiederaufbau in Etappen. Raster-Zeichen `1`–`3` sind Blöcke, `a`–`c` Plattformen,
+    /// die erst ab dieser Etappe existieren.
+    #[serde(default)]
+    pub project: Option<ProjectDef>,
+    /// Ablagezone für sperrige Bergungsobjekte (Versatz zur Stationsmitte, Radius).
+    #[serde(default)]
+    pub drop_zone: Option<(P, f32)>,
+}
+
+/// Wiederaufbau einer Station.
+#[derive(Deserialize, Clone, Debug)]
+pub struct ProjectDef {
+    pub name: String,
+    pub stages: Vec<StageDef>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct StageDef {
+    pub name: String,
+    /// Benötigtes Material (Erz/Schrott in Tonnen).
+    pub needs: Vec<(Ore, f32)>,
+    /// Benötigte Bauteile (aus Wracks).
+    #[serde(default)]
+    pub parts: u32,
+    /// Dienste, die nach der Etappe wieder laufen.
+    #[serde(default)]
+    pub unlocks: Vec<Service>,
+    /// Bezahlung der Station für die Etappe.
+    #[serde(default)]
+    pub reward: u32,
+    /// Was sich ändert (wird beim Abschluss gezeigt).
+    #[serde(default)]
+    pub effect: String,
 }
 
 fn default_true() -> bool {
@@ -724,6 +757,9 @@ pub struct MissionsDef {
     pub time_bonus: f32,
     #[serde(default = "default_clean_bonus")]
     pub clean_bonus: f32,
+    /// Sperrige Bergungsobjekte.
+    #[serde(default)]
+    pub bulky: Vec<BulkyTemplate>,
     pub distress_offers: u32,
     pub delivery_cargo: Vec<CargoTemplate>,
     pub reward_per_distance: f32,
@@ -788,6 +824,18 @@ pub enum MissionType {
     Capsules,
     /// Passagiere befördern: sanft fliegen, sonst sinkt die Bezahlung.
     Passengers,
+    /// Sperriges Bergungsobjekt außen am Kran in die Ablage einer Station bringen.
+    Bulky,
+}
+
+/// Sperriges Bergungsobjekt: Länge (halbe), Dicke, Masse.
+#[derive(Deserialize, Clone, Debug)]
+pub struct BulkyTemplate {
+    pub name: String,
+    pub half_len: f32,
+    pub thick: f32,
+    pub mass: f32,
+    pub reward: u32,
 }
 
 /// Aussehen des Porträts (wird im Menü aus einfachen Formen gebaut).
@@ -816,6 +864,14 @@ pub struct NpcDef {
 // Spielstand der Crew
 // ---------------------------------------------------------------------------
 
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct ProjectSave {
+    pub station: String,
+    pub stage: u8,
+    pub delivered: Vec<(Ore, f32)>,
+    pub parts: u32,
+}
+
 /// Lackierung eines Schiffs (Indizes in `shop.ron`; `None` = Werkslack).
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct Livery {
@@ -843,6 +899,9 @@ pub struct CrewSave {
     /// Lackierung pro Schiff.
     #[serde(default)]
     pub liveries: Vec<(String, Livery)>,
+    /// Wiederaufbau: Station, erreichte Etappe, schon geliefertes Material und Bauteile.
+    #[serde(default)]
+    pub projects: Vec<ProjectSave>,
     /// Mit dem Scanner kartierte Gebiete (Hex-Bitfeld) und noch nicht verkaufte Zellen.
     #[serde(default)]
     pub surveyed: String,
@@ -864,6 +923,7 @@ impl CrewSave {
             reputation: Vec::new(),
             explored: String::new(),
             liveries: Vec::new(),
+            projects: Vec::new(),
             surveyed: String::new(),
             charts_unsold: 0,
         }

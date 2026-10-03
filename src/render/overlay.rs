@@ -23,6 +23,8 @@ impl Plugin for OverlayPlugin {
                 draw_no_return,
                 draw_pings,
                 draw_scan,
+                draw_drop_zones,
+                draw_precision_marks,
             )
                 .run_if(in_state(AppState::Playing)),
         );
@@ -237,5 +239,76 @@ fn draw_scan(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mut gizmos: Gizm
         for i in 0..4 {
             gizmos.line(pts[i].extend(Z), pts[(i + 1) % 4].extend(Z), c);
         }
+    }
+}
+
+/// Ablagezonen für laufende Bergungsaufträge: gestrichelter Kreis in der Station.
+fn draw_drop_zones(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mut gizmos: Gizmos) {
+    if map.0 {
+        return;
+    }
+    let s = &sim.0;
+    let t = time.elapsed_secs();
+    for m in &s.active {
+        let crate::sim::missions::MissionKind::Bulky { to, .. } = m.kind else {
+            continue;
+        };
+        let (c, r) = s.drop_point(to);
+        let col = Color::srgba(1.0, 0.75, 0.2, 0.55 + 0.25 * (t * 2.0).sin());
+        let n = 48;
+        for k in (0..n).step_by(2) {
+            let a0 = std::f32::consts::TAU * k as f32 / n as f32 + t * 0.2;
+            let a1 = std::f32::consts::TAU * (k + 1) as f32 / n as f32 + t * 0.2;
+            gizmos.line(
+                (c + Vec2::from_angle(a0) * r).extend(Z),
+                (c + Vec2::from_angle(a1) * r).extend(Z),
+                col,
+            );
+        }
+    }
+}
+
+/// Markierungen für Präzisionsarbeit (Erzadern gold, Wrackverbindungen türkis) in der Nähe.
+fn draw_precision_marks(
+    sim: Res<Sim>,
+    time: Res<Time>,
+    fixed: Res<Time<Fixed>>,
+    map: Res<MapOpen>,
+    mut gizmos: Gizmos,
+) {
+    use crate::sim::precision::{PRECISION_RADIUS, PrecisionKind, precision_target};
+    if map.0 {
+        return;
+    }
+    let s = &sim.0;
+    let t = time.elapsed_secs();
+    let alpha = fixed.overstep_fraction();
+    for b in &s.bodies {
+        if !b.alive || (b.pos - s.ship.pos).length() > 90.0 {
+            continue;
+        }
+        // Interpoliert, damit die Markierung nicht ruckelt.
+        let mut ib = b.clone();
+        ib.pos = b.prev_pos.lerp(b.pos, alpha);
+        ib.angle = b.prev_angle + crate::sim::world::angle_diff(b.angle, b.prev_angle) * alpha;
+        let Some((p, kind)) = precision_target(&ib) else {
+            continue;
+        };
+        let c = match kind {
+            PrecisionKind::Vein => Color::srgb(1.0, 0.8, 0.25),
+            PrecisionKind::Joint => Color::srgb(0.35, 0.95, 0.9),
+        };
+        let pulse = 0.6 + 0.4 * (t * 4.0).sin();
+        let at = p.extend(Z);
+        gizmos.circle(
+            Isometry3d::from_translation(at),
+            PRECISION_RADIUS,
+            c.with_alpha(0.9),
+        );
+        gizmos.circle(
+            Isometry3d::from_translation(at),
+            PRECISION_RADIUS + 0.5 * pulse,
+            c.with_alpha(0.4 * pulse),
+        );
     }
 }
