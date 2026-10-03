@@ -72,7 +72,16 @@ Der Spielstand der Crew liegt unter
 
 Tastatur+Maus zählt als ein Crewmitglied, jedes Gamepad als eigenes – auch **jeder einzelne
 Joy-Con**. Wer will, nimmt beliebig viele Slots; fünf Leute können sich auch je einen Slot teilen.
-Über das Pausemenü lassen sich Slots jederzeit **neu verteilen**.
+Über das Pausemenü lassen sich Slots jederzeit **neu verteilen**. Jedes Schiff nennt eine
+**empfohlene Crewgröße** (Kolibri 1–2, Driftkutter 2–3, Pelikan 3–5, Lastesel 4–6), Aufträge
+ebenso. Slots belegen nur Menschen – es gibt keine Bots.
+
+**Hot-Join:** Wer später dazukommt, drückt mitten im Flug eine Taste an seinem Gerät und übernimmt
+den nächsten freien Slot. Das Schiff wird dabei umgebaut, ohne Schwung zu verlieren.
+
+**Ping:** `^` (Taste links neben der 1) markiert die Mausposition, am Gamepad markiert ein
+Stick-Klick die Stickrichtung (ohne Ausschlag: voraus). Alle sehen den Ping in der Farbe des
+Spielers, mit Beschriftung, was dort ist („Wrack“, „Kepler-Außenposten“ …).
 
 | In der Lobby | Wirkung |
 |---|---|
@@ -184,6 +193,7 @@ entscheidet, **Gleichstand bedeutet Nein**. Allein gespielt wird direkt gekauft.
 | Pfeiltasten | Steuerkreuz | Menüs bedienen |
 | Enter | Start | Bestätigen |
 | Mausrad | – | Zoom |
+| `^` | Stick drücken | Ping |
 | F11 | – | Vollbild |
 
 ---

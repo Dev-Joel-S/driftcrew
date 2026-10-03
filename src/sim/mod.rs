@@ -81,6 +81,17 @@ pub enum Command {
     SwitchShip {
         id: String,
     },
+    /// Ein Crewmitglied markiert einen Ort (für alle sichtbar).
+    Ping {
+        player: u8,
+        pos: Vec2,
+    },
+    /// Slots neu verteilt (z. B. Hot-Join mitten im Flug): Schiff umbauen.
+    SetLoadout {
+        thrusters: u8,
+        tools: Vec<usize>,
+        crew_size: u8,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -159,7 +170,23 @@ pub enum SimEvent {
     Sold {
         credits: u32,
     },
+    Ping {
+        player: u8,
+        pos: Vec2,
+    },
 }
+
+/// Markierung eines Crewmitglieds (Ping), verblasst nach [`PING_SECONDS`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct Ping {
+    pub player: u8,
+    pub pos: Vec2,
+    /// Was dort ist („Wrack“, „Kepler-Außenposten“ …), leer = freier Raum.
+    pub label: String,
+    pub life: f32,
+}
+
+pub const PING_SECONDS: f32 = 6.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BodyKind {
@@ -313,6 +340,7 @@ pub struct SimState {
     /// Spaßstatistik (laufend) und die Auswertung des zuletzt erledigten Auftrags.
     pub stats: stats::CrewStats,
     pub report: Option<stats::MissionReport>,
+    pub pings: Vec<Ping>,
 }
 
 impl SimState {
@@ -381,6 +409,7 @@ impl SimState {
             explored,
             stats: stats::CrewStats::default(),
             report: None,
+            pings: Vec::new(),
         };
         s.populate_fields();
         s.populate_wrecks();
@@ -507,6 +536,10 @@ impl SimState {
         self.update_missions();
         self.update_tracking();
         self.check_ship_health();
+        for p in &mut self.pings {
+            p.life -= DT;
+        }
+        self.pings.retain(|p| p.life > 0.0);
 
         self.bodies.retain(|b| b.alive);
         self.projectiles.retain(|p| p.life > 0.0);
@@ -514,6 +547,58 @@ impl SimState {
 }
 
 impl SimState {
+    /// Ping setzen: höchstens einer pro Crewmitglied, der neue ersetzt den alten.
+    pub(crate) fn add_ping(&mut self, player: u8, pos: Vec2) {
+        let label = self.describe_spot(pos);
+        self.pings.retain(|p| p.player != player);
+        self.pings.push(Ping {
+            player,
+            pos,
+            label,
+            life: PING_SECONDS,
+        });
+        self.events.push(SimEvent::Ping { player, pos });
+    }
+
+    /// Was liegt an diesem Ort? (für die Beschriftung von Pings)
+    pub fn describe_spot(&self, p: Vec2) -> String {
+        let body = self
+            .bodies
+            .iter()
+            .filter(|b| b.alive && (b.pos - p).length() < b.radius + 6.0)
+            .min_by(|a, b| (a.pos - p).length().total_cmp(&(b.pos - p).length()));
+        if let Some(b) = body {
+            return match &b.kind {
+                BodyKind::Asteroid { ore: Some(o), .. } => format!("Asteroid ({})", o.label()),
+                BodyKind::Asteroid { .. } => "Asteroid".into(),
+                BodyKind::Meteor => "Meteor".into(),
+                BodyKind::OreChunk { ore, .. } => format!("Erzbrocken ({})", ore.label()),
+                BodyKind::Capsule { .. } => "Rettungskapsel".into(),
+                BodyKind::Derelict { name, .. } => name.clone(),
+                BodyKind::Crate { name, .. } => name.clone(),
+                BodyKind::Wreck { idx, .. } => self.data.world.wrecks[*idx].name.clone(),
+                BodyKind::Salvage { name, .. } => name.clone(),
+            };
+        }
+        if let Some(st) = self
+            .world
+            .stations
+            .iter()
+            .find(|st| st.bounds.expand(10.0).contains(p))
+        {
+            return st.name.clone();
+        }
+        if let Some(pl) = self
+            .world
+            .planets
+            .iter()
+            .find(|pl| (pl.pos - p).length() < pl.radius + 15.0)
+        {
+            return pl.name.clone();
+        }
+        String::new()
+    }
+
     /// Erkundung und Statistik nachführen (läuft jeden Tick, deckt alle 15 Ticks auf).
     fn update_tracking(&mut self) {
         if self.ship.destroyed {

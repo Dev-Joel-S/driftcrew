@@ -3,7 +3,7 @@
 // links/rechts, dann Mitte, dann außen links/rechts.
 // Nicht belegte Triebwerke verschwinden, die belegten werden nach `thruster_layouts`
 // symmetrisch neu angeordnet.
-// fuel_capacity = Tank, fuel_burn = Verbrauch pro Schubeinheit und Sekunde (Standard 0.0065).
+// crew = empfohlene Crewgröße (von, bis), fuel_capacity = Tank, fuel_burn = Verbrauch pro Schubeinheit und Sekunde (Standard 0.0065).
 [
     (
         id: "driftkutter",
@@ -19,6 +19,7 @@
         fuel_capacity: 100.0,
         angular_damping: 0.12,
         min_thrusters: 2,
+        crew: (2, 3),
         parts: [
             (kind: Hull,          pos: (0.0, 0.1),    size: (2.2, 2.0),  mass: 6.0, shape: Chamfer(0.38)),
             (kind: Cockpit,       pos: (0.0, 1.38),   size: (1.4, 0.56), mass: 1.2, shape: Taper(0.55, 1.0)),
@@ -55,6 +56,7 @@
         fuel_burn: 0.006,
         angular_damping: 0.18,
         min_thrusters: 2,
+        crew: (1, 2),
         parts: [
             (kind: Hull,          pos: (0.0, 0.0),   size: (1.5, 1.8),  mass: 3.6, shape: Taper(0.72, 1.0)),
             (kind: Cockpit,       pos: (0.0, 1.2),   size: (1.06, 0.66), mass: 0.8, shape: Nose(0.6)),
@@ -85,6 +87,7 @@
         fuel_burn: 0.007,
         angular_damping: 0.2,
         min_thrusters: 2,
+        crew: (2, 3),
         parts: [
             (kind: Hull,          pos: (0.0, 0.0),   size: (1.8, 2.2),  mass: 5.0, shape: Taper(0.7, 1.0)),
             (kind: Cockpit,       pos: (0.0, 1.45),  size: (1.26, 0.7), mass: 1.0, shape: Nose(0.65)),
@@ -119,6 +122,7 @@
         fuel_capacity: 160.0,
         angular_damping: 0.1,
         min_thrusters: 2,
+        crew: (4, 6),
         parts: [
             (kind: Hull,           pos: (0.0, 0.3),    size: (3.0, 2.6),  mass: 9.0, shape: Chamfer(0.3)),
             (kind: Cockpit,        pos: (0.0, 2.0),    size: (1.7, 0.7),  mass: 1.4, shape: Taper(0.55, 1.0)),
@@ -161,6 +165,7 @@
         fuel_capacity: 140.0,
         angular_damping: 0.14,
         min_thrusters: 2,
+        crew: (3, 5),
         parts: [
             (kind: Hull,           pos: (0.0, 0.2),    size: (2.4, 2.4),  mass: 7.0, shape: Chamfer(0.3)),
             (kind: Cockpit,        pos: (0.0, 1.7),    size: (1.2, 0.6),  mass: 1.0, shape: Nose(0.5)),

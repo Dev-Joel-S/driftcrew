@@ -221,6 +221,25 @@ online funktionieren.
 
 ## Protokoll
 
+### Runde 3 – Phase 5: Koop und Crew (erledigt)
+
+- **24** Ping: feste, nicht belegbare Tasten – Tastatur `^` (`KeyCode::Backquote`, markiert die
+  Mausposition), Gamepad Stick-Klick L3/R3 (markiert die Stickrichtung, 45 m; ohne Ausschlag
+  30 m voraus). Läuft als `Command::Ping { player, pos }` durch die Simulation; ein Ping pro
+  Spieler, 6 s sichtbar, beschriftet mit dem, was dort ist (`SimState::describe_spot`).
+  Anzeige: Kreis mit Welle und Fadenkreuz in Spielerfarbe, Wegmarke am Bildrand, Klang.
+  L3/R3 sind dafür als Slot-Tasten gesperrt.
+- **25** Hot-Join: ein Gerät, das noch nicht zur Crew gehört, drückt im Flug eine belegbare
+  Taste und übernimmt den nächsten freien Slot (Reihenfolge wie in der Lobby). Der Umbau läuft
+  als `Command::SetLoadout` durch die Simulation (`rebuild_ship` hält Position, Drehung und
+  Schwung). Sind alle Slots belegt, gibt es einen Hinweis aufs Pausemenü.
+- **50** Empfohlene Crewgröße: `crew: (von, bis)` pro Schiff in `ships.ron`, pro Auftragsart in
+  `missions.ron`. Anzeige in der Werft, in Aufträgen und Notrufen sowie in der Lobby
+  („ihr seid 2 – passt“). Keine Bots: Slots belegen nur Menschen.
+- Vorführszene `DRIFTCREW_SCENE=coop`.
+- Tests: 54 grün (neu `ping_names_the_spot_and_fades`, `hot_join_rebuilds_the_ship_in_flight`,
+  `every_ship_and_mission_type_has_a_crew_size`, `ping_buttons_are_never_slots`).
+
 ### Runde 2 – Phase 4: Missionen und Fortschritt (erledigt)
 
 - **10** Auftraggeber: neue Datei `npcs.ron` (Name, Rolle, Ort, vergebene Auftragsarten,

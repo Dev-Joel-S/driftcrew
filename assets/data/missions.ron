@@ -4,6 +4,15 @@
     // Planeten-Außenposten verschicken Material an Stationen (Belohnung pro Tonne + Strecke).
     offers_per_outpost: 2,
     shipment_per_t: 22.0,
+    // Für welche Crewgröße eine Auftragsart gedacht ist (wird bei den Angeboten angezeigt).
+    crew: [
+        (Delivery, (1, 3)),
+        (Shipment, (1, 3)),
+        (Mining, (1, 3)),
+        (Haul, (2, 4)),
+        (Tow, (2, 4)),
+        (Capsules, (1, 3)),
+    ],
     distress_offers: 2,
     delivery_cargo: [
         (name: "Medizinische Vorräte", mass: 2.0, reward: 110),

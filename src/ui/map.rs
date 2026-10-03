@@ -151,10 +151,11 @@ fn items(sim: &crate::sim::SimState) -> Vec<Item<MapAct>> {
         );
     }
     for m in sim.offers.iter().filter(|m| m.is_distress()) {
+        let (lo, hi) = m.crew(sim);
         v.push(
             Item::new(m.title(sim), MapAct::Accept(m.id))
                 .right(format!("+{} Cr", m.reward))
-                .detail("Notruf – überall annehmbar")
+                .detail(format!("Notruf – überall annehmbar · Crew {lo}–{hi}"))
                 .enabled(sim.active.len() < crate::sim::missions::MAX_ACTIVE),
         );
     }

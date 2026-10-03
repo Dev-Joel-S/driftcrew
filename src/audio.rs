@@ -309,6 +309,7 @@ fn play_event_sounds(
                 one_shot(&mut commands, &s.impact, by_dist(*pos) * 0.3)
             }
             SimEvent::Docked { .. } => one_shot(&mut commands, &s.dock, 0.5),
+            SimEvent::Ping { .. } => one_shot(&mut commands, &s.blip, 0.6),
             SimEvent::Purchased { .. }
             | SimEvent::MissionCompleted { .. }
             | SimEvent::Sold { .. } => one_shot(&mut commands, &s.coin, 0.5),

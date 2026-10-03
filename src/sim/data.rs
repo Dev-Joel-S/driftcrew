@@ -174,6 +174,9 @@ pub struct ShipDef {
     pub angular_damping: f32,
     #[serde(default = "default_min_thrusters")]
     pub min_thrusters: u8,
+    /// Empfohlene Crewgröße (von, bis). Slots belegen nur Menschen, keine Bots.
+    #[serde(default = "default_crew")]
+    pub crew: (u8, u8),
     /// Tankgröße (Einheiten).
     #[serde(default = "default_fuel")]
     pub fuel_capacity: f32,
@@ -191,6 +194,9 @@ fn default_ang_damp() -> f32 {
 }
 fn default_min_thrusters() -> u8 {
     2
+}
+fn default_crew() -> (u8, u8) {
+    (1, 4)
 }
 fn default_fuel() -> f32 {
     100.0
@@ -642,6 +648,9 @@ pub struct MissionsDef {
     /// Belohnung pro Tonne für Lieferungen von Außenposten.
     #[serde(default)]
     pub shipment_per_t: f32,
+    /// Für welche Crewgröße eine Auftragsart gedacht ist (von, bis).
+    #[serde(default)]
+    pub crew: Vec<(MissionType, (u8, u8))>,
     pub distress_offers: u32,
     pub delivery_cargo: Vec<CargoTemplate>,
     pub reward_per_distance: f32,
@@ -663,6 +672,10 @@ pub enum MissionType {
     Mining,
     /// Material von einem Planeten-Außenposten zu einer Station verschicken.
     Shipment,
+    /// Notruf: Wrack abschleppen.
+    Tow,
+    /// Notruf: Rettungskapseln einsammeln.
+    Capsules,
 }
 
 /// Aussehen des Porträts (wird im Menü aus einfachen Formen gebaut).

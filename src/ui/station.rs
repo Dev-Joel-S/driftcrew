@@ -206,8 +206,10 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                     continue;
                 }
                 let stats = format!(
-                    "{} · {} Triebwerke · {} Werkzeuge · Hülle {:.0} · Fracht {:.0} t · Tank {:.0}",
+                    "{} · Crew {}–{} · {} Triebwerke · {} Werkzeuge · Hülle {:.0} · Fracht {:.0} t · Tank {:.0}",
                     d.class,
+                    d.crew.0,
+                    d.crew.1,
                     d.max_thrusters(),
                     d.tool_parts().count(),
                     d.max_hull,
@@ -379,9 +381,10 @@ fn items_for(sim: &SimState, tab: Tab) -> Vec<Item<Act>> {
                         "Kapseln einsammeln (Kran oder sanft berühren) und abliefern.".into()
                     }
                 };
+                let (lo, hi) = m.crew(sim);
                 let detail = match m.giver.and_then(|g| sim.data.npcs.get(g)) {
-                    Some(n) => format!("{} ({}) · {detail}", n.name, n.role),
-                    None => detail,
+                    Some(n) => format!("{} ({}) · Crew {lo}–{hi} · {detail}", n.name, n.role),
+                    None => format!("Crew {lo}–{hi} · {detail}"),
                 };
                 v.push(
                     Item::new(m.title(sim), Act::Accept(m.id))

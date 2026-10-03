@@ -17,7 +17,12 @@ impl Plugin for OverlayPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, configure_gizmos).add_systems(
             Update,
-            (draw_flight_aids, draw_aim_markers, draw_no_return)
+            (
+                draw_flight_aids,
+                draw_aim_markers,
+                draw_no_return,
+                draw_pings,
+            )
                 .run_if(in_state(AppState::Playing)),
         );
     }
@@ -157,6 +162,43 @@ fn draw_no_return(sim: Res<Sim>, map: Res<MapOpen>, paused: Res<Paused>, mut giz
                 (an.pos + Vec2::from_angle(a0) * r).extend(Z),
                 (an.pos + Vec2::from_angle(a1) * r).extend(Z),
                 Color::srgba(1.0, 0.3, 0.25, 0.6),
+            );
+        }
+    }
+}
+
+/// Pings: Kreis in Spielerfarbe mit nach außen laufender Welle, verblasst zum Ende hin.
+fn draw_pings(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mut gizmos: Gizmos) {
+    if map.0 {
+        return;
+    }
+    let t = time.elapsed_secs();
+    for p in &sim.0.pings {
+        let c = crate::input::player_color(p.player as usize);
+        let fade = (p.life / 1.5).min(1.0);
+        let at = p.pos.extend(Z);
+        gizmos.circle(
+            Isometry3d::from_translation(at),
+            1.6,
+            c.with_alpha(0.9 * fade),
+        );
+        let wave = (t * 0.9).fract();
+        gizmos.circle(
+            Isometry3d::from_translation(at),
+            1.6 + wave * 7.0,
+            c.with_alpha(0.7 * (1.0 - wave) * fade),
+        );
+        // Fadenkreuz
+        for d in [Vec2::X, Vec2::Y] {
+            gizmos.line(
+                (p.pos + d * 2.2).extend(Z),
+                (p.pos + d * 3.4).extend(Z),
+                c.with_alpha(fade),
+            );
+            gizmos.line(
+                (p.pos - d * 2.2).extend(Z),
+                (p.pos - d * 3.4).extend(Z),
+                c.with_alpha(fade),
             );
         }
     }

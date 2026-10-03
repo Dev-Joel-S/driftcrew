@@ -297,6 +297,22 @@ impl SimState {
                 Command::AbandonMission { id } => self.abandon_mission(*id),
                 Command::SellOre => self.sell_ore(),
                 Command::SwitchShip { id } => self.switch_ship(id),
+                Command::Ping { player, pos } => self.add_ping(*player, *pos),
+                Command::SetLoadout {
+                    thrusters,
+                    tools,
+                    crew_size,
+                } => {
+                    let def = self.data.ship(&self.crew.current_ship);
+                    let tools: Vec<usize> = tools
+                        .iter()
+                        .copied()
+                        .filter(|t| *t < def.tool_parts().count())
+                        .collect();
+                    let thrusters = (*thrusters).min(def.max_thrusters());
+                    self.rebuild_ship(super::ship::Loadout { thrusters, tools });
+                    self.set_crew_size(*crew_size);
+                }
             }
         }
     }

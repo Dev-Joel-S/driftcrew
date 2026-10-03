@@ -77,6 +77,32 @@ impl Mission {
         self.origin.is_none()
     }
 
+    pub fn mission_type(&self) -> MissionType {
+        match &self.kind {
+            MissionKind::Delivery {
+                from: Owner::Planet(_),
+                ..
+            } => MissionType::Shipment,
+            MissionKind::Delivery { .. } => MissionType::Delivery,
+            MissionKind::Haul { .. } => MissionType::Haul,
+            MissionKind::Mining { .. } => MissionType::Mining,
+            MissionKind::Tow { .. } => MissionType::Tow,
+            MissionKind::Capsules { .. } => MissionType::Capsules,
+        }
+    }
+
+    /// Für welche Crewgröße der Auftrag gedacht ist (von, bis).
+    pub fn crew(&self, s: &SimState) -> (u8, u8) {
+        let t = self.mission_type();
+        s.data
+            .missions
+            .crew
+            .iter()
+            .find(|(m, _)| *m == t)
+            .map(|(_, c)| *c)
+            .unwrap_or((1, 4))
+    }
+
     pub fn title(&self, s: &SimState) -> String {
         let st = |i: usize| s.world.stations[i].name.clone();
         match &self.kind {
@@ -298,7 +324,7 @@ impl SimState {
             MissionType::Delivery => n_st > 1,
             MissionType::Haul => n_st > 1 && level >= 1,
             MissionType::Mining => ores_exist,
-            MissionType::Shipment => false,
+            MissionType::Shipment | MissionType::Tow | MissionType::Capsules => false,
         });
         if types.is_empty() {
             types.push(if n_st > 1 {

@@ -1,6 +1,6 @@
 //! Automatischer Vorführmodus für Screenshots und Rauchtests:
 //! `DRIFTCREW_DEMO=<ordner>` fliegt ein Skript ab, speichert Bildschirmfotos und
-//! beendet sich danach. `DRIFTCREW_SCENE=tour|ui|systems|progress` wählt das Skript.
+//! beendet sich danach. `DRIFTCREW_SCENE=tour|ui|systems|progress|coop` wählt das Skript.
 
 use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
@@ -416,6 +416,35 @@ fn progress_scene() -> Vec<(f32, Act)> {
     ]
 }
 
+/// Koop: Pings zweier Spieler, Crewgröße in der Lobby.
+fn coop_scene() -> Vec<(f32, Act)> {
+    vec![
+        (0.5, |c| {
+            keyboard_crew(c, true);
+            c.next.set(AppState::Playing);
+        }),
+        (2.5, |c| {
+            let p = c.sim.0.ship.pos;
+            c.pending.0.push(Command::Ping {
+                player: 0,
+                pos: p + Vec2::new(14.0, 9.0),
+            });
+            let kepler = c.sim.0.world.stations[1].pos;
+            c.pending.0.push(Command::Ping {
+                player: 1,
+                pos: kepler,
+            });
+        }),
+        (4.2, |c| shot(c, "ping")),
+        (5.5, |c| {
+            *c.mode = LobbyMode::Redistribute;
+            c.next.set(AppState::Lobby);
+        }),
+        (7.5, |c| shot(c, "lobby_crew")),
+        (8.5, |_| {}),
+    ]
+}
+
 fn ui_scene() -> Vec<(f32, Act)> {
     vec![
         (2.5, |c| shot(c, "titel")),
@@ -478,6 +507,7 @@ fn demo_script(
         "ui" => ui_scene(),
         "systems" => systems_scene(),
         "progress" => progress_scene(),
+        "coop" => coop_scene(),
         _ => tour(),
     };
     let mut pad = pads.iter().next();

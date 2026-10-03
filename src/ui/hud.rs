@@ -917,6 +917,22 @@ fn update_markers(
             add(&mut commands, t, label.to_string(), ACCENT, true);
         }
     }
+    // Pings der Crew in Spielerfarbe.
+    for p in &s.pings {
+        let who = format!("◆ Spieler {}", p.player + 1);
+        let label = if p.label.is_empty() {
+            who
+        } else {
+            format!("{who}: {}", p.label)
+        };
+        add(
+            &mut commands,
+            p.pos,
+            label,
+            crate::input::player_color(p.player as usize),
+            false,
+        );
+    }
 }
 
 #[derive(Component)]

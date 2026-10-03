@@ -26,7 +26,73 @@ impl Plugin for LobbyPlugin {
                 (lobby_input, lobby_preview, draw_lobby, draw_slot_labels)
                     .chain()
                     .run_if(in_state(AppState::Lobby)),
-            );
+            )
+            .add_systems(Update, hot_join.run_if(in_state(AppState::Playing)));
+    }
+}
+
+/// Hot-Join: Ein Gerät, das noch nicht zur Crew gehört, drückt mitten im Flug eine Taste und
+/// übernimmt damit den nächsten freien Slot. Der Umbau läuft als Befehl durch die Simulation.
+#[allow(clippy::too_many_arguments)]
+fn hot_join(
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    pads: Query<(Entity, &Gamepad, Option<&Name>)>,
+    paused: Res<crate::game::Paused>,
+    sim: Res<Sim>,
+    mut crew: ResMut<Crew>,
+    mut active: ResMut<ActiveBindings>,
+    mut pending: ResMut<crate::game::PendingCommands>,
+    mut toasts: ResMut<super::Toasts>,
+    mut full_warned: Local<Vec<Device>>,
+) {
+    if paused.0 {
+        return;
+    }
+    let def = sim.0.data.ship(&sim.0.crew.current_ship).clone();
+    let ts = targets(&def);
+    for btn in fresh_claimable(&keys, &mouse, &pads) {
+        let device = btn.device();
+        if crew.players.iter().any(|p| p.device == device) {
+            continue;
+        }
+        let Some(target) = ts
+            .iter()
+            .copied()
+            .find(|t| !crew.bindings.iter().any(|b| b.target == *t))
+        else {
+            if !full_warned.contains(&device) {
+                full_warned.push(device);
+                toasts.push(
+                    "Alle Slots belegt – im Pausemenü lassen sich Slots neu verteilen",
+                    crate::sim::ToastKind::Warn,
+                );
+            }
+            continue;
+        };
+        let player = crew.player_for(device, &pads);
+        crew.bindings.push(Binding {
+            btn,
+            player,
+            target,
+        });
+        let loadout = crew.loadout();
+        pending.0.push(crate::sim::Command::SetLoadout {
+            thrusters: loadout.thrusters,
+            tools: loadout.tools,
+            crew_size: crew.players.len() as u8,
+        });
+        active.0 = crew.resolve(&def);
+        let who = crew.players[player].label.clone();
+        toasts.push(
+            format!(
+                "Spieler {} ({who}) steigt ein: {} auf [{}]",
+                player + 1,
+                target_name(&def, target),
+                btn.label()
+            ),
+            crate::sim::ToastKind::Good,
+        );
     }
 }
 
@@ -322,6 +388,22 @@ fn draw_lobby(
             ));
             p.spawn(text(format!("{} · {}", def.name, def.class), 17.0, ACCENT));
             p.spawn(text(def.description.clone(), 14.0, MUTED));
+            let n = crew.players.len();
+            let (lo, hi) = def.crew;
+            let fit = if n == 0 {
+                String::new()
+            } else if (n as u8) < lo {
+                " – fürs Erste etwas viel Arbeit pro Person".into()
+            } else if (n as u8) > hi {
+                " – eng, aber machbar".into()
+            } else {
+                " – passt".into()
+            };
+            p.spawn(text(
+                format!("Empfohlene Crew: {lo}–{hi} Personen · ihr seid {n}{fit}"),
+                14.0,
+                TEAL,
+            ));
             p.spawn(Node {
                 height: Val::Px(8.0),
                 ..default()

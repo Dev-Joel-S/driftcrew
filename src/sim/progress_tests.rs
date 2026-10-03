@@ -313,3 +313,89 @@ fn paint_and_exploration_survive_saving() {
     assert!(!fresh.station_known(vega));
     assert!(fresh.station_known(0));
 }
+
+#[test]
+fn ping_names_the_spot_and_fades() {
+    let mut s = sim();
+    let wreck = s
+        .bodies
+        .iter()
+        .find(|b| matches!(b.kind, BodyKind::Wreck { .. }))
+        .map(|b| b.pos)
+        .unwrap();
+    cmd(
+        &mut s,
+        Command::Ping {
+            player: 1,
+            pos: wreck,
+        },
+    );
+    assert_eq!(s.pings.len(), 1);
+    assert!(s.pings[0].label.contains("Frachter") || !s.pings[0].label.is_empty());
+    // Ein neuer Ping desselben Spielers ersetzt den alten.
+    cmd(
+        &mut s,
+        Command::Ping {
+            player: 1,
+            pos: Vec2::new(5000.0, 0.0),
+        },
+    );
+    assert_eq!(s.pings.len(), 1);
+    assert!(s.pings[0].label.is_empty());
+    for _ in 0..(super::PING_SECONDS * 60.0) as usize + 2 {
+        s.step(&TickInput::default());
+    }
+    assert!(s.pings.is_empty());
+}
+
+#[test]
+fn hot_join_rebuilds_the_ship_in_flight() {
+    let data = GameData::embedded().unwrap();
+    let save = CrewSave::new_game(&data);
+    let data = Arc::new(data);
+    let def = data.ship(&save.current_ship).clone();
+    let mut s = SimState::new(
+        data,
+        &save,
+        Loadout {
+            thrusters: 2,
+            tools: vec![],
+        },
+        1,
+    );
+    s.ship.docked = None;
+    s.ship.pos = Vec2::new(0.0, 400.0);
+    s.ship.vel = Vec2::new(4.0, 1.0);
+    let origin = s.ship.origin();
+    cmd(
+        &mut s,
+        Command::SetLoadout {
+            thrusters: 3,
+            tools: vec![0],
+            crew_size: 2,
+        },
+    );
+    assert_eq!(s.ship.thrusters.len(), 3);
+    assert_eq!(s.ship.tools.len(), 1);
+    assert_eq!(s.crew.size, 2);
+    assert!(
+        (s.ship.vel - Vec2::new(4.0, 1.0)).length() < 0.05,
+        "Schwung bleibt"
+    );
+    assert!((s.ship.origin() - origin).length() < 0.2, "kein Sprung");
+    assert!(def.crew.0 <= def.crew.1);
+}
+
+#[test]
+fn every_ship_and_mission_type_has_a_crew_size() {
+    let s = sim();
+    for d in &s.data.ships {
+        assert!(d.crew.0 >= 1 && d.crew.0 <= d.crew.1, "{}", d.id);
+    }
+    for m in &s.offers {
+        let (lo, hi) = m.crew(&s);
+        assert!(lo >= 1 && lo <= hi);
+    }
+    let lastesel = s.data.ship("lastesel");
+    assert!(lastesel.crew.0 >= 4, "Frachter für große Crews");
+}

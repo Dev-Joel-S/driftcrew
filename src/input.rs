@@ -115,8 +115,14 @@ pub fn reserved_key(k: KeyCode) -> bool {
             | KeyCode::SuperLeft
             | KeyCode::SuperRight
             | KeyCode::CapsLock
+            | PING_KEY
     )
 }
+
+/// Ping-Taste der Tastatur (auf deutschen Tastaturen „^“ links neben der 1).
+pub const PING_KEY: KeyCode = KeyCode::Backquote;
+/// Ping am Gamepad: Stick drücken (bei einzelnen Joy-Cons gibt es nur einen Stick).
+pub const PING_PAD: [GamepadButton; 2] = [GamepadButton::LeftThumb, GamepadButton::RightThumb];
 
 pub fn reserved_pad(b: GamepadButton) -> bool {
     matches!(
@@ -128,6 +134,8 @@ pub fn reserved_pad(b: GamepadButton) -> bool {
             | GamepadButton::DPadDown
             | GamepadButton::DPadLeft
             | GamepadButton::DPadRight
+            | GamepadButton::LeftThumb
+            | GamepadButton::RightThumb
     )
 }
 
@@ -371,7 +379,60 @@ impl Plugin for InputPlugin {
                 PreUpdate,
                 (read_menu_input, latch_slots).after(bevy::input::InputSystems),
             )
-            .add_systems(Update, update_aims.run_if(in_state(AppState::Playing)));
+            .add_systems(
+                Update,
+                (update_aims, send_pings)
+                    .chain()
+                    .run_if(in_state(AppState::Playing)),
+            );
+    }
+}
+
+/// Ping: Tastatur markiert die Mausposition, Gamepads die Richtung des Sticks (oder voraus).
+/// Nur Crewmitglieder pingen; der Ping läuft als Befehl durch die Simulation.
+#[allow(clippy::too_many_arguments)]
+fn send_pings(
+    keys: Res<ButtonInput<KeyCode>>,
+    pads: Query<(Entity, &Gamepad, Option<&Name>)>,
+    crew: Res<Crew>,
+    sim: Res<Sim>,
+    cursor: Res<CursorWorld>,
+    paused: Res<crate::game::Paused>,
+    map: Res<crate::game::MapOpen>,
+    mut pending: ResMut<crate::game::PendingCommands>,
+) {
+    if paused.0 || map.0 {
+        return;
+    }
+    let ship = &sim.0.ship;
+    let ahead = ship.pos + crate::sim::geom::rot(Vec2::Y, ship.angle) * 30.0;
+    let player_of = |d: Device| crew.players.iter().position(|p| p.device == d);
+    if keys.just_pressed(PING_KEY)
+        && let Some(p) = player_of(Device::Keyboard)
+    {
+        pending.0.push(crate::sim::Command::Ping {
+            player: p as u8,
+            pos: cursor.0.unwrap_or(ahead),
+        });
+    }
+    for (e, g, _) in &pads {
+        if !PING_PAD.iter().any(|b| g.just_pressed(*b)) {
+            continue;
+        }
+        let Some(p) = player_of(Device::Pad(e)) else {
+            continue;
+        };
+        let (l, r) = (g.left_stick(), g.right_stick());
+        let stick = if r.length() > l.length() { r } else { l };
+        let pos = if stick.length() > 0.35 {
+            ship.pos + stick.normalize() * 45.0
+        } else {
+            ahead
+        };
+        pending.0.push(crate::sim::Command::Ping {
+            player: p as u8,
+            pos,
+        });
     }
 }
 
@@ -598,5 +659,18 @@ mod tests {
         assert_eq!(device_badge(Device::Pad(pad(3)), "Joy-Con (L)"), "JC-L");
         assert_eq!(device_badge(Device::Pad(pad(3)), "Joy-Con (R)"), "JC-R");
         assert_eq!(device_badge(Device::Pad(pad(3)), "Xbox Controller"), "◉");
+    }
+}
+
+#[cfg(test)]
+mod ping_tests {
+    use super::*;
+
+    #[test]
+    fn ping_buttons_are_never_slots() {
+        assert!(reserved_key(PING_KEY));
+        for b in PING_PAD {
+            assert!(reserved_pad(b));
+        }
     }
 }

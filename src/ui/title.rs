@@ -95,7 +95,8 @@ pub const HELP_TEXT: &[&str] = &[
     "",
     "TASTEN (fest)",
     "Esc / Start: Pause   ·   Tab / Select: Karte   ·   Pfeile / Steuerkreuz: Menüs",
-    "Enter / Start: Bestätigen   ·   Mausrad: Zoom",
+    "Enter / Start: Bestätigen   ·   Mausrad: Zoom   ·   ^ / Stick drücken: Ping",
+    "Später dazukommen: einfach mitten im Flug eine Taste drücken – nächster freier Slot.",
 ];
 
 fn spawn_title(
