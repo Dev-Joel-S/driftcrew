@@ -1,0 +1,110 @@
+// Preise und Upgrades. Gekauft wird nur angedockt an Stationen und Werften.
+(
+    start_credits: 300,
+    // Bergungsgebühr nach Zerstörung: fester Betrag + Anteil der Kasse (höchstens die Kasse).
+    salvage_base: 40,
+    respawn_fee: 0.12,
+    // Finanzen:
+    //   dock_fee        Dockgebühr (× Ortsfaktor prices.dock, −20 % pro Rufstufe); wer innerhalb
+    //                   dock_grace Sekunden wieder an derselben Station andockt, zahlt nicht noch einmal
+    //   premium_share   Versicherung: Anteil jeder Auftragsbelohnung (mindestens premium_min),
+    //   coverage        übernimmt diesen Anteil der Bergungskosten
+    //   down_payment    Schiffskredit: Anzahlung, interest Zinsen auf den Rest, installments Raten
+    //                   (je eine nach jedem erledigten Auftrag)
+    //   drop_per_t      Markt: jede verkaufte Tonne drückt den Preis um diesen Anteil, nicht unter
+    //   floor;          recovery = Erholungszeit in Sekunden
+    //   demand_*        Nachfrage: Abstand (von, bis), Preisfaktor, Dauer, Anstiegszeit
+    finance: (
+        dock_fee: 12,
+        dock_grace: 120.0,
+        premium_share: 0.08,
+        premium_min: 10,
+        coverage: 0.7,
+        down_payment: 0.25,
+        interest: 0.12,
+        installments: 8,
+        drop_per_t: 0.035,
+        floor: 0.55,
+        recovery: 150.0,
+        demand_interval: (240.0, 420.0),
+        demand_factor: 1.35,
+        demand_seconds: 300.0,
+        demand_rise: 20.0,
+    ),
+    services: [
+        (id: "ammo",   name: "Munition +10",    price: 40, effect: Ammo(10)),
+        (id: "shield", name: "Schild aufladen", price: 60, effect: ShieldFull),
+        (id: "repair", name: "Reparatur",       price: 90, effect: RepairFull),
+        // Preise für Tanken und Triebwerke gelten für „ganz leer“ bzw. „alle ausgefallen“
+        // und werden anteilig berechnet. Orte haben eigene Preisfaktoren (world.ron).
+        (id: "engines", name: "Triebwerke instand setzen", price: 160, effect: RepairThrusters),
+        (id: "fuel",    name: "Volltanken",                price: 70,  effect: Refuel),
+    ],
+    // Upgrades pro Schiffsteil. Jedes hat einen Nachteil: mass = Zusatzmasse (t) pro
+    // betroffenem Teil (Triebwerke, Frachtmodule, Werkzeuge einzeln; Hülle, Schild und
+    // Bordsysteme im Rumpf; der Tank sitzt hinten bei den Triebwerken). Kosten: Credits plus
+    // Material aus dem Crew-Lager und Bauteile; Stufe 3 braucht ein bestimmtes Artefakt in der
+    // Sammlung der Crew (key) – es wird nicht verbraucht.
+    // Gekauft wird wie alles über die Abstimmung der Crew.
+    upgrades: [
+        (id: "thrust1", name: "Triebwerkstuning I", part: Thrusters, tier: 1, description: "+15 % Schub für alle Triebwerke.", drawback: "+0,12 t je Triebwerk", price: 320, effect: ThrustMul(1.15), mass: 0.12, materials: [(Kobalt, 2.0)]),
+        (id: "thrust2", name: "Triebwerkstuning II", part: Thrusters, tier: 2, description: "+15 % Schub obendrauf.", drawback: "+0,18 t je Triebwerk", price: 640, effect: ThrustMul(1.15), requires: Some("thrust1"), mass: 0.18, materials: [(Kobalt, 4.0), (Solarit, 2.0)], parts: 1),
+        (id: "thrust3", name: "Plasmadüsen", part: Thrusters, tier: 3, description: "+20 % Schub – mit einem Antriebskristall.", drawback: "+0,25 t je Triebwerk", price: 1200, effect: ThrustMul(1.2), requires: Some("thrust2"), mass: 0.25, materials: [(Ionit, 4.0)], parts: 2, key: Some("antriebskristall")),
+        (id: "eco1", name: "Sparvergaser", part: Thrusters, tier: 1, description: "−20 % Treibstoffverbrauch.", drawback: "+0,08 t je Triebwerk", price: 260, effect: FuelBurn(0.8), mass: 0.08, materials: [(Ferrit, 2.0), (Kobalt, 1.0)]),
+        (id: "armor1", name: "Panzerplatten", part: Hull, tier: 1, description: "+40 maximale Hülle.", drawback: "+1,5 t im Rumpf – träger beim Drehen und Bremsen", price: 360, effect: MaxHull(40.0), mass: 1.5, materials: [(Ferrit, 6.0)]),
+        (id: "armor2", name: "Verbundpanzer", part: Hull, tier: 2, description: "+60 maximale Hülle.", drawback: "+2,2 t im Rumpf", price: 720, effect: MaxHull(60.0), requires: Some("armor1"), mass: 2.2, materials: [(Ferrit, 8.0), (Kobalt, 3.0)], parts: 1),
+        (id: "armor3", name: "Kristallpanzer", part: Hull, tier: 3, description: "+90 maximale Hülle, erstaunlich leicht – mit dem Resonanzkern.", drawback: "+1,0 t im Rumpf", price: 1300, effect: MaxHull(90.0), requires: Some("armor2"), mass: 1.0, materials: [(Ionit, 5.0)], parts: 2, key: Some("resonanzkern")),
+        (id: "shield1", name: "Schildgenerator+", part: Shield, tier: 1, description: "+40 maximaler Schild.", drawback: "+0,6 t im Rumpf", price: 420, effect: MaxShield(40.0), mass: 0.6, materials: [(Solarit, 3.0)]),
+        (id: "shield2", name: "Schildmatrix", part: Shield, tier: 2, description: "+60 maximaler Schild.", drawback: "+0,9 t im Rumpf", price: 900, effect: MaxShield(60.0), requires: Some("shield1"), mass: 0.9, materials: [(Solarit, 4.0), (Ionit, 2.0)], parts: 1),
+        (id: "cargo1", name: "Frachtmodule", part: Cargo, tier: 1, description: "+50 % Frachtraum.", drawback: "+0,4 t je Frachtmodul", price: 280, effect: Cargo(0.5), mass: 0.4, materials: [(Ferrit, 4.0)]),
+        (id: "gyro", name: "Gyro-Stabilisator", part: Systems, tier: 1, description: "Dämpft Drehungen deutlich.", drawback: "+0,4 t im Rumpf", price: 300, effect: Gyro(0.55), mass: 0.4, materials: [(Kobalt, 2.0)]),
+        (id: "mag", name: "Großes Magazin", part: Cannon, tier: 1, description: "+10 Schuss Kapazität.", drawback: "+0,2 t je Kanone", price: 200, effect: MaxAmmo(10), mass: 0.2, materials: [(Ferrit, 2.0)]),
+        (id: "rapid1", name: "Schnellverschluss", part: Cannon, tier: 1, description: "Kanone lädt 30 % schneller nach.", drawback: "+0,15 t je Kanone", price: 340, effect: CannonRate(0.7), mass: 0.15, materials: [(Ferrit, 2.0), (Kobalt, 1.0)]),
+        (id: "dmg1", name: "Hartkernmunition", part: Cannon, tier: 1, description: "+60 % Schaden an Gestein.", drawback: "+0,2 t je Kanone, mehr Rückstoß-Masse", price: 380, effect: CannonDamage(1.6), mass: 0.2, materials: [(Ferrit, 3.0)]),
+        (id: "crane1", name: "Langer Kranarm", part: Crane, tier: 1, description: "+40 % Kranreichweite.", drawback: "+0,3 t je Kran", price: 240, effect: CraneRange(1.4), mass: 0.3, materials: [(Ferrit, 3.0)]),
+        (id: "crane2", name: "Verstärktes Seil", part: Crane, tier: 2, description: "Das Seil hält 50 % mehr aus (Tragkraft).", drawback: "+0,25 t je Kran", price: 320, effect: CraneLoad(1.5), requires: Some("crane1"), mass: 0.25, materials: [(Kobalt, 2.0)], parts: 1),
+        (id: "drill1", name: "Diamantbohrkopf", part: Drill, tier: 1, description: "Doppelt so schnell abbauen.", drawback: "+0,3 t je Bohrer", price: 380, effect: DrillRate(2.0), mass: 0.3, materials: [(Solarit, 2.0)]),
+        (id: "tank1", name: "Zusatztank", part: Tank, tier: 1, description: "+50 % Treibstoff.", drawback: "+1,2 t hinten – der Schwerpunkt wandert Richtung Heck", price: 260, effect: FuelTank(0.5), mass: 1.2, materials: [(Ferrit, 3.0)]),
+        (id: "drones", name: "Reparaturdrohnen", part: Systems, tier: 2, description: "Flicken die Hülle im Flug (0,5 pro Sekunde).", drawback: "+0,5 t im Rumpf", price: 680, effect: RepairDrones(0.5), mass: 0.5, materials: [(Kobalt, 3.0)], parts: 2),
+        // Nur beim Mechaniker Orsk (Werft Orion): Feintuning ohne Zusatzmasse, dafür teuer.
+        (id: "fein_schub", name: "Feintuning: Düsenabstimmung", vendor: Some("orsk"), part: Thrusters, tier: 1, description: "+8 % Schub – von Hand abgestimmt, ganz ohne Zusatzmasse.", price: 560, effect: ThrustMul(1.08), materials: [(Kobalt, 1.0)], parts: 1),
+        (id: "fein_spar", name: "Feintuning: Einspritzung", vendor: Some("orsk"), part: Thrusters, tier: 1, description: "−12 % Treibstoffverbrauch ohne Zusatzmasse.", price: 420, effect: FuelBurn(0.88), parts: 1),
+        (id: "fein_seil", name: "Feintuning: Seilwinde", vendor: Some("orsk"), part: Crane, tier: 1, description: "Seil hält 20 % mehr aus, ohne Zusatzmasse.", price: 380, effect: CraneLoad(1.2), parts: 1),
+        (id: "scan1", name: "Weitbereichsscanner", part: Scanner, tier: 1, description: "+60 % Scanner-Reichweite.", drawback: "+0,2 t je Scanner", price: 300, effect: ScanRange(1.6), mass: 0.2, materials: [(Ionit, 1.0)]),
+    ],
+    ore_prices: [
+        (Ferrit, 9),
+        (Kobalt, 16),
+        (Solarit, 22),
+        (Ionit, 30),
+        (Schrott, 6),
+    ],
+    // Lackiererei (an Stationen mit Upgrade-Werkstatt). Jede Änderung kostet paint_price.
+    paint_price: 80,
+    paints: [
+        (name: "Graphit",     color: "#3a3f47"),
+        (name: "Stahlgrau",   color: "#9aa1a8"),
+        (name: "Sand",        color: "#cbbf9f"),
+        (name: "Rostorange",  color: "#c4602c"),
+        (name: "Tannengrün",  color: "#3e5a43"),
+        (name: "Tiefblau",    color: "#2b4a6f"),
+        (name: "Signalrot",   color: "#a8322a"),
+        (name: "Messing",     color: "#b8962e"),
+        (name: "Elfenbein",   color: "#e4dfd2"),
+        (name: "Violett",     color: "#5a4a7a"),
+    ],
+    // Flammen: ohne Farbe = Slotfarben (so sieht man, wer gerade schiebt).
+    flames: [
+        (name: "Slotfarben"),
+        (name: "Plasmablau",  color: Some("#5fb4ff")),
+        (name: "Glut",        color: Some("#ff8a3d")),
+        (name: "Ionengrün",   color: Some("#4dffb0")),
+        (name: "Violett",     color: Some("#b07cff")),
+        (name: "Weißglut",    color: Some("#fff1d6")),
+    ],
+    // Bauteile, die der Kran aus Wracks reißt (Wert in Credits).
+    salvage_names: ["Steuerdüse", "Navigationsrechner", "Reaktorspule", "Funkmodul", "Lebenserhaltung", "Gyroskop", "Schildemitter"],
+    salvage_value: (40, 120),
+    // Kartendaten: Preis pro neu kartierter Rasterzelle (100 × 100 m).
+    chart_price: 3,
+)

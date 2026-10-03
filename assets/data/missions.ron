@@ -1,0 +1,77 @@
+// Missionsvorlagen. Konkrete Aufträge werden daraus mit festem Seed erzeugt.
+(
+    offers_per_station: 3,
+    // Planeten-Außenposten verschicken Material an Stationen (Belohnung pro Tonne + Strecke).
+    offers_per_outpost: 2,
+    shipment_per_t: 22.0,
+    // Für welche Crewgröße eine Auftragsart gedacht ist (wird bei den Angeboten angezeigt).
+    crew: [
+        (Delivery, (1, 3)),
+        (Shipment, (1, 3)),
+        (Mining, (1, 3)),
+        (Haul, (2, 4)),
+        (Tow, (2, 4)),
+        (Capsules, (1, 3)),
+        (Passengers, (1, 3)),
+        (Bulky, (2, 4)),
+        (Survey, (1, 3)),
+        (Escort, (2, 4)),
+        (Smuggle, (1, 3)),
+    ],
+    // Geleitschutz: ein NPC-Frachter fliegt mit, unterwegs greifen Piratendrohnen an.
+    escort: (reward: 340.0, names: ["Frachter Albatros", "Frachter Lerche", "Frachter Reiher", "Frachter Zaunkönig"]),
+    // Schmuggel (Vex im Nebelhafen): Ware an den Zollbojen vorbei. Scan dauert scan_time
+    // Sekunden im Radius einer Boje; erwischt = Ware weg, Strafe, Ruf sinkt.
+    smuggle: (
+        cargo: ["Unverzollte Ionitkristalle", "Gefälschte Bordchips", "Schwarzmarkt-Medizin", "Nebelperlen"],
+        mass: (1.0, 3.0), reward: 420.0, fine: 250, scan_time: 3.5,
+    ),
+    // Sperrige Bergung: passt in keinen Frachtraum, wird außen am Kran geschleppt und muss in
+    // die Ablagezone der Station (Nova-Hub: durch die Ringöffnungen). Lange Teile pendeln,
+    // wenn man sie am Ende greift. Angeboten wird nur, was das Schiff schaffen kann.
+    bulky: [
+        (name: "Antennenmast",         half_len: 4.6, thick: 0.45, mass: 7.0,  reward: 380),
+        (name: "Stationsring-Segment", half_len: 3.0, thick: 1.0,  mass: 14.0, reward: 480),
+        (name: "Rumpfplatte",          half_len: 2.2, thick: 1.3,  mass: 11.0, reward: 360),
+        (name: "Sonnensegel-Träger",   half_len: 5.5, thick: 0.4,  mass: 6.0,  reward: 420),
+    ],
+    // Messflug: ein oder mehrere Messfelder (Orte in courses.ron) anfliegen, dort zur Ruhe
+    // kommen und `seconds` lang stillhalten (langsamer als max_speed m/s, kaum Drehung).
+    // Die Messdaten gehen per Funk raus – zurückfliegen muss niemand.
+    survey: (fields: (1, 2), seconds: 6.0, max_speed: 0.6, reward_per_field: 140.0),
+    // Passagiere: Anzahl (von, bis), Bezahlung pro Person. Harte Beschleunigung, Stöße und
+    // Kreiseln senken die Zufriedenheit; bezahlt wird 30 % + 70 % × Zufriedenheit.
+    passengers: (2, 6),
+    fare_per_person: 45.0,
+    // Bonus (Anteil der Belohnung): innerhalb der Richtzeit / ohne Kollision und Schaden.
+    time_bonus: 0.15,
+    clean_bonus: 0.10,
+    distress_offers: 2,
+    delivery_cargo: [
+        (name: "Medizinische Vorräte", mass: 2.0, reward: 110),
+        (name: "Ersatzteile",          mass: 4.0, reward: 140),
+        (name: "Wasserkristalle",      mass: 6.0, reward: 170),
+        (name: "Forschungssonde",      mass: 3.0, reward: 150),
+        (name: "Pflanzensamen",        mass: 1.5, reward: 100),
+        (name: "Reaktorkern",          mass: 7.0, reward: 220),
+        // Schwerlast: passt in keinen Frachtraum und wird als Kiste am Kran geschleppt.
+        // Die Masse hängt am Seil und zieht das Schiff mit – die Kiste pendelt.
+        (name: "Bohrturm-Segment",     mass: 12.0, reward: 300, towed: true),
+        (name: "Druckkessel",          mass: 9.0,  reward: 260, towed: true),
+        (name: "Antennenmast",         mass: 10.0, reward: 280, towed: true),
+        // Stationen mit Lastaufnahme (world.ron, socket) wollen die Kiste dort hineingesetzt
+        // haben: ruhig im Inneren ablegen und vom Kran lösen.
+    ],
+    // Zusätzliche Belohnung pro Meter Luftlinie.
+    reward_per_distance: 0.14,
+    mining: [
+        (ore: Ferrit,  amount: (6.0, 12.0), reward_per_t: 22.0),
+        (ore: Kobalt,  amount: (5.0, 10.0), reward_per_t: 34.0),
+        (ore: Solarit, amount: (4.0, 9.0),  reward_per_t: 44.0),
+        (ore: Ionit,   amount: (3.0, 7.0),  reward_per_t: 58.0),
+    ],
+    tow_reward: (380.0, 560.0),
+    capsule_reward: (300.0, 440.0),
+    capsule_count: (3, 5),
+    derelict_names: ["MS Halcyon", "Frachter Nimbus", "Sonde K-7", "Kutter Albatros", "Tanker Velaro", "Shuttle Mira"],
+)

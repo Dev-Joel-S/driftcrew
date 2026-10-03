@@ -1,0 +1,123 @@
+// Auftraggeber an Stationen und Planeten-Außenposten.
+//   at:    Kennung einer Station (world.ron, stations) oder eines Planeten (world.ron, planets)
+//   gives: welche Aufträge die Person vergibt (Delivery, Haul, Mining, Shipment, Passengers,
+//          Bulky, Survey, Escort, Smuggle; doppelt = häufiger), leer = vergibt keine Aufträge
+//   look:  Farben für das Porträt im Stationsmenü
+//   lines: Sprüche, einer wird pro Besuch angezeigt
+[
+    (
+        id: "mara", name: "Mara Okonkwo", role: "Frachtmeisterin", at: "nova",
+        gives: [Delivery, Haul, Bulky, Escort],
+        look: (skin: "#8d5a3b", hair: "#1c1a1a", suit: "#c4602c"),
+        lines: [
+            "Fracht wartet nicht. Ihr hoffentlich auch nicht.",
+            "Wer die Kiste pendeln lässt, zahlt die Delle selbst.",
+            "Gerade landen, sauber übergeben – mehr will ich gar nicht.",
+        ],
+    ),
+    (
+        id: "lio", name: "Lio Tanaka", role: "Fährdienst", at: "nova",
+        gives: [Passengers],
+        look: (skin: "#d9a982", hair: "#2a2320", suit: "#5a7fa8"),
+        lines: [
+            "Meine Leute zahlen für ruhigen Flug, nicht für Achterbahn.",
+            "Wer bremst, ohne zu ruckeln, kriegt Trinkgeld.",
+        ],
+    ),
+    (
+        id: "ivo", name: "Ivo Brandt", role: "Bergbauingenieur", at: "nova",
+        gives: [Mining, Survey],
+        look: (skin: "#e0b49a", hair: "#a2622f", suit: "#3d6f8e", helmet: true),
+        lines: [
+            "Kobalt aus dem Schwarm, Solarit von Ember – ich nehme alles.",
+            "Bohrt an den Kristallen, nicht am Gestein. Spart Nerven.",
+            "Für eine Messung müsst ihr still stehen. Wirklich still.",
+        ],
+    ),
+    (
+        id: "selin", name: "Selin Aydın", role: "Logistik", at: "kepler",
+        gives: [Delivery, Mining, Survey, Escort],
+        look: (skin: "#c69276", hair: "#2b1d16", suit: "#14b8a6"),
+        lines: [
+            "Kepler liegt am Rand. Alles, was ihr bringt, wird gebraucht.",
+            "Der Rotor am Turm hat schon bessere Piloten erwischt.",
+        ],
+    ),
+    (
+        id: "kofi", name: "Kofi Mensah", role: "Schwerlast-Koordinator", at: "kepler",
+        gives: [Haul, Bulky],
+        look: (skin: "#5b3a29", hair: "#111111", suit: "#ff4fa3", helmet: true),
+        lines: [
+            "Zwölf Tonnen am Seil sind kein Spaziergang. Ruhig ziehen.",
+            "Das Seil reißt, wenn ihr ruckt. Nicht, wenn ihr schleppt.",
+        ],
+    ),
+    (
+        id: "yara", name: "Yara Lindqvist", role: "Werftleiterin", at: "vega",
+        gives: [Delivery, Haul, Mining, Passengers, Bulky],
+        look: (skin: "#f0c8b0", hair: "#d9c27a", suit: "#e0a526"),
+        lines: [
+            "Der Pelikan zieht euch jedes Wrack aus dem Dreck.",
+            "Ionit von Azura? Bei mir gibt's dafür wenig. Ferrit dafür umso mehr.",
+        ],
+    ),
+    (
+        id: "tomas", name: "Tomás Reyes", role: "Außenpostenleiter", at: "viridia",
+        gives: [Shipment],
+        look: (skin: "#b9805f", hair: "#3a2a20", suit: "#3fe0a0", helmet: true),
+        lines: [
+            "Unser Kobalt muss raus. Wir haben selbst kein Schiff.",
+            "Hier unten wächst alles nach, nur die Geduld nicht.",
+        ],
+    ),
+    (
+        id: "ana", name: "Ana Petrović", role: "Schichtleiterin", at: "ember",
+        gives: [Shipment],
+        look: (skin: "#e8b89c", hair: "#5a1e14", suit: "#ff6a3d", helmet: true),
+        lines: [
+            "Solarit glüht noch, wenn ihr es einladet. Nicht anfassen.",
+            "Die Glut hier ist nichts gegen den Schlund im Südwesten.",
+        ],
+    ),
+    (
+        id: "noor", name: "Noor Haddad", role: "Forscherin", at: "azura",
+        gives: [Shipment],
+        look: (skin: "#c08b6a", hair: "#151522", suit: "#8a7dff"),
+        lines: [
+            "Ionit ist empfindlich. Bitte keine Kollisionen mit meinen Proben.",
+            "Die Ringe sehen von nahem weniger romantisch aus.",
+        ],
+    ),
+    (
+        id: "ines", name: "Ines Varga", role: "Funktechnikerin", at: "relais",
+        gives: [Delivery, Mining, Survey],
+        look: (skin: "#c99a7c", hair: "#3b2f5c", suit: "#4fd8ff", helmet: true),
+        lines: [
+            "Ohne euch wäre hier immer noch nur Rauschen.",
+            "Das Relais hat damals als Letztes gesendet. Was, weiß keiner mehr.",
+            "Im Wrackring misst man am besten genau in der Mitte. Wenn man reinkommt.",
+        ],
+    ),
+    (
+        id: "vex", name: "Vex Moreau", role: "Hehlerin", at: "nebelhafen",
+        gives: [Delivery, Haul, Smuggle, Smuggle],
+        look: (skin: "#d1a07e", hair: "#7a1f4d", suit: "#2b2838"),
+        lines: [
+            "Wer reinkommt, ohne Alarm auszulösen, kriegt hier gute Preise.",
+            "Ionit kaufe ich zu jedem Kurs. Fragen stelle ich keine.",
+            "Der Port merkt sich nicht, wer ihr seid. Nur, ob ihr die Reihenfolge könnt.",
+            "Die Zollbojen scannen nur, wer lange genug bleibt. Also bleibt nicht.",
+        ],
+    ),
+    (
+        // Mechaniker in der Werft Orion: verkauft eigene Feintuning-Upgrades (shop.ron, vendor).
+        id: "orsk", name: "Orsk Valtonen", role: "Mechaniker", at: "werft",
+        gives: [],
+        look: (skin: "#d6a689", hair: "#8a8a8a", suit: "#5a4a3a"),
+        lines: [
+            "Ab Werk ist nichts richtig eingestellt. Gebt mir zehn Minuten.",
+            "Mehr Schub ohne mehr Gewicht? Geht. Kostet halt.",
+            "Wer seine Düsen nicht hört, hört sie irgendwann gar nicht mehr.",
+        ],
+    ),
+]

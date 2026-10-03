@@ -1,0 +1,23 @@
+[package]
+name = "driftcrew"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+description = "Koop-Weltraumspiel: jede Taste ist ein Triebwerk, der Rest ist Physik."
+
+[dependencies]
+bevy = { version = "0.19.1", features = ["wav"] }
+serde = { version = "1", features = ["derive"] }
+ron = "0.12"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+# Testversionen zum Weitergeben: schlank und schnell.
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = true

@@ -1,0 +1,100 @@
+// Parcours in der offenen Welt: Training und Zeitrennen mit Bestenliste pro Spielstand.
+// Ein Lauf beginnt, sobald das Schiff in Pfeilrichtung durch das Starttor fliegt (oder nach
+// "Starten" im Stationsmenü durch das Starttor). Positionen in Weltkoordinaten (Meter).
+//
+// Schritte:
+//   Gate(pos, dir, width)                 durch ein Tor fliegen (dir = Flugrichtung in Grad, 0 = Osten, 90 = Norden)
+//   Pass(pos, radius)                     einen Punkt erreichen
+//   Face(pos, tolerance, seconds)         Nase auf die Boje richten und halten
+//   Hold(pos, radius, seconds, max_speed) im Messfeld zur Ruhe kommen und stillhalten
+//   Dock(station, near)                   andocken; near = Plattform nächst diesem Punkt
+//
+// medals: Gold, Silber, Bronze in Sekunden (Wertung = Flugzeit + Strafzeit).
+// prize:  einmalig beim ersten Abschluss.
+(
+    collision_penalty: 2.0,
+    // Präzisionsandocken: Strafsekunden pro Meter Versatz, pro m/s beim Aufsetzen.
+    dock_penalty: (1.5, 1.0),
+    abort_distance: 450.0,
+    medal_prizes: (60, 120, 250),
+    courses: [
+        (
+            id: "grundkurs",
+            name: "Grundkurs",
+            kind: Training,
+            station: "nova",
+            intro: "Drehen, Schub, Bremsen, Andocken – Schritt für Schritt vor Nova.",
+            prize: 150,
+            steps: [
+                (kind: Gate(pos: (-100.0, -70.0), dir: 270.0, width: 22.0),
+                 hint: "Fliegt in Pfeilrichtung durch das Starttor südwestlich von Nova."),
+                (kind: Face(pos: (90.0, -170.0), tolerance: 10.0, seconds: 1.0),
+                 hint: "Drehen: Ein Triebwerk links oder rechts antippen dreht das Schiff. Nase auf die Boje, dann mit der Gegenseite abfangen und still halten."),
+                (kind: Gate(pos: (-30.0, -120.0), dir: 337.0, width: 16.0),
+                 hint: "Schub: Mitte (oder links und rechts zusammen) schiebt geradeaus. Durch das Tor vor euch."),
+                (kind: Hold(pos: (40.0, -150.0), radius: 9.0, seconds: 2.5, max_speed: 0.8),
+                 hint: "Bremsen: Ohne Reibung fliegt ihr ewig weiter. Umdrehen, Gegenschub, bis ihr im Feld vor der Boje stillsteht."),
+                (kind: Dock(station: "nova"),
+                 hint: "Andocken: Zurück in den Ring von Nova. Langsam, gerade und mittig auf eine Plattform – alle Ampeln grün."),
+            ],
+        ),
+        (
+            id: "nova_ring",
+            name: "Nova-Ring",
+            kind: Race,
+            station: "nova",
+            intro: "Einmal um den Hub und mitten durch den Ring. Jeder Rums kostet 2 s.",
+            medals: Some((48.0, 62.0, 85.0)),
+            steps: [
+                (kind: Gate(pos: (40.0, 80.0), dir: 180.0, width: 20.0), hint: "Start über Nova, Richtung Westen."),
+                (kind: Gate(pos: (-105.0, 30.0), dir: 270.0, width: 20.0)),
+                (kind: Gate(pos: (-78.0, 0.0), dir: 0.0, width: 16.0), hint: "Durch die linke Öffnung in den Ring."),
+                (kind: Gate(pos: (0.0, 14.0), dir: 0.0, width: 16.0)),
+                (kind: Gate(pos: (78.0, 0.0), dir: 0.0, width: 16.0)),
+                (kind: Gate(pos: (115.0, -45.0), dir: 270.0, width: 20.0)),
+                (kind: Gate(pos: (0.0, -85.0), dir: 180.0, width: 20.0)),
+                (kind: Gate(pos: (-110.0, -30.0), dir: 90.0, width: 20.0), hint: "Ziel."),
+            ],
+        ),
+        (
+            id: "dockpruefung",
+            name: "Dockprüfung",
+            kind: Race,
+            station: "nova",
+            intro: "Durch die rechte Öffnung und auf die obere Plattform. Versatz und hartes Aufsetzen kosten Zeit.",
+            medals: Some((26.0, 36.0, 52.0)),
+            steps: [
+                (kind: Gate(pos: (100.0, 30.0), dir: 270.0, width: 14.0), hint: "Start östlich von Nova, nach unten."),
+                (kind: Dock(station: "nova", near: Some((44.0, 26.0))),
+                 hint: "Obere rechte Plattform im Ring: von oben, mittig, sanft aufsetzen."),
+            ],
+        ),
+        (
+            id: "wrackring",
+            name: "Wrackring",
+            kind: Race,
+            station: "werft",
+            intro: "Im Schiffsfriedhof dreht sich ein alter Ringfrachter. Rein durch eine Öffnung, wieder raus durch die andere.",
+            medals: Some((32.0, 46.0, 66.0)),
+            steps: [
+                (kind: Gate(pos: (-1140.0, 1400.0), dir: 0.0, width: 18.0), hint: "Start westlich des Wrackrings."),
+                (kind: Pass(pos: (-1050.0, 1400.0), radius: 5.0),
+                 hint: "In die Mitte des Rings – wartet, bis eine Öffnung vorbeikommt."),
+                (kind: Gate(pos: (-960.0, 1400.0), dir: 0.0, width: 18.0), hint: "Auf der Ostseite wieder hinaus."),
+                (kind: Gate(pos: (-1050.0, 1310.0), dir: 180.0, width: 18.0), hint: "Ziel südlich des Rings."),
+            ],
+        ),
+    ],
+    // Messflüge (Aufträge): im Feld zur Ruhe kommen und stillhalten. An der Anomalie zieht
+    // der Sog, im Sonnenwind treibt das Schiff, im Wrackring dreht sich die Öffnung.
+    survey_sites: [
+        (name: "Ruhezone Nova",       pos: (150.0, -160.0),   radius: 8.0),
+        (name: "Viridia-Orbit",       pos: (640.0, 790.0),    radius: 7.0),
+        (name: "Anomalierand",        pos: (980.0, -1040.0),  radius: 7.0),
+        (name: "Sonnenwind-Korridor", pos: (-150.0, -1450.0), radius: 7.0),
+        (name: "Schleiernebel",       pos: (1500.0, -1300.0), radius: 7.0),
+        (name: "Splitterzone",        pos: (150.0, 1250.0),   radius: 7.0),
+        (name: "Kobaltschwarm",       pos: (1450.0, -680.0),  radius: 7.0),
+        (name: "Wrackring",           pos: (-1050.0, 1400.0), radius: 6.0),
+    ],
+)
