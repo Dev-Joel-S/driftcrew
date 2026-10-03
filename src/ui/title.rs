@@ -250,7 +250,7 @@ fn title_input(
             next.set(AppState::Lobby);
         }
         TitleAction::NewGame => {
-            let save = CrewSave::new_game(&data.0);
+            let save = CrewSave::new_game_seeded(&data.0, crate::game::story_seed());
             write_save(&save);
             has_save.0 = true;
             let def = data.0.ship(&save.current_ship).clone();

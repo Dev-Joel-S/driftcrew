@@ -1,0 +1,182 @@
+// Geschichte: ein Signal aus der Gravitationsanomalie, Artefakte der Vorgänger, zwei Monumente.
+//   artifacts:      einmalig pro Spielstand; Masse und Nebenwirkung, solange sie an Bord sind
+//                   (Jam = Radar/Scanner gestört, Lure = zieht Piraten an, Heat = mehr
+//                   Treibstoff, Spin = Drehstöße). An einer Station abgeliefert, gehören sie
+//                   zur Sammlung der Crew und sind Schlüssel für Kapitel und starke Upgrades.
+//   artifact_sites: mögliche Fundorte; der Seed des Spielstands wählt einen pro Artefakt.
+//   logs:           Logbuch – Archiv (erstes Andocken), Bordbuch (Wrack scannen), Funkfetzen
+//                   (in der Nähe scannen), Artefakt, Kapitel, Monument.
+//   chapters:       roter Faden; startet, wenn Aufträge, Ruf (Summe) und Sammlung reichen.
+//   monuments:      Raster wie Stationen, `o` = Tor-Block, verschwindet beim Erwachen.
+(
+    artifacts: [
+        (
+            id: "antriebskristall", name: "Antriebskristall", mass: 1.2, effect: Heat(1.25), color: "#ff9a3c",
+            description: "Faustgroß, warm, und er zieht ganz leicht in eine Richtung. In Düsen eingesetzt, verstärkt er den Schub.",
+        ),
+        (
+            id: "resonanzkern", name: "Resonanzkern", mass: 3.0, effect: Lure, color: "#ff4fa3",
+            description: "Summt in einer Frequenz, auf die Piratendrohnen reagieren. Panzerplatten in seiner Nähe werden härter.",
+        ),
+        (
+            id: "sternkarte", name: "Sternkarten-Splitter", mass: 0.6, effect: Jam(0.55), color: "#7fd6ff",
+            description: "Ein Splitter aus Glas, in dem sich Sterne bewegen, die es so nicht gibt. Stört jedes Instrument in der Nähe.",
+        ),
+        (
+            id: "stimmgabel", name: "Stimmgabel", mass: 2.2, effect: Spin(0.7), color: "#d8ff6a",
+            description: "Zwei Zinken, die nie aufhören zu schwingen. Wer sie an Bord hat, spürt es im Steuer.",
+        ),
+        (
+            id: "leerstein", name: "Leerstein", mass: 4.0, effect: None, color: "#b8a6ff", hidden: true,
+            description: "Schwerer, als er aussieht, und vollkommen still. Der Scanner sieht durch ihn hindurch.",
+        ),
+    ],
+    artifact_sites: [
+        (1590.0, -735.0),   // im Kobaltschwarm
+        (1060.0, -1140.0),  // im Sog der Anomalie
+        (-1050.0, 1400.0),  // im Wrackring
+        (300.0, 1420.0),    // im Splittergürtel
+        (-1620.0, -900.0),  // am Rand des Schlunds
+        (-420.0, -560.0),   // im Glutstrom
+        (1430.0, -1110.0),  // beim Nest der Nebelpiraten
+        (1900.0, 1060.0),   // in den Ringen von Azura
+        (-200.0, -1500.0),  // tief im Süden
+    ],
+    logs: [
+        // --- Archive der Stationen -------------------------------------------------------
+        (id: "archiv_nova", title: "Nova-Hub, Gründungsprotokoll", source: Station("nova"),
+         text: "Gebaut als Umschlagplatz für die Kolonien auf Viridia und Ember. Die Kolonien gibt es nicht mehr, den Umschlagplatz schon. Der Name blieb, weil niemand Geld für neue Schilder hatte."),
+        (id: "archiv_kepler", title: "Kepler, Bauakte", source: Station("kepler"),
+         text: "Der Rotor am Turm war ursprünglich eine Antenne. Als das Relais Ost verstummte, wurde sie umgebaut – zu einem Hindernis, das Schmuggler fernhalten sollte. Es hält vor allem Lieferanten fern."),
+        (id: "archiv_werft", title: "Werft Orion, Auftragsbuch", source: Station("werft"),
+         text: "Dreizehn Rümpfe für die Terraforming-Flotte bestellt, sieben geliefert, drei bezahlt. Die übrigen stehen heute als Ausstellungsstücke in der Halle."),
+        (id: "archiv_vega", title: "Vega, Stationschronik", source: Station("vega"),
+         text: "Vega lag an der Funkstrecke zum Relais Ost. Seit das Relais schweigt, findet kaum jemand her. Wer es doch tut, wird freundlich behandelt – die Werft braucht jeden Kunden."),
+        (id: "archiv_relais", title: "Relais Ost, letzte Sendung", source: Station("relais"),
+         text: "Das Relais hörte als Erstes ein Muster aus der Anomalie. Es sendete die Aufnahme dreimal weiter. Danach fiel die Energie aus, und niemand kam, um nachzusehen."),
+        (id: "archiv_nebel", title: "Nebelhafen, ohne Akte", source: Station("nebelhafen"),
+         text: "Offiziell gibt es diese Station nicht. Inoffiziell wurde sie aus den Resten eines Forschungsschiffs gebaut, das den Nebel vermessen sollte. Die Vermessung wurde nie veröffentlicht."),
+        // --- Bordbücher in Wracks ---------------------------------------------------------
+        (id: "wrack_kassiopeia", title: "Frachter Kassiopeia, Bordbuch", source: Wreck("Frachter Kassiopeia"),
+         text: "Tag 112. Ladung: Bodenproben von Ember, versiegelt. Die Proben sind warm, obwohl der Laderaum kalt ist. Die Crew will umkehren. Ich habe gesagt, wir liefern."),
+        (id: "wrack_moewe", title: "Kutter Möwe, Notiz", source: Wreck("Kutter Möwe"),
+         text: "Für alle, die das finden: Der Ring dreht sich. Wir dachten, wir passen durch. Haben wir nicht."),
+        (id: "wrack_rabe", title: "Jäger Rabe, Einsatzbericht", source: Wreck("Jäger Rabe"),
+         text: "Patrouille gegen Schmuggler. Ziel floh in den Friedhof. Sensoren zeigten ein zweites Signal, das sich nicht bewegte. Habe es gemeldet. Antwort: weiter patrouillieren."),
+        (id: "wrack_albatros", title: "Schlepper Albatros, Logbuch", source: Wreck("Schlepper Albatros"),
+         text: "Haben ein Objekt aus dem Splittergürtel geborgen, schwer wie ein halber Rumpf, kaum größer als ein Helm. Der Kran hat geächzt. Die Firma will es nicht. Wir behalten es."),
+        (id: "wrack_ikarus", title: "Sonde Ikarus, Telemetrie", source: Wreck("Sonde Ikarus"),
+         text: "Messreihe Relais Ost, Kanal 7: periodisches Muster, Ursprung Südost, Periode 41 Sekunden. Muster wiederholt sich nicht exakt. Es ändert sich, wenn die Sonde näher kommt."),
+        (id: "wrack_nadir", title: "Frachter Nadir, letzter Eintrag", source: Wreck("Frachter Nadir"),
+         text: "Die Anomalie zieht stärker als auf der Karte. Steuerbord zwei Triebwerke weg. Wenn jemand das liest: Da unten steht etwas. Ein Turm. Er leuchtet nicht. Noch nicht."),
+        // --- Funkfetzen -------------------------------------------------------------------
+        (id: "echo_anomalie", title: "Das Muster", source: Echo(pos: (980.0, -1150.0), radius: 300.0),
+         text: "Ein Ton, dann Stille, dann zwei Töne. Dazwischen etwas, das wie Koordinaten klingt, wenn man es lange genug anhört."),
+        (id: "echo_ember", title: "Ember, Kolonie-Funk", source: Echo(pos: (-700.0, -820.0), radius: 220.0),
+         text: "…Terraforming Phase drei abgebrochen. Oberfläche zu heiß. Wiederhole: Die Oberfläche wird heißer, nicht kälter. Evakuierung… (Rauschen)"),
+        (id: "echo_viridia", title: "Viridia, Gewächshaus 4", source: Echo(pos: (640.0, 700.0), radius: 220.0),
+         text: "Automatische Durchsage: Bewässerung läuft. Es ist niemand mehr da, der sie abschalten könnte. Die Pflanzen wachsen trotzdem."),
+        (id: "echo_schlund", title: "Am Schlund", source: Echo(pos: (-1850.0, -1000.0), radius: 480.0),
+         text: "…zu schwer, wir kommen nicht mehr raus. Was wir an Bord haben, zieht uns hinein. Werft es ab, wenn ihr so etwas findet. Werft es ab…"),
+        (id: "echo_friedhof", title: "Schiffsfriedhof", source: Echo(pos: (-1200.0, 1550.0), radius: 280.0),
+         text: "Zwölf Transponder, alle stumm, bis auf einen, der in einer Schleife sendet: „Liegt noch drin. Liegt noch drin. Liegt noch drin.“"),
+        (id: "echo_relais", title: "Relais Ost, Kanal 7", source: Echo(pos: (1200.0, 1800.0), radius: 260.0),
+         text: "Die alte Aufnahme, noch im Speicher: Das Muster aus der Anomalie, und darunter eine zweite, leisere Spur – als würde etwas antworten."),
+        (id: "echo_tor", title: "Im Tor", source: Echo(pos: (-1480.0, -1320.0), radius: 14.0),
+         text: "Kein Muster mehr. Eine Stimme, ohne Worte, aber unverkennbar eine Frage. Wir haben geantwortet, ohne zu wissen, was."),
+        // --- Artefakte --------------------------------------------------------------------
+        (id: "fund_antriebskristall", title: "Fund: Antriebskristall", source: Artifact("antriebskristall"),
+         text: "Unter dem Mikroskop wachsen die Kanten weiter, sehr langsam. Wer ihn hält, spürt einen Zug – immer in Richtung Südost."),
+        (id: "fund_resonanzkern", title: "Fund: Resonanzkern", source: Artifact("resonanzkern"),
+         text: "Die Frequenz passt zur zweiten Spur aus dem Relais. Die Piraten im Nebel haben offenbar dasselbe gemerkt."),
+        (id: "fund_sternkarte", title: "Fund: Sternkarten-Splitter", source: Artifact("sternkarte"),
+         text: "Die Sterne im Glas entsprechen dem Himmel von hier – aber aus einer Zeit, bevor es die Anomalie gab."),
+        (id: "fund_stimmgabel", title: "Fund: Stimmgabel", source: Artifact("stimmgabel"),
+         text: "Schwingt mit 41 Sekunden Periode. Genau wie das Muster."),
+        (id: "fund_leerstein", title: "Fund: Leerstein", source: Artifact("leerstein"),
+         text: "Kein Echo, keine Temperatur, keine Strahlung. Nur Masse. Als hätte jemand ein Stück Nichts gewogen."),
+        // --- Kapitel und Monumente ------------------------------------------------------
+        (id: "kapitel_0", title: "Rauschen", source: Chapter(0),
+         text: "Das Muster wiederholt sich. Es sieht aus wie eine Karte – mit Punkten, die über den ganzen Sektor verstreut sind."),
+        (id: "kapitel_1", title: "Spuren", source: Chapter(1),
+         text: "Es ist nicht von uns. Nicht von den Kolonien, nicht von den Konzernen. Älter."),
+        (id: "kapitel_2", title: "Resonanz", source: Chapter(2),
+         text: "Der Turm leuchtet. Die Karte zeigt die Orte der übrigen Fundstücke – und ein zweites Bauwerk am Schlund."),
+        (id: "kapitel_3", title: "Das Tor", source: Chapter(3),
+         text: "Das Tor ist offen. Drinnen nur ein Licht und ein Signal, das jetzt antwortet. Die Welt läuft weiter – und irgendwo hört jemand zu."),
+        (id: "monument_turm", title: "Der Signalturm", source: Monument("signalturm"),
+         text: "Niemand hat ihn gebaut, und doch steht er da, aus einem Stein, den es im Sektor nicht gibt. Mit zwei Fundstücken in der Sammlung hat er geantwortet."),
+        (id: "monument_tor", title: "Das Gewölbe am Schlund", source: Monument("tor"),
+         text: "Ein Gewölbe aus demselben Stein. Die Tür bestand aus Blöcken, die sich einfach aufgelöst haben, als der Scanner sie mit vier Fundstücken berührte."),
+    ],
+    chapters: [
+        (
+            title: "Rauschen", speaker: "Ines Varga, Relais Ost (Notfunk)", missions: 1,
+            intro: "Hier Relais Ost, Notfunk. Aus der Gravitationsanomalie im Südosten kommt ein Muster, das kein Rauschen ist. Fliegt hin – nicht zu nah – und nehmt es mit dem Scanner auf.",
+            task: "In der Nähe der Gravitationsanomalie scannen",
+            goal: Scan(pos: (980.0, -1150.0), radius: 300.0), reward: 300,
+            outro: "Das Muster wiederholt sich. Es sieht aus wie eine Karte. Ich schicke es an Noor auf Azura.",
+        ),
+        (
+            title: "Spuren", speaker: "Noor Haddad, Azura (Forschung)", reputation: 3,
+            intro: "Ines hat mir eure Aufnahme geschickt. Die Punkte passen zu Stellen, an denen der Scanner fremde Signale zeigt. Wenn dort etwas liegt, bringt es zu einer Station – vorsichtig, wir wissen nicht, was es tut.",
+            task: "Ein Artefakt bergen und an einer Station abliefern",
+            goal: Artifacts(1), reward: 450,
+            outro: "Es ist nicht von uns. Älter als die Kolonien. Bitte sucht weiter.",
+        ),
+        (
+            title: "Resonanz", speaker: "Ines Varga, Relais Ost", reputation: 6, artifacts: 2,
+            intro: "Südlich der Anomalie steht ein Turm, den niemand gebaut hat. Mit zwei Fundstücken in eurer Sammlung antwortet er vielleicht. Fliegt hin und scannt ihn.",
+            task: "Den Signalturm scannen (2 Artefakte in der Sammlung)",
+            goal: Monument("signalturm"), reward: 800,
+            outro: "Der Turm leuchtet! Auf der Karte sind jetzt die übrigen Fundorte – und ein zweites Bauwerk am Schlund.",
+        ),
+        (
+            title: "Das Tor", speaker: "Noor Haddad, Azura", reputation: 10, artifacts: 4,
+            intro: "Das Bauwerk am Schlund ist verschlossen. Der Turm sagt – wenn man das so nennen kann –, dass es vier braucht. Bringt sie zusammen und weckt das Tor.",
+            task: "Das Tor am Schlund scannen (4 Artefakte in der Sammlung)",
+            goal: Monument("tor"), reward: 1500,
+            outro: "Das Tor ist offen. Was drinnen antwortet, verstehen wir noch nicht. Fliegt hinein, wenn ihr euch traut. Die Welt läuft weiter.",
+        ),
+    ],
+    monuments: [
+        (
+            id: "signalturm", name: "Signalturm", pos: (700.0, -1380.0), cell: 4.0,
+            main_color: "#2b2f3a", accent_color: "#3fe0c8", artifacts: 2, reveals_sites: true,
+            effect: "Der Turm leuchtet und zeigt die Fundorte der übrigen Artefakte.",
+            layout: [
+                "....L....",
+                "....X....",
+                "....#....",
+                "...#X#...",
+                "....#....",
+                "....#....",
+                "...#X#...",
+                "....#....",
+                "....#....",
+                "...#X#...",
+                "...###...",
+                "../###\\..",
+                "./#####\\.",
+                "/#######\\",
+                "####X####",
+            ],
+        ),
+        (
+            id: "tor", name: "Das Tor", pos: (-1480.0, -1320.0), cell: 4.0,
+            main_color: "#2b2f3a", accent_color: "#3fe0c8", artifacts: 4,
+            effect: "Die Torblöcke lösen sich auf, das Gewölbe ist offen.",
+            layout: [
+                "#############",
+                "#XXXXXXXXXXX#",
+                "#X.........X#",
+                "oo.........X#",
+                "oo....L....X#",
+                "oo.........X#",
+                "#X.........X#",
+                "#XXXXXXXXXXX#",
+                "#############",
+            ],
+        ),
+    ],
+)

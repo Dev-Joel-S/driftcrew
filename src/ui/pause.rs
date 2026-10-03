@@ -16,7 +16,12 @@ pub struct PausePlugin;
 impl Plugin for PausePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnExit(AppState::Playing), despawn_pause)
-            .add_systems(Update, pause_input.run_if(in_state(AppState::Playing)));
+            .add_systems(
+                Update,
+                pause_input
+                    .before(super::logbook::logbook_input)
+                    .run_if(in_state(AppState::Playing)),
+            );
     }
 }
 
@@ -32,6 +37,7 @@ enum PauseAct {
     AbortCourse,
     Redistribute,
     Help,
+    Logbook,
     SaveTitle,
     Quit,
 }
@@ -48,6 +54,13 @@ fn items(sim: &SimState) -> Vec<Item<PauseAct>> {
     v.extend([
         Item::new("Slots neu verteilen", PauseAct::Redistribute)
             .detail("Jemand kommt dazu oder fällt aus"),
+        Item::new("Logbuch", PauseAct::Logbook).detail(format!(
+            "Kapitel, Artefakte ({}/{}), Funde ({}/{})",
+            sim.crew.artifacts.len(),
+            sim.data.story.artifacts.len(),
+            sim.story.logs.len(),
+            sim.data.story.logs.len()
+        )),
         Item::new("Steuerung & Spielprinzip", PauseAct::Help),
         Item::new("Speichern & zum Titel", PauseAct::SaveTitle),
         Item::new("Spiel beenden", PauseAct::Quit).detail("Der Spielstand wird gespeichert"),
@@ -109,7 +122,11 @@ pub fn pause_input(
     help: Query<Entity, With<PauseHelp>>,
     mut exit: MessageWriter<AppExit>,
     mut pending: ResMut<PendingCommands>,
+    mut book: ResMut<super::logbook::Logbook>,
 ) {
+    if book.open {
+        return;
+    }
     if !help.is_empty() {
         if input.escape || input.enter || input.start || input.back {
             for e in &help {
@@ -193,6 +210,10 @@ pub fn pause_input(
                         p.spawn(text("Esc / Enter: schließen", 13.0, MUTED));
                     });
                 });
+        }
+        PauseAct::Logbook => {
+            book.open = true;
+            book.opened = true;
         }
         PauseAct::SaveTitle => {
             write_save(&sim.0.to_save());

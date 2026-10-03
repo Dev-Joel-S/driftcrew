@@ -29,6 +29,8 @@ pub enum CellKind {
     Light,
     /// Schräge (halbe Zelle); das Zeichen sagt, welche Ecke voll ist: `/ \\ 7 r`.
     Slope(char),
+    /// Tor-Block eines Monuments: verschwindet, wenn das Monument erwacht.
+    Door,
 }
 
 pub fn is_slope(ch: char) -> bool {
@@ -154,6 +156,8 @@ pub struct StaticCollider {
     pub enabled: bool,
     pub stage: u8,
     pub station: Option<usize>,
+    /// Tor-Block eines Monuments (Index): fällt weg, wenn das Monument erwacht.
+    pub door: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -402,10 +406,25 @@ impl Anomaly {
     }
 }
 
+/// Bauwerk der Vorgänger (Geschichte): Raster wie eine Station, ohne Plattformen und Dienste.
+#[derive(Clone, Debug)]
+pub struct Monument {
+    pub id: String,
+    pub name: String,
+    pub pos: Vec2,
+    pub cell: f32,
+    pub cells: Vec<Cell>,
+    pub bounds: Aabb,
+    pub main_color: [f32; 3],
+    pub accent_color: [f32; 3],
+    pub awake: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct World {
     pub radius: f32,
     pub stations: Vec<Station>,
+    pub monuments: Vec<Monument>,
     pub planets: Vec<Planet>,
     pub pads: Vec<Pad>,
     pub colliders: Vec<StaticCollider>,
@@ -425,6 +444,7 @@ impl World {
         let mut w = World {
             radius: wd.radius,
             stations: Vec::new(),
+            monuments: Vec::new(),
             planets: Vec::new(),
             pads: Vec::new(),
             colliders: Vec::new(),
@@ -620,6 +640,7 @@ impl World {
                 enabled: true,
                 stage: 0,
                 station: None,
+                door: None,
             });
             let outpost = pd.outpost_angle.map(|a| a.to_radians());
             if let Some(a) = outpost {
@@ -719,6 +740,7 @@ impl World {
                 shape: sp.shape,
             });
         }
+        w.build_monuments(data);
         for an in &wd.anomalies {
             w.anomalies.push(Anomaly {
                 name: an.name.clone(),
@@ -740,6 +762,7 @@ impl World {
             enabled: true,
             stage: 0,
             station: None,
+            door: None,
         });
     }
 
@@ -752,7 +775,89 @@ impl World {
             enabled: stage == 0,
             stage,
             station: Some(station),
+            door: None,
         });
+    }
+
+    /// Monumente der Geschichte aus ihrem Raster bauen (Blöcke, Schrägen, Lichter, Tor-Blöcke).
+    fn build_monuments(&mut self, data: &GameData) {
+        for (mi, md) in data.story.monuments.iter().enumerate() {
+            let rows: Vec<Vec<char>> = md.layout.iter().map(|r| r.chars().collect()).collect();
+            let h = rows.len() as i32;
+            let wcols = rows.first().map(|r| r.len()).unwrap_or(0) as i32;
+            let pos = v(md.pos);
+            let cell = md.cell;
+            let center_of = |col: i32, row: i32| {
+                pos + Vec2::new(
+                    (col as f32 - (wcols - 1) as f32 * 0.5) * cell,
+                    ((h - 1) as f32 * 0.5 - row as f32) * cell,
+                )
+            };
+            let mut m = Monument {
+                id: md.id.clone(),
+                name: md.name.clone(),
+                pos,
+                cell,
+                cells: Vec::new(),
+                bounds: Aabb {
+                    min: center_of(0, h - 1) - Vec2::splat(cell * 0.5),
+                    max: center_of(wcols - 1, 0) + Vec2::splat(cell * 0.5),
+                },
+                main_color: super::data::hex(&md.main_color),
+                accent_color: super::data::hex(&md.accent_color),
+                awake: false,
+            };
+            for (row, line) in rows.iter().enumerate() {
+                for (col, &ch) in line.iter().enumerate() {
+                    let (col, row) = (col as i32, row as i32);
+                    let c = center_of(col, row);
+                    let kind = match ch {
+                        '#' => CellKind::Block,
+                        'X' => CellKind::Accent,
+                        'L' => CellKind::Light,
+                        'o' => CellKind::Door,
+                        c if is_slope(c) => CellKind::Slope(c),
+                        _ => continue,
+                    };
+                    m.cells.push(Cell {
+                        kind,
+                        center: c,
+                        col,
+                        row,
+                        stage: 0,
+                    });
+                    let q = match kind {
+                        CellKind::Light => continue,
+                        CellKind::Slope(ch) => {
+                            Poly::transformed(&slope_outline(ch, cell * 0.5), c, 0.0)
+                        }
+                        _ => Poly::obb(c, Vec2::splat(cell * 0.5), 0.0),
+                    };
+                    self.colliders.push(StaticCollider {
+                        shape: Shape::Poly(q),
+                        aabb: q.aabb(),
+                        surface: Surface::Block,
+                        enabled: true,
+                        stage: 0,
+                        station: None,
+                        door: (kind == CellKind::Door).then_some(mi),
+                    });
+                }
+            }
+            self.monuments.push(m);
+        }
+    }
+
+    /// Ein Monument erwacht: die Tor-Blöcke fallen weg.
+    pub fn wake_monument(&mut self, mi: usize) {
+        for c in &mut self.colliders {
+            if c.door == Some(mi) {
+                c.enabled = false;
+            }
+        }
+        if let Some(m) = self.monuments.get_mut(mi) {
+            m.awake = true;
+        }
     }
 
     /// Etappe einer Station setzen: Teile und Plattformen bis zu dieser Etappe existieren,

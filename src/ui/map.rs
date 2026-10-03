@@ -409,6 +409,22 @@ fn draw_map(
                 dot(m, at, 6.0, core, true);
                 label(m, at, name, core);
             }
+            // Monumente (sobald entdeckt) und – nach dem Signalturm – die Fundorte der Artefakte.
+            for mo in &s.world.monuments {
+                if !seen(mo.pos) {
+                    continue;
+                }
+                let at = to_map(mo.pos);
+                let c = srgb(mo.accent_color);
+                dot(m, at, 11.0, c, false);
+                let state = if mo.awake { "erwacht" } else { "schlafend" };
+                label(m, at, format!("△ {} ({state})", mo.name), c);
+            }
+            if s.story.sites_revealed {
+                for p in s.artifact_positions() {
+                    dot(m, to_map(p), 8.0, Color::srgb(0.75, 0.55, 1.0), true);
+                }
+            }
             // Piratennester und Zollbojen, sobald entdeckt.
             for n in &s.data.traffic.nests {
                 let c = Vec2::new(n.center.0, n.center.1);

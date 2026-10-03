@@ -229,7 +229,7 @@ fn upgrades_cost_material_and_add_mass_where_they_sit() {
 }
 
 #[test]
-fn strongest_tier_needs_an_artifact() {
+fn strongest_tier_needs_its_artifact_as_a_key() {
     let mut s = sim();
     s.ship.docked = None;
     s.dock_at_station(0);
@@ -238,11 +238,17 @@ fn strongest_tier_needs_an_artifact() {
     let err = s
         .purchase_info(&Purchase::Upgrade("thrust3".into()))
         .unwrap_err();
-    assert!(err.contains("Artefakt"), "{err}");
+    assert!(err.contains("Antriebskristall"), "{err}");
+    // Ein anderes Artefakt passt nicht.
+    s.crew.artifacts.push("leerstein".into());
+    assert!(
+        s.purchase_info(&Purchase::Upgrade("thrust3".into()))
+            .is_err()
+    );
     s.crew.artifacts.push("antriebskristall".into());
     buy(&mut s, Purchase::Upgrade("thrust3".into()));
     assert!(s.crew.upgrades.contains(&"thrust3".to_string()));
-    assert!(s.crew.artifacts.is_empty(), "verbraucht");
+    assert_eq!(s.crew.artifacts.len(), 2, "Schlüssel, nicht verbraucht");
 }
 
 #[test]

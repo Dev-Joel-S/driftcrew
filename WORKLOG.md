@@ -171,7 +171,7 @@ online funktionieren.
 | 41 | Schmuggel | Kontrollpunkte (Scans), Risiko, hoher Gewinn; Schmugglerstation mit Hack (38) |
 | 44 | Wiederkehrende NPCs | Händler mit Spezialsortiment, Mechaniker (Triebwerkstuning), Rivalen-Crew mit eigenem Schiff, die dieselben Aufträge jagt |
 
-### Phase 13 – Story, Lore, Artefakte, Monumente
+### Phase 13 – Story, Lore, Artefakte, Monumente (erledigt, siehe Protokoll)
 
 | Nr. | Punkt | Umsetzung |
 |---|---|---|
@@ -200,7 +200,7 @@ Der Rest wird in die bestehenden Phasen einsortiert bzw. bekommt eigene Phasen.
 
 | Nr. | Punkt | Einordnung |
 |---|---|---|
-| 63 | Artefakte als Schlüssel und Sammlung | gehört zu Phase 13 (Artefakte, Logbuch) – dort schon geplant, noch nicht gebaut |
+| 63 | Artefakte als Schlüssel und Sammlung | **erledigt in Phase 13** (Sammlung, Schlüssel für Kapitel, Monumente und Stufe-3-Upgrades) |
 | 64 | Fracht verschieben und arretieren | Phase 14 (Fracht und Bergung): Befestigungspunkte = Frachtmodule/Bauplätze, Umladen im Stationsmenü und im Flug (langsam), Schwerpunkt rechnet sich wie bisher |
 | 65 | Sperrige Bergungsobjekte | **Phase 8b** |
 | 66 | Zwei Kräne, eine Last; Seilbelastung sichtbar | Seilbelastung schon in Phase 8b (für 65/71), zwei Kräne an einer Last in Phase 14 |
@@ -250,6 +250,68 @@ Der Rest wird in die bestehenden Phasen einsortiert bzw. bekommt eigene Phasen.
 ---
 
 ## Protokoll
+
+### Runde 3 – Phase 13: Geschichte, Artefakte, Monumente, Logbuch (erledigt)
+
+Alles aus der neuen Datei `story.ron`, Logik in `sim/story.rs`, deterministisch, im Spielstand
+(`CrewSave::story`).
+
+- **Roter Faden (45, 59):** Vier Kapitel um ein Signal aus der Gravitationsanomalie. Ein Kapitel
+  beginnt, sobald erledigte Aufträge, Ruf (Summe über alle Stationen) und Sammlung reichen –
+  dann meldet sich jemand per Funk (Ines Varga vom verstummten Relais Ost, die Forscherin Noor
+  Haddad auf Azura). Ziele: bei der Anomalie scannen, ein Artefakt bergen, den Signalturm
+  wecken, das Tor am Schlund öffnen. Jedes Kapitel zahlt eine Prämie und schreibt einen
+  Logbuch-Eintrag. Das Ende ist offen: Hinter dem Tor antwortet das Signal, die Welt läuft
+  weiter (Aufträge, Verkehr, Wiederaufbau).
+- **Lore indirekt (58):** 30 Logbuch-Einträge, nie als Textwand, sondern dort, wo man sie
+  findet: Archive der Stationen beim ersten Andocken (warum Nova so heißt, was mit dem Relais
+  geschah), Bordbücher in den sechs Wracks und Funkfetzen an Orten (Ember – gescheitertes
+  Terraforming, Viridia – Gewächshaus ohne Menschen, Schlund, Schiffsfriedhof, Relais), beides
+  mit dem **Scanner** aufgefangen. Dazu Einträge für Funde, Kapitel und Monumente.
+- **Artefakte (61, 61a, 62, 63):** Fünf Stück, jedes pro Spielstand genau einmal. Beim ersten
+  Start wählt der Seed des Spielstands (`story_seed`, beim neuen Spiel aus der Uhrzeit, im
+  Vorführmodus 0) für jedes einen von neun möglichen Fundorten – im Kobaltschwarm, im Sog der
+  Anomalie, im Wrackring, am Schlund, beim Piratennest … Danach steht der Ort im Spielstand,
+  kein Respawn. In der Welt sind sie leuchtende Kristalle, die keinem Sog folgen; der Scanner
+  zeigt sie als „Fremdes Signal“ (außer dem Leerstein, durch den er hindurchsieht). Eingesammelt
+  werden sie wie Bauteile (sanft berühren oder Kran) und haben **an Bord Masse und eine
+  Nebenwirkung**: Sternkarten-Splitter stört Radar und Scanner, Resonanzkern lockt Piraten
+  (Nester reagieren aus größerer Entfernung, eine Drohne mehr, Drohnen greifen früher an),
+  Antriebskristall heizt auf (+25 % Treibstoff), Stimmgabel bringt das Schiff ins Trudeln,
+  Leerstein ist einfach schwer. Erst beim Andocken an einer Station kommen sie in die
+  **Sammlung** der Crew.
+- **61f, abschaltbar:** Wird das Schiff mit einem Artefakt an Bord zerstört, bleibt es im
+  Wrack und muss geholt werden. Im Logbuch umschaltbar (Enter); dann kehrt es an seinen
+  Fundort zurück. Ist ein Artefakt beim Speichern an Bord, wird es dort abgelegt, wo das
+  Schiff gerade ist.
+- **Artefakte als Schlüssel (63) – Entscheidungsänderung:** Stufe-3-Upgrades verbrauchen kein
+  Artefakt mehr, sie brauchen ein bestimmtes in der Sammlung (`key` in `shop.ron`:
+  Plasmadüsen ↔ Antriebskristall, Kristallpanzer ↔ Resonanzkern). Grund: Artefakte gibt es nur
+  einmal pro Spielstand; verbraucht wären sie für Kapitel und Monumente verloren.
+- **Monumente (61d):** Signalturm (südlich der Anomalie) und das Tor (ein Gewölbe am Schlund),
+  gebaut aus demselben Raster wie Stationen (`o` = Tor-Block). Sie schlafen, glimmen im Takt
+  des Signals (41 s) und **reagieren auf Artefakte**: Je mehr die Crew an Bord und in der
+  Sammlung hat, desto heller leuchten die Glyphen in der Nähe. Ein **Scan** mit genug
+  Artefakten in der Sammlung weckt sie (sonst „summt kurz und verstummt“ mit Hinweis). Der Turm
+  zeigt danach die Fundorte der übrigen Artefakte auf der Karte, beim Tor lösen sich die
+  Tor-Blöcke auf (Kollision und Bild), drinnen wartet ein letzter Funkfetzen. Erwachte
+  Monumente stehen im Spielstand. NPC-Routen weichen ihnen aus.
+- **Logbuch (60, 61e):** im Pausemenü. Links Kapitel (erledigt, aktuell mit Ziel und Funkspruch
+  oder was zum Beginnen fehlt) und Artefakte (gesammelt mit Beschreibung, an Bord mit Masse und
+  Nebenwirkung, sonst „unbekannt“), rechts die Funde „X von Y“ – ohne Orte – mit Text zum
+  gewählten Eintrag. Funk zeigt Kapitel- und Monumentsprüche mit Absender, länger als normale
+  Meldungen.
+- **Darstellung:** Artefakte als Kristall im Steinring mit Licht (`ship_vis`), Monumente in
+  `render/story_vis.rs`, violette Scanner-Markierung für fremde Signale, Monumente auf Radar,
+  Karte und als Marker („schlafend“/„erwacht“), nach dem Turm die Fundorte auf der Karte.
+- Vorführszene `DRIFTCREW_SCENE=story`.
+- Tests: 125 grün, neu in `story_tests.rs`: Artefakte einmalig pro Seed an gültigen Orten,
+  gleiche Orte nach dem Laden, Masse und Nebenwirkungen an Bord, Sammlung beim Andocken ohne
+  Respawn, Wrack-Regel an und aus, Artefakt an Bord wird am Schiffsort gespeichert, Logbuch aus
+  Archiv, Funkfetzen und Bordbuch (einmalig), Kapitel mit Voraussetzungen und Prämie (bleibt im
+  Spielstand), Monumente wecken (zu wenig Artefakte, Turm zeigt Fundorte, Tor öffnet die
+  Tür-Kollision, bleibt nach dem Laden offen), Lockwirkung auf Piraten, Leerstein ohne Signal;
+  der Upgrade-Test prüft jetzt den Schlüssel statt des Verbrauchs.
 
 ### Runde 3 – Phase 12: NPC-Schiffe mit voller Physik (erledigt)
 

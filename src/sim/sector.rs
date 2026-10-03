@@ -27,6 +27,8 @@ pub enum BlipKind {
     Deposit(Ore),
     Capsule,
     Cargo,
+    /// Fremdes Signal (Artefakt der Vorgänger).
+    Signal,
 }
 
 impl BlipKind {
@@ -37,6 +39,7 @@ impl BlipKind {
             BlipKind::Deposit(o) => format!("Vorkommen ({})", o.label()),
             BlipKind::Capsule => "Kapsel".into(),
             BlipKind::Cargo => "Fracht".into(),
+            BlipKind::Signal => "Fremdes Signal".into(),
         }
     }
 }
@@ -313,7 +316,9 @@ impl SimState {
             return false;
         }
         let nebula = self.sector_at(origin).nebula;
-        let max = self.ship.scan_range * (1.0 - 0.55 * nebula);
+        // Artefakte an Bord stören den Scanner ebenfalls.
+        let jam = self.artifact_jam();
+        let max = self.ship.scan_range * (1.0 - 0.55 * nebula) * (1.0 - 0.6 * jam);
         self.scan = Some(ScanPulse {
             origin,
             radius: 0.0,
@@ -323,6 +328,7 @@ impl SimState {
             pos: origin,
             range: max,
         });
+        self.story_scan_start(origin);
         true
     }
 
@@ -341,11 +347,18 @@ impl SimState {
             d >= r0 && d < p.radius
         };
         let mut found = Vec::new();
+        let mut wrecks = Vec::new();
         for b in &self.bodies {
             if !b.alive || !ring(b.pos) {
                 continue;
             }
+            if let BodyKind::Wreck { idx, .. } = b.kind {
+                wrecks.push(idx);
+            }
             let kind = match &b.kind {
+                BodyKind::Artifact { id } if !self.artifact_def(id).is_some_and(|a| a.hidden) => {
+                    BlipKind::Signal
+                }
                 BodyKind::Wreck { .. } | BodyKind::Derelict { .. } => BlipKind::Wreck,
                 BodyKind::Asteroid { ore: Some(o), .. } => BlipKind::Ore(*o),
                 BodyKind::OreChunk { ore, .. } => BlipKind::Ore(*ore),
@@ -370,6 +383,10 @@ impl SimState {
                     });
                 }
             }
+        }
+        // Bordbücher der Wracks im Ring auslesen.
+        for idx in wrecks {
+            self.story_scan_wreck(idx);
         }
         // Gefundenes ersetzt alte Markierungen am selben Ort.
         for f in found {

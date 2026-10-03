@@ -225,6 +225,11 @@ impl SimState {
             {
                 b.vel *= 1.0 - 0.05 * DT;
             }
+            // Artefakte kommen von selbst zur Ruhe.
+            if let BodyKind::Artifact { .. } = b.kind {
+                b.vel *= 1.0 - 0.3 * DT;
+                b.ang_vel += (0.4 - b.ang_vel) * 0.5 * DT;
+            }
             // Wracks treiben träge zurück an ihren Platz, außer jemand schleppt sie weit weg.
             if let BodyKind::Wreck { home, .. } = b.kind {
                 let d = home - b.pos;

@@ -36,6 +36,9 @@ pub mod rng;
 pub mod sector;
 pub mod ship;
 pub mod stats;
+pub mod story;
+#[cfg(test)]
+mod story_tests;
 #[cfg(test)]
 mod systems_tests;
 pub mod tools;
@@ -114,6 +117,8 @@ pub enum Command {
         course: usize,
     },
     AbortCourse,
+    /// 61f: Artefakte an Bord bleiben bei Zerstörung im Wrack (true) oder kehren zurück.
+    SetStayInWreck(bool),
     /// Slots neu verteilt (z. B. Hot-Join mitten im Flug): Schiff umbauen.
     SetLoadout {
         thrusters: u8,
@@ -249,6 +254,24 @@ pub enum SimEvent {
         pos: Vec2,
     },
     Busted,
+    /// Geschichte: Funkspruch (Kapitel, Monument), Logbuch-Fund, Artefakt in der Sammlung,
+    /// Monument erwacht, Kapitel abgeschlossen.
+    Story {
+        speaker: String,
+        text: String,
+    },
+    LogFound {
+        id: String,
+    },
+    ArtifactCollected {
+        id: String,
+    },
+    MonumentWoke {
+        idx: usize,
+    },
+    ChapterDone {
+        chapter: usize,
+    },
 }
 
 /// Markierung eines Crewmitglieds (Ping), verblasst nach [`PING_SECONDS`].
@@ -311,6 +334,10 @@ pub enum BodyKind {
         name: String,
         half_len: f32,
         thick: f32,
+    },
+    /// Artefakt der Vorgänger (Geschichte): einmalig, schwer für seine Größe.
+    Artifact {
+        id: String,
     },
 }
 
@@ -390,7 +417,10 @@ impl Body {
     pub fn stowable(&self) -> bool {
         matches!(
             self.kind,
-            BodyKind::OreChunk { .. } | BodyKind::Capsule { .. } | BodyKind::Salvage { .. }
+            BodyKind::OreChunk { .. }
+                | BodyKind::Capsule { .. }
+                | BodyKind::Salvage { .. }
+                | BodyKind::Artifact { .. }
         )
     }
 }
@@ -527,6 +557,8 @@ pub struct SimState {
     pub rival_score: u32,
     pub nest_cooldown: Vec<f32>,
     pub customs: Option<npc::CustomsScan>,
+    /// Geschichte: Kapitel, Logbuch, Fundorte der Artefakte.
+    pub story: story::Story,
 }
 
 impl SimState {
@@ -639,11 +671,13 @@ impl SimState {
             rival_score: 0,
             nest_cooldown: Vec::new(),
             customs: None,
+            story: story::Story::default(),
         };
         s.load_projects(save);
         s.load_records(save);
         s.load_finance(save);
         s.load_workshop(save);
+        s.load_story(save);
         s.populate_fields();
         s.populate_wrecks();
         s.refresh_offers();
@@ -741,9 +775,11 @@ impl SimState {
             storage_parts: 0,
             artifacts: Vec::new(),
             builds: Vec::new(),
+            story: Default::default(),
         };
         self.save_finance(&mut save);
         self.save_workshop(&mut save);
+        self.save_story(&mut save);
         save
     }
 
@@ -787,6 +823,7 @@ impl SimState {
         self.integrate();
         self.collide();
         self.update_npcs();
+        self.update_story();
         self.update_projectiles();
         if !self.ship.destroyed {
             self.update_docking(input);
@@ -846,6 +883,7 @@ impl SimState {
                 BodyKind::Salvage { name, .. } => name.clone(),
                 BodyKind::Debris => "Trümmer".into(),
                 BodyKind::Bulky { name, .. } => name.clone(),
+                BodyKind::Artifact { .. } => "Fremdes Objekt".into(),
             };
         }
         if let Some(st) = self

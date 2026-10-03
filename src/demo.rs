@@ -1,7 +1,7 @@
 //! Automatischer Vorführmodus für Screenshots und Rauchtests:
 //! `DRIFTCREW_DEMO=<ordner>` fliegt ein Skript ab, speichert Bildschirmfotos und
 //! beendet sich danach. `DRIFTCREW_SCENE=tour|ui|systems|progress|coop|sectors|rules|rebuild|
-//! courses|finance|minigames|workshop|traffic` wählt das Skript.
+//! courses|finance|minigames|workshop|traffic|story` wählt das Skript.
 
 use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
@@ -84,6 +84,7 @@ struct Ctx<'a, 'w, 's> {
     next: &'a mut NextState<AppState>,
     mode: &'a mut LobbyMode,
     pending: &'a mut PendingCommands,
+    logbook: &'a mut crate::ui::logbook::Logbook,
     pad: Option<Entity>,
 }
 
@@ -1481,6 +1482,112 @@ fn traffic_scene() -> Vec<(f32, Act)> {
     ]
 }
 
+/// Ein Artefakt aus der Welt an Bord holen (nur für Vorführungen).
+fn take_artifact(c: &mut Ctx, id: &str) {
+    let s = &mut c.sim.0;
+    if let Some(bi) = s.bodies.iter().position(|b| {
+        b.alive && matches!(&b.kind, crate::sim::BodyKind::Artifact { id: a } if a == id)
+    }) {
+        s.try_stow(bi);
+    }
+}
+
+fn monument_pos(c: &Ctx, id: &str) -> Vec2 {
+    c.sim
+        .0
+        .world
+        .monuments
+        .iter()
+        .find(|m| m.id == id)
+        .map(|m| m.pos)
+        .unwrap_or_default()
+}
+
+/// Phase 13: Artefakte, Signalturm, Tor, Funk, Karte und Logbuch.
+fn story_scene() -> Vec<(f32, Act)> {
+    vec![
+        (0.5, |c| {
+            keyboard_crew(c, false);
+            c.next.set(AppState::Playing);
+        }),
+        // Ein Artefakt in der Welt, der Scanner zeigt ein fremdes Signal.
+        (2.0, |c| {
+            let s = &c.sim.0;
+            let p = s
+                .bodies
+                .iter()
+                .find(|b| {
+                    matches!(&b.kind, crate::sim::BodyKind::Artifact { id } if id == "sternkarte")
+                })
+                .map(|b| b.pos)
+                .unwrap_or_default();
+            teleport(c, p, 14.0, 2.6);
+            let me = c.sim.0.ship.pos;
+            c.sim.0.start_scan(me);
+            c.sim.0.ship.invulnerable = 30.0;
+        }),
+        (4.8, |c| shot(c, "artefakt_signal")),
+        // Signalturm: Kapitel „Resonanz“ beginnt, Artefakte an Bord lassen ihn glimmen.
+        (5.6, |c| {
+            take_artifact(c, "sternkarte");
+            let s = &mut c.sim.0;
+            s.crew.missions_done = 3;
+            s.crew.reputation[0] = 7;
+            s.crew.artifacts = vec!["leerstein".into(), "stimmgabel".into()];
+            s.bodies.retain(|b| {
+                !matches!(&b.kind, crate::sim::BodyKind::Artifact { id } if id == "leerstein" || id == "stimmgabel")
+            });
+            s.story.chapter = 2;
+            s.story.started = false;
+            let p = monument_pos(c, "signalturm");
+            teleport(c, p, 18.4, 0.22);
+            c.sim.0.ship.invulnerable = 30.0;
+            c.sim.0.ship.angle = 0.5;
+        }),
+        (8.6, |c| shot(c, "signalturm_resonanz")),
+        // Scanner per Slot auslösen (Taste H), damit Funk und Meldungen durch die Simulation laufen.
+        (9.4, |c| {
+            c.sim.0.scan = None;
+            c.slots.0 = 1 << 8;
+        }),
+        (9.6, |c| c.slots.0 = 0),
+        (11.6, |c| shot(c, "signalturm_erwacht")),
+        // Das Tor am Schlund: mit vier Artefakten in der Sammlung öffnet es sich.
+        (12.4, |c| {
+            let s = &mut c.sim.0;
+            s.crew
+                .artifacts
+                .extend(["sternkarte".to_string(), "resonanzkern".to_string()]);
+            s.ship
+                .remove_cargo(|k| matches!(k, crate::sim::ship::CargoKind::Artifact { .. }));
+            s.bodies.retain(|b| {
+                !matches!(&b.kind, crate::sim::BodyKind::Artifact { id } if id == "sternkarte" || id == "resonanzkern")
+            });
+            s.crew.reputation[0] = 11;
+            let p = monument_pos(c, "tor");
+            teleport(c, p, 34.0, std::f32::consts::PI);
+            c.sim.0.ship.invulnerable = 30.0;
+            c.sim.0.ship.angle = -std::f32::consts::FRAC_PI_2;
+        }),
+        (14.4, |c| {
+            c.sim.0.scan = None;
+            c.slots.0 = 1 << 8;
+        }),
+        (14.6, |c| c.slots.0 = 0),
+        (16.4, |c| shot(c, "tor_offen")),
+        (17.2, |c| c.menu.tab = true),
+        (18.8, |c| shot(c, "karte_geschichte")),
+        (19.6, |c| c.menu.tab = true),
+        (20.2, |c| c.menu.escape = true),
+        (20.8, |c| {
+            c.logbook.open = true;
+            c.logbook.opened = true;
+        }),
+        (22.4, |c| shot(c, "logbuch")),
+        (23.8, |_| {}),
+    ]
+}
+
 fn ui_scene() -> Vec<(f32, Act)> {
     vec![
         (2.5, |c| shot(c, "titel")),
@@ -1534,6 +1641,7 @@ fn demo_script(
     mut next: ResMut<NextState<AppState>>,
     mut mode: ResMut<LobbyMode>,
     mut pending: ResMut<PendingCommands>,
+    mut logbook: ResMut<crate::ui::logbook::Logbook>,
     pads: Query<Entity, With<Gamepad>>,
     mut exit: MessageWriter<AppExit>,
 ) {
@@ -1552,6 +1660,7 @@ fn demo_script(
         "minigames" => minigame_scene(),
         "workshop" => workshop_scene(),
         "traffic" => traffic_scene(),
+        "story" => story_scene(),
         _ => tour(),
     };
     let mut pad = pads.iter().next();
@@ -1576,6 +1685,7 @@ fn demo_script(
             next: &mut next,
             mode: &mut mode,
             pending: &mut pending,
+            logbook: &mut logbook,
             pad,
         };
         f(&mut ctx);

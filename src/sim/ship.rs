@@ -235,6 +235,10 @@ pub enum CargoKind {
         name: String,
         value: u32,
     },
+    /// Artefakt der Vorgänger – kommt beim Andocken an einer Station in die Sammlung.
+    Artifact {
+        id: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]

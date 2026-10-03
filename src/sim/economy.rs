@@ -78,7 +78,7 @@ pub fn module_cost(m: &super::data::ModuleDef) -> super::workshop::Cost {
         credits: m.credits,
         materials: m.materials.clone(),
         parts: m.parts,
-        artifact: false,
+        key: None,
     }
 }
 
@@ -88,7 +88,11 @@ pub fn upgrade_cost(u: &super::data::UpgradeDef) -> super::workshop::Cost {
         credits: u.price,
         materials: u.materials.clone(),
         parts: u.parts,
-        artifact: u.artifact,
+        // Altes Feld `artifact`: irgendein Artefakt als Schlüssel.
+        key: u
+            .key
+            .clone()
+            .or_else(|| u.artifact.then(|| "*".to_string())),
     }
 }
 
@@ -452,6 +456,7 @@ impl SimState {
                 Command::SellCharts => self.sell_charts(),
                 Command::DeliverProject => self.deliver_project(),
                 Command::StoreCargo => self.store_cargo(),
+                Command::SetStayInWreck(on) => self.story.stay_in_wreck = *on,
                 Command::StartCourse { course } => self.arm_course(*course),
                 Command::AbortCourse => self.abort_course("auf Wunsch der Crew"),
                 Command::SetLoadout {

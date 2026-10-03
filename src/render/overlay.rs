@@ -236,10 +236,12 @@ fn draw_scan(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mut gizmos: Gizm
                 super::srgb(o.color())
             }
             crate::sim::sector::BlipKind::Wreck => Color::srgb(0.85, 0.8, 0.7),
+            crate::sim::sector::BlipKind::Signal => Color::srgb(0.75, 0.55, 1.0),
             _ => Color::srgb(0.35, 0.95, 0.9),
         }
         .with_alpha(0.8 * fade);
-        let r = 1.4 + 0.3 * (t * 3.0).sin();
+        let big = matches!(b.kind, crate::sim::sector::BlipKind::Signal);
+        let r = if big { 3.0 } else { 1.4 } + 0.3 * (t * 3.0).sin();
         let pts = [Vec2::X, Vec2::Y, -Vec2::X, -Vec2::Y].map(|d| b.pos + d * r);
         for i in 0..4 {
             gizmos.line(pts[i].extend(Z), pts[(i + 1) % 4].extend(Z), c);

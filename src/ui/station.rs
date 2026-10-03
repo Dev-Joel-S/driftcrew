@@ -992,6 +992,9 @@ fn items_for(sim: &SimState, tab: Tab, sel: &Option<String>) -> Vec<Item<Act>> {
                     crate::sim::ship::CargoKind::Salvage { name, value } => {
                         format!("Bauteil: {name} ({value} Cr)")
                     }
+                    crate::sim::ship::CargoKind::Artifact { id } => {
+                        format!("Artefakt: {}", sim.artifact_name(id))
+                    }
                 };
                 v.push(
                     Item::new(name, Act::Sell)

@@ -931,6 +931,77 @@ pub fn sync_bodies(
                         .id(),
                 );
             }
+            BodyKind::Artifact { id } => {
+                // Artefakt: leuchtender Kristall in einem dunklen Steinring, mit eigenem Licht.
+                let col = data
+                    .0
+                    .story
+                    .artifacts
+                    .iter()
+                    .find(|a| &a.id == id)
+                    .map(|a| srgb(hex(&a.color)))
+                    .unwrap_or(Color::WHITE);
+                let core = mats.add(StandardMaterial {
+                    base_color: col,
+                    emissive: col.to_linear() * 9.0,
+                    perceptual_roughness: 0.15,
+                    metallic: 0.2,
+                    ..default()
+                });
+                let stone = mats.add(art.panel_mat(Color::srgb(0.17, 0.18, 0.22), 0.7, 0.4));
+                let glow = art.glow_mat(&mut mats, col, 2.6);
+                kids.push(
+                    commands
+                        .spawn((
+                            Mesh3d(art.crystal.clone()),
+                            MeshMaterial3d(core),
+                            Transform::from_scale(Vec3::splat(b.radius * 1.5)),
+                            BodyMesh(b.id),
+                        ))
+                        .id(),
+                );
+                for k in 0..3 {
+                    let a = k as f32 * std::f32::consts::TAU / 3.0;
+                    kids.push(
+                        commands
+                            .spawn((
+                                Mesh3d(art.block.clone()),
+                                MeshMaterial3d(stone.clone()),
+                                Transform::from_translation(
+                                    (Vec2::new(a.cos(), a.sin()) * b.radius * 1.25).extend(-0.2),
+                                )
+                                .with_rotation(Quat::from_rotation_z(a + 0.4))
+                                .with_scale(Vec3::new(0.12, 0.08, 0.1)),
+                            ))
+                            .id(),
+                    );
+                }
+                kids.push(
+                    commands
+                        .spawn((
+                            Mesh3d(art.quad.clone()),
+                            MeshMaterial3d(glow),
+                            Transform::from_xyz(0.0, 0.0, 0.9)
+                                .with_scale(Vec3::splat(b.radius * 7.0)),
+                            NotShadowCaster,
+                        ))
+                        .id(),
+                );
+                kids.push(
+                    commands
+                        .spawn((
+                            PointLight {
+                                color: col,
+                                intensity: 600_000.0,
+                                range: 24.0,
+                                shadow_maps_enabled: false,
+                                ..default()
+                            },
+                            Transform::from_xyz(0.0, 0.0, 2.5),
+                        ))
+                        .id(),
+                );
+            }
             BodyKind::Capsule { .. } => {
                 let shell = mats.add(art.panel_mat(Color::srgb(0.95, 0.95, 0.98), 0.35, 0.2));
                 let bulb = mats.add(art.emissive_mat(Color::srgb(1.0, 0.2, 0.15), 9.0));

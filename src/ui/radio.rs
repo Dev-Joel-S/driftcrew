@@ -129,6 +129,10 @@ fn listen(
                     log.push(l);
                 }
             }
+            // Geschichte: Kapitel, Monumente – mit Absender.
+            SimEvent::Story { speaker, text } => {
+                log.push(format!("{speaker}: {text}"));
+            }
             SimEvent::Undocked => {
                 if let Some(owner) = log.last_owner {
                     log.counter += 1;
@@ -171,7 +175,9 @@ fn listen(
     for l in &mut log.lines {
         l.1 += dt;
     }
-    log.lines.retain(|l| l.1 < SHOW_SECONDS);
+    // Lange Funksprüche (Geschichte) bleiben länger stehen.
+    log.lines
+        .retain(|l| l.1 < SHOW_SECONDS + l.0.chars().count() as f32 / 22.0);
     if log.lines.len() != before {
         log.dirty = true;
     }

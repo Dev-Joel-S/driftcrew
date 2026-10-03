@@ -6,6 +6,7 @@ pub mod meshes;
 pub mod npc_vis;
 pub mod overlay;
 pub mod ship_vis;
+pub mod story_vis;
 pub mod textures;
 pub mod world_vis;
 
@@ -47,6 +48,7 @@ impl Plugin for RenderPlugin {
                     world_vis::spawn_background,
                     world_vis::spawn_dust,
                     npc_vis::spawn_traffic_props,
+                    story_vis::spawn_monuments,
                 ),
             )
             .add_systems(
@@ -66,6 +68,7 @@ impl Plugin for RenderPlugin {
                     ship_vis::blink_nav_lights,
                     world_vis::update_pad_lights,
                     world_vis::update_stage_vis,
+                    story_vis::update_monuments,
                     course_vis::update_gate_caps,
                 )
                     .chain(),

@@ -9,13 +9,15 @@ fn ore_index(ore: Ore) -> usize {
     Ore::ALL.iter().position(|o| *o == ore).unwrap_or(0)
 }
 
-/// Was etwas kostet (außer Credits auch Material aus dem Lager, Bauteile, ein Artefakt).
+/// Was etwas kostet (außer Credits auch Material aus dem Lager, Bauteile). Ein Artefakt ist
+/// kein Preis, sondern ein Schlüssel: es muss in der Sammlung sein und bleibt dort
+/// (`"*"` = irgendeines).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Cost {
     pub credits: u32,
     pub materials: Vec<(Ore, f32)>,
     pub parts: u32,
-    pub artifact: bool,
+    pub key: Option<String>,
 }
 
 impl Cost {
@@ -36,8 +38,18 @@ impl Cost {
                 }
             ));
         }
-        if self.artifact {
-            v.push("1 Artefakt".into());
+        match self.key.as_deref() {
+            Some("*") => v.push("Schlüssel: ein Artefakt".into()),
+            Some(id) => {
+                // Kennung lesbar machen („antriebskristall“ → „Antriebskristall“).
+                let mut c = id.chars();
+                let name: String = c
+                    .next()
+                    .map(|f| f.to_uppercase().chain(c).collect())
+                    .unwrap_or_default();
+                v.push(format!("Schlüssel: {name}"));
+            }
+            None => {}
         }
         v.join(" · ")
     }
@@ -74,8 +86,17 @@ impl SimState {
                 self.crew.storage_parts, cost.parts
             ));
         }
-        if cost.artifact && self.crew.artifacts.is_empty() {
-            return Err("Braucht ein Artefakt".into());
+        match cost.key.as_deref() {
+            Some("*") if self.crew.artifacts.is_empty() => {
+                return Err("Braucht ein Artefakt in der Sammlung".into());
+            }
+            Some(id) if id != "*" && !self.crew.artifacts.iter().any(|a| a == id) => {
+                return Err(format!(
+                    "Braucht das Artefakt {} in der Sammlung",
+                    self.artifact_name(id)
+                ));
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -87,9 +108,6 @@ impl SimState {
             *s = (*s - t).max(0.0);
         }
         self.crew.storage_parts = self.crew.storage_parts.saturating_sub(cost.parts);
-        if cost.artifact && !self.crew.artifacts.is_empty() {
-            self.crew.artifacts.remove(0);
-        }
     }
 
     /// Module, die an einem Schiff angebaut sind: (Bauplatz, Modul).

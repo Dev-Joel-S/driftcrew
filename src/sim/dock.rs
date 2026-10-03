@@ -165,6 +165,7 @@ impl SimState {
         if let Owner::Station(si) = owner {
             self.crew.home_station = si;
             self.charge_dock_fee(si);
+            self.story_docked(si);
         }
         self.on_docked(owner);
     }
@@ -263,10 +264,13 @@ impl SimState {
         });
         self.events.push(SimEvent::ShipDestroyed);
 
-        // Rettungskapseln treiben wieder frei, Erz und Container sind verloren.
+        // Rettungskapseln treiben wieder frei, Erz und Container sind verloren, Artefakte
+        // bleiben im Wrack (oder kehren an ihren Fundort zurück).
         let cargo = self.ship.remove_cargo(|_| true);
+        let mut artifacts = Vec::new();
         for item in cargo {
             match item.kind {
+                CargoKind::Artifact { id } => artifacts.push(id),
                 CargoKind::Capsule { mission } => {
                     let id = self.next_id();
                     let a = self.rng.range(0.0, std::f32::consts::TAU);
@@ -293,6 +297,8 @@ impl SimState {
                 CargoKind::Ore(_) | CargoKind::Salvage { .. } => {}
             }
         }
+        let vel = self.ship.vel;
+        self.story_ship_lost(artifacts, pos, vel);
         let gross = self.salvage_fee_gross();
         let fee = self.salvage_fee_now();
         self.crew.credits -= fee;

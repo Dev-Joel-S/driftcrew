@@ -36,7 +36,10 @@ eigener Name, eigener Look, alle Grafiken und Klänge werden beim Start prozedur
 | ![Upgrades pro Schiffsteil](docs/screenshots/upgrades_teile.jpg) | ![Händlerin Juno landet im Leitstrahl](docs/screenshots/verkehr_leitstrahl.jpg) |
 | ![Piratendrohnen am Nest](docs/screenshots/piraten.jpg) | ![Geleitschutz mit Hinterhalt](docs/screenshots/geleitschutz.jpg) |
 | ![Zollscan beim Schmuggeln](docs/screenshots/zollscan.jpg) | ![Sonderangebot der Händlerin](docs/screenshots/haendlerin.jpg) |
-| ![Karte mit Verkehr und Piratennest](docs/screenshots/karte_verkehr.jpg) | |
+| ![Karte mit Verkehr und Piratennest](docs/screenshots/karte_verkehr.jpg) | ![Fremdes Signal: ein Artefakt](docs/screenshots/artefakt_signal.jpg) |
+| ![Signalturm in Resonanz](docs/screenshots/signalturm_resonanz.jpg) | ![Der Signalturm erwacht](docs/screenshots/signalturm_erwacht.jpg) |
+| ![Das Tor am Schlund ist offen](docs/screenshots/tor_offen.jpg) | ![Karte mit Monumenten und Fundorten](docs/screenshots/karte_geschichte.jpg) |
+| ![Logbuch](docs/screenshots/logbuch.jpg) | |
 
 *(Screenshots aus dem automatischen Vorführmodus, gerendert mit Software-Vulkan.)*
 
@@ -317,8 +320,28 @@ Pausemenü beendet den Lauf ohne Wertung; durch das eigene Starttor fliegen star
 - **Upgrades pro Schiffsteil** (Triebwerke, Hülle, Schild, Fracht, Kran, Bohrer, Kanone,
   Scanner, Tank, Bordsysteme) in bis zu drei Stufen. Jedes hat einen Nachteil: Zusatzmasse am
   betroffenen Teil (Panzerung macht träge, der Zusatztank zieht den Schwerpunkt nach hinten).
-  Kosten: Credits plus Material aus dem Lager, höhere Stufen auch Bauteile, die stärkste Stufe
-  ein Artefakt. Gekauft wird über die Abstimmung.
+  Kosten: Credits plus Material aus dem Lager, höhere Stufen auch Bauteile; die stärkste Stufe
+  braucht ein bestimmtes Artefakt in der Sammlung als Schlüssel (es wird nicht verbraucht).
+  Gekauft wird über die Abstimmung.
+
+### Geschichte: das Signal, Artefakte, Monumente
+
+Aus der Gravitationsanomalie kommt ein Muster, das kein Rauschen ist. Nach dem ersten Auftrag
+meldet sich das verstummte Relais Ost per Funk – der Anfang eines roten Fadens in vier Kapiteln.
+Neue Kapitel beginnen, wenn Ruf und Sammlung reichen; das Ende ist offen.
+
+- **Artefakte** liegen pro Spielstand genau einmal irgendwo im Sektor (der Seed des
+  Spielstands wählt die Orte). Der **Scanner** zeigt sie als „Fremdes Signal“. An Bord haben sie
+  Masse und eine Nebenwirkung – einer stört die Instrumente, einer lockt Piraten, einer heizt
+  den Tank leer, einer bringt das Schiff ins Trudeln. Erst an einer Station abgeliefert, gehören
+  sie zur **Sammlung** der Crew. Wird das Schiff mit einem Artefakt an Bord zerstört, bleibt es
+  im Wrack (im Logbuch abschaltbar).
+- **Monumente:** Ein Signalturm und ein verschlossenes Tor, gebaut aus fremdem Stein. Sie
+  glimmen, wenn Artefakte in der Nähe sind, und erwachen bei einem Scan, wenn die Sammlung groß
+  genug ist.
+- **Logbuch** (Pausemenü): Kapitel, Artefakte und Funde – Archive öffnen sich beim ersten
+  Andocken, Bordbücher in Wracks und Funkfetzen fängt der Scanner auf. Gezählt wird „X von Y“,
+  ohne zu verraten, wo der Rest liegt.
 
 ### Geld: Gebühren, Versicherung, Kredit, Markt
 
@@ -420,6 +443,9 @@ in die Binärdatei eingebettet; liegt `assets/data/` im Arbeitsverzeichnis (z. B
   Die Bauplätze selbst stehen in `ships.ron` (`mounts`).
 - `courses.ron` – Parcours aus Schritten (`Gate`, `Pass`, `Face`, `Hold`, `Dock`) mit Hinweisen,
   Medaillenzeiten und Prämien, Strafzeiten und die Orte für Messflüge.
+- `story.ron` – Geschichte: Artefakte (Masse, Nebenwirkung), mögliche Fundorte, Logbuch-Einträge
+  mit ihrer Quelle (Station, Wrack, Funkfetzen an einem Ort, Fund, Kapitel, Monument), Kapitel
+  (Voraussetzungen, Ziel, Funksprüche, Prämie) und Monumente als Raster (`o` = Tor-Block).
 - `traffic.ron` – NPC-Verkehr: Andockplätze mit Anflugwegen, Frachter mit Routen, Piratennester,
   Schürfroboter, Zollbojen, Händlerin mit Sortiment, Rivalen-Crew, Schiff und Hinterhalt für
   Geleitschutz. Die NPC-Schiffe selbst (`drohne`, `schuerfer` und alle Crew-Schiffe) stehen in
@@ -446,6 +472,7 @@ src/
     sector.rs   Sektoreffekte, Zufallsereignisse, Scanner-Impulse, Kartendaten
     precision.rs Präzisionsarbeit (Erzadern, Wrackverbindungen)
     project.rs  Wiederaufbau von Stationen in Etappen
+    story.rs    Geschichte: Artefakte, Logbuch, Kapitel, Monumente
     npc.rs      NPC-Schiffe: Leitstrahl, Wegfindung um Hindernisse, Frachter, Drohnen,
                 Schürfer, Konvois, Händlerin, Rivalen, Zollbojen
     world.rs    Stationen aus Rastern, Planeten, Plattformen, Landezonen, Anomalien
@@ -467,7 +494,8 @@ Damit ist der Weg zu Rollback-Netcode vorbereitet.
 
 **Vorführmodus:** `DRIFTCREW_DEMO=<ordner> DRIFTCREW_SCENE=<szene> cargo run` fliegt ein
 Skript ab, speichert Screenshots und beendet sich. Szenen: `tour`, `ui`, `systems`, `progress`,
-`coop`, `sectors`, `rules`, `rebuild`, `courses`, `finance`, `minigames`, `workshop`, `traffic`.
+`coop`, `sectors`, `rules`, `rebuild`, `courses`, `finance`, `minigames`, `workshop`, `traffic`,
+`story`.
 
 ---
 

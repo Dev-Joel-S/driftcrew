@@ -895,6 +895,14 @@ fn pois(sim: &SimState) -> Vec<Poi> {
             round: true,
         });
     }
+    for m in sim.world.monuments.iter().filter(|m| sim.discovered(m.pos)) {
+        v.push(Poi {
+            pos: m.pos,
+            color: srgb(m.accent_color),
+            size: 9.0,
+            round: false,
+        });
+    }
     for an in sim.world.anomalies.iter().filter(|a| sim.discovered(a.pos)) {
         v.push(Poi {
             pos: an.pos,
@@ -1222,7 +1230,10 @@ fn update_markers(
     // Scanner-Funde im Bild beschriften (nur Wracks und Vorkommen, sonst wird es zu voll).
     for b in &s.blips {
         use crate::sim::sector::BlipKind;
-        if !matches!(b.kind, BlipKind::Wreck | BlipKind::Deposit(_)) {
+        if !matches!(
+            b.kind,
+            BlipKind::Wreck | BlipKind::Deposit(_) | BlipKind::Signal
+        ) {
             continue;
         }
         let on_screen = cam
@@ -1234,6 +1245,26 @@ fn update_markers(
                 b.pos,
                 b.kind.label(),
                 Color::srgb(0.35, 0.95, 0.9),
+                false,
+            );
+        }
+    }
+    // Monumente beschriften, sobald entdeckt und im Bild.
+    for m in &s.world.monuments {
+        if !s.discovered(m.pos) {
+            continue;
+        }
+        let anchor = m.pos + Vec2::Y * ((m.bounds.max.y - m.bounds.min.y) * 0.5 + 6.0);
+        let on_screen = cam
+            .world_to_viewport(cam_t, anchor.extend(0.0))
+            .is_ok_and(|v| v.x > 0.0 && v.y > 0.0 && v.x < size.x && v.y < size.y);
+        if on_screen {
+            let state = if m.awake { "erwacht" } else { "schlafend" };
+            add(
+                &mut commands,
+                anchor,
+                format!("{} · {state}", m.name),
+                srgb(m.accent_color),
                 false,
             );
         }

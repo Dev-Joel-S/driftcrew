@@ -55,6 +55,18 @@ pub struct GameCamera;
 
 pub struct GamePlugin;
 
+/// Seed für die Geschichte eines neuen Spielstands (wo die Artefakte liegen). Im Vorführmodus
+/// fest, damit Screenshots reproduzierbar sind.
+pub fn story_seed() -> u64 {
+    if std::env::var("DRIFTCREW_DEMO").is_ok() {
+        return 0;
+    }
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0)
+}
+
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         let data = match GameData::load() {
@@ -63,7 +75,7 @@ impl Plugin for GamePlugin {
         };
         let (save, has_save) = match load_save() {
             Some(s) => (s, true),
-            None => (CrewSave::new_game(&data), false),
+            None => (CrewSave::new_game_seeded(&data, story_seed()), false),
         };
         let def = data.ship(&save.current_ship).clone();
         let sim = SimState::new(data.clone(), &save, Loadout::full(&def), 1);

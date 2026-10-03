@@ -120,6 +120,8 @@ impl SimState {
         if amount <= 0.0 || self.ship.fuel_empty() {
             return;
         }
+        // Ein warmes Artefakt im Frachtraum treibt den Verbrauch hoch.
+        let amount = amount * self.artifact_heat();
         self.ship.fuel = (self.ship.fuel - amount).max(0.0);
         let frac = self.ship.fuel / self.ship.max_fuel.max(1.0);
         if self.ship.fuel_empty() && self.fuel_warned < 2 {

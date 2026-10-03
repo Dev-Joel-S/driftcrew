@@ -816,6 +816,9 @@ pub struct UpgradeDef {
     pub parts: u32,
     #[serde(default)]
     pub artifact: bool,
+    /// Schlüssel: dieses Artefakt muss in der Sammlung der Crew sein (wird nicht verbraucht).
+    #[serde(default)]
+    pub key: Option<String>,
     /// Nur bei dieser Person zu haben (Kennung aus npcs.ron) – an ihrem Ort.
     #[serde(default)]
     pub vendor: Option<String>,
@@ -1298,6 +1301,156 @@ pub struct RivalDef {
 }
 
 // ---------------------------------------------------------------------------
+// Geschichte: Artefakte, Logbuch, Kapitel, Monumente
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct StoryDef {
+    pub artifacts: Vec<ArtifactDef>,
+    /// Mögliche Fundorte; pro Spielstand wählt der Seed einen je Artefakt.
+    pub artifact_sites: Vec<P>,
+    pub logs: Vec<LogDef>,
+    pub chapters: Vec<ChapterDef>,
+    pub monuments: Vec<MonumentDef>,
+}
+
+/// Artefakt: einmalig pro Spielstand, mit Masse und Nebenwirkung, solange es an Bord ist.
+#[derive(Deserialize, Clone, Debug)]
+pub struct ArtifactDef {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub mass: f32,
+    #[serde(default)]
+    pub effect: ArtifactEffect,
+    pub color: String,
+    /// Für den Scanner unsichtbar (kein Signal).
+    #[serde(default)]
+    pub hidden: bool,
+}
+
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Default)]
+pub enum ArtifactEffect {
+    #[default]
+    None,
+    /// Stört Radar und Scanner (Anteil 0..1).
+    Jam(f32),
+    /// Zieht Piraten an (Nester reagieren auf größere Entfernung, Drohnen greifen früher an).
+    Lure,
+    /// Wärmt sich auf: Treibstoffverbrauch (Faktor).
+    Heat(f32),
+    /// Unruhig: kleine Drehstöße (rad/s² Spitze).
+    Spin(f32),
+}
+
+impl ArtifactEffect {
+    pub fn label(&self) -> String {
+        match self {
+            ArtifactEffect::None => "keine spürbare Wirkung".into(),
+            ArtifactEffect::Jam(_) => "stört Radar und Scanner".into(),
+            ArtifactEffect::Lure => "zieht Piraten an".into(),
+            ArtifactEffect::Heat(f) => {
+                format!(
+                    "heizt den Frachtraum auf: +{:.0} % Treibstoff",
+                    (f - 1.0) * 100.0
+                )
+            }
+            ArtifactEffect::Spin(_) => "bringt das Schiff ins Trudeln".into(),
+        }
+    }
+}
+
+/// Logbuch-Eintrag und wo er auftaucht.
+#[derive(Deserialize, Clone, Debug)]
+pub struct LogDef {
+    pub id: String,
+    pub title: String,
+    pub text: String,
+    pub source: LogSource,
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+pub enum LogSource {
+    /// Archiv einer Station, beim ersten Andocken.
+    Station(String),
+    /// Bordbuch in einem Wrack (Name aus world.ron), mit dem Scanner ausgelesen.
+    Wreck(String),
+    /// Funkfetzen an einem Ort, mit dem Scanner aufgefangen.
+    Echo { pos: P, radius: f32 },
+    /// Beim Bergen eines Artefakts.
+    Artifact(String),
+    /// Beim Abschluss eines Kapitels.
+    Chapter(usize),
+    /// Beim Wecken eines Monuments.
+    Monument(String),
+}
+
+impl LogSource {
+    pub fn category(&self) -> &'static str {
+        match self {
+            LogSource::Station(_) => "Archiv",
+            LogSource::Wreck(_) => "Bordbuch",
+            LogSource::Echo { .. } => "Funkfetzen",
+            LogSource::Artifact(_) => "Artefakt",
+            LogSource::Chapter(_) => "Kapitel",
+            LogSource::Monument(_) => "Monument",
+        }
+    }
+}
+
+/// Kapitel des roten Fadens: startet, sobald Ruf und Sammlung reichen, und endet mit dem Ziel.
+#[derive(Deserialize, Clone, Debug)]
+pub struct ChapterDef {
+    pub title: String,
+    /// Wer sich meldet und was gesagt wird, wenn das Kapitel beginnt.
+    pub speaker: String,
+    pub intro: String,
+    /// Kurze Zielbeschreibung fürs Logbuch.
+    pub task: String,
+    /// Voraussetzungen: erledigte Aufträge, Ruf (Summe über alle Stationen), Sammlung.
+    #[serde(default)]
+    pub missions: u32,
+    #[serde(default)]
+    pub reputation: u32,
+    #[serde(default)]
+    pub artifacts: u32,
+    pub goal: ChapterGoal,
+    pub reward: u32,
+    pub outro: String,
+}
+
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+pub enum ChapterGoal {
+    /// Mit dem Scanner in der Nähe eines Ortes auffangen.
+    Scan { pos: P, radius: f32 },
+    /// So viele Artefakte in der Sammlung.
+    Artifacts(u32),
+    /// Ein Monument wecken (Kennung).
+    Monument(String),
+}
+
+/// Großer fester Bau der Vorgänger. Raster wie bei Stationen: `#` Block, `X` Akzent,
+/// `L` Licht, Schrägen `/ \ 7 r`, `o` Tor-Block (verschwindet, wenn das Monument erwacht).
+#[derive(Deserialize, Clone, Debug)]
+pub struct MonumentDef {
+    pub id: String,
+    pub name: String,
+    pub pos: P,
+    pub cell: f32,
+    pub layout: Vec<String>,
+    pub main_color: String,
+    pub accent_color: String,
+    /// So viele Artefakte braucht die Crew, damit ein Scan es weckt.
+    pub artifacts: u32,
+    /// Was das Wecken bewirkt (Text).
+    pub effect: String,
+    /// Weckt das Monument, zeigt die Karte die Fundorte der übrigen Artefakte.
+    #[serde(default)]
+    pub reveals_sites: bool,
+}
+
+// ---------------------------------------------------------------------------
 // Auftraggeber
 // ---------------------------------------------------------------------------
 
@@ -1425,6 +1578,35 @@ pub struct CrewSave {
     /// Angebaute Module pro Schiff: (Schiff, [(Bauplatz, Modul)]).
     #[serde(default)]
     pub builds: Vec<(String, Vec<(String, String)>)>,
+    /// Geschichte: Seed des Spielstands, wo die noch nicht geborgenen Artefakte liegen,
+    /// aktuelles Kapitel, gefundene Logbuch-Einträge, geweckte Monumente, Option für 61f.
+    #[serde(default)]
+    pub story: StorySave,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct StorySave {
+    pub seed: u64,
+    pub artifact_sites: Vec<(String, P)>,
+    pub chapter: usize,
+    pub logs: Vec<String>,
+    pub monuments: Vec<String>,
+    /// Artefakte an Bord bleiben bei Zerstörung im Wrack (sonst zurück an ihren Fundort).
+    pub stay_in_wreck: bool,
+}
+
+impl Default for StorySave {
+    fn default() -> Self {
+        StorySave {
+            seed: 0,
+            artifact_sites: Vec::new(),
+            chapter: 0,
+            logs: Vec::new(),
+            monuments: Vec::new(),
+            stay_in_wreck: true,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -1493,7 +1675,15 @@ impl CrewSave {
             storage_parts: 0,
             artifacts: Vec::new(),
             builds: Vec::new(),
+            story: StorySave::default(),
         }
+    }
+
+    /// Neues Spiel mit eigenem Seed für die Geschichte (wo die Artefakte liegen).
+    pub fn new_game_seeded(data: &GameData, seed: u64) -> Self {
+        let mut s = CrewSave::new_game(data);
+        s.story.seed = seed;
+        s
     }
 }
 
@@ -1512,6 +1702,7 @@ pub struct GameData {
     pub courses: CoursesDef,
     pub modules: Vec<ModuleDef>,
     pub traffic: TrafficDef,
+    pub story: StoryDef,
 }
 
 const SHIPS_RON: &str = include_str!("../../assets/data/ships.ron");
@@ -1523,6 +1714,7 @@ const RADIO_RON: &str = include_str!("../../assets/data/radio.ron");
 const COURSES_RON: &str = include_str!("../../assets/data/courses.ron");
 const MODULES_RON: &str = include_str!("../../assets/data/modules.ron");
 const TRAFFIC_RON: &str = include_str!("../../assets/data/traffic.ron");
+const STORY_RON: &str = include_str!("../../assets/data/story.ron");
 
 fn read_or(name: &str, embedded: &str) -> String {
     let path = std::path::Path::new("assets/data").join(name);
@@ -1546,6 +1738,7 @@ impl GameData {
             courses: parse("courses.ron", &read_or("courses.ron", COURSES_RON))?,
             modules: parse("modules.ron", &read_or("modules.ron", MODULES_RON))?,
             traffic: parse("traffic.ron", &read_or("traffic.ron", TRAFFIC_RON))?,
+            story: parse("story.ron", &read_or("story.ron", STORY_RON))?,
         };
         data.validate()?;
         Ok(data)
@@ -1564,6 +1757,7 @@ impl GameData {
             courses: parse("courses.ron", COURSES_RON)?,
             modules: parse("modules.ron", MODULES_RON)?,
             traffic: parse("traffic.ron", TRAFFIC_RON)?,
+            story: parse("story.ron", STORY_RON)?,
         };
         data.validate()?;
         Ok(data)

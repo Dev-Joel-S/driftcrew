@@ -89,6 +89,7 @@ pub fn solve_contact(
 
 impl SimState {
     pub(crate) fn apply_forces(&mut self) {
+        self.artifact_spin();
         let world_r = self.world.radius;
         if self.ship.docked.is_none() && !self.ship.destroyed {
             let g = self.world.gravity(self.ship.pos);
@@ -141,7 +142,11 @@ impl SimState {
             }
         }
         for i in 0..self.bodies.len() {
-            if matches!(self.bodies[i].kind, BodyKind::Meteor) {
+            // Meteore fliegen gerade, Artefakte folgen keinem Sog (fremde Physik).
+            if matches!(
+                self.bodies[i].kind,
+                BodyKind::Meteor | BodyKind::Artifact { .. }
+            ) {
                 continue;
             }
             let g = self.world.gravity(self.bodies[i].pos);
@@ -529,6 +534,11 @@ impl SimState {
                 },
                 b.mass,
                 format!("Bauteil: {name}"),
+            ),
+            BodyKind::Artifact { id } => (
+                CargoKind::Artifact { id: id.clone() },
+                b.mass,
+                format!("Artefakt: {}", self.artifact_name(id)),
             ),
             _ => return false,
         };

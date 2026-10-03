@@ -139,6 +139,8 @@ pub fn spawn_world(
                     }
                     commands.entity(root).add_child(e);
                 }
+                // Tor-Blöcke gibt es nur an Monumenten (story_vis).
+                CellKind::Door => {}
                 CellKind::Slope(ch) => {
                     let outline = crate::sim::world::slope_outline(ch, st.cell * 0.5);
                     let mesh = art.prism(&mut meshes, &outline, st.cell, 0.42, Some((0.3, 0.22)));
@@ -784,7 +786,7 @@ fn spawn_black_hole(
     ));
 }
 
-fn spawn_beacon(
+pub(crate) fn spawn_beacon(
     commands: &mut Commands,
     art: &mut Art,
     mats: &mut Assets<StandardMaterial>,

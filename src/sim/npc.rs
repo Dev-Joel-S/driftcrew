@@ -509,6 +509,7 @@ impl SimState {
                 .iter()
                 .map(|sp| super::geom::Aabb::around(sp.pos, sp.reach() + 30.0)),
         );
+        v.extend(self.world.monuments.iter().map(|m| m.bounds.expand(14.0)));
         v
     }
 
@@ -1115,7 +1116,13 @@ impl SimState {
                 .map(|n| (n.ship.pos, n.ship.vel)),
             None => {
                 let d = (self.ship.pos - npc.ship.pos).length();
-                (d < DRONE_AGGRO && self.ship.docked.is_none() && !self.ship.destroyed)
+                // Ein Resonanzkern an Bord lockt die Drohnen von weiter her an.
+                let aggro = if self.artifact_lure() {
+                    DRONE_AGGRO * 1.6
+                } else {
+                    DRONE_AGGRO
+                };
+                (d < aggro && self.ship.docked.is_none() && !self.ship.destroyed)
                     .then_some((self.ship.pos, self.ship.vel))
             }
         };
@@ -1483,9 +1490,11 @@ impl SimState {
             return;
         }
         let nests = self.data.traffic.nests.clone();
+        let lure = self.artifact_lure();
         for (ni, n) in nests.iter().enumerate() {
             let c = v(n.center);
-            if (self.ship.pos - c).length() > n.radius + 500.0 {
+            let reach = n.radius + if lure { 1200.0 } else { 500.0 };
+            if (self.ship.pos - c).length() > reach {
                 continue;
             }
             let alive = self
@@ -1493,7 +1502,8 @@ impl SimState {
                 .iter()
                 .filter(|x| x.alive && x.role == Role::Drone { nest: Some(ni) })
                 .count() as u32;
-            if alive >= n.count || self.nest_cooldown.get(ni).copied().unwrap_or(0.0) > self.time {
+            let count = n.count + u32::from(lure);
+            if alive >= count || self.nest_cooldown.get(ni).copied().unwrap_or(0.0) > self.time {
                 continue;
             }
             let a = self.rng.range(0.0, std::f32::consts::TAU);
