@@ -89,7 +89,119 @@ größerer Architekturänderung – dort wird vorher nachgefragt.
 
 ---
 
+## Plan: Änderungswünsche Runde 3 (Punkte 33–63)
+
+Kam während Phase 4 dazu und wird mit den offenen Phasen 5–7 aus Runde 2 zusammengelegt.
+Reihenfolge wie vereinbart: erst Anpassungen an Bestehendem, dann nach Nutzen/Aufwand, die
+großen Architekturthemen nach Rückfrage (beantwortet, siehe „Entscheidungen“).
+Abarbeitung: Phase 5 → 6 → 8 → 7 → 9 → 10 → 11 → 12 → 13.
+
+Abgleich mit dem, was schon da ist:
+
+- **51** Gespeichert wird schon beim Andocken und nach jedem Auftrag (zusätzlich bei Käufen,
+  Verkäufen, Bergung und beim Beenden – bleibt so, schadet nicht). Der Spielstand enthält Kasse,
+  Schiffe, Upgrades, Ruf, Lack und entdeckte Gebiete. „Online beim Host“ kommt mit dem Netzcode.
+- **52** Die Hülle regeneriert schon nicht; Reparatur kostet. Neu: Reparaturdrohnen als Upgrade.
+- **54** Bergung führt schon zur letzten angedockten Station (= letzter Savepoint), Kosten aus
+  der Kasse (Punkt 26).
+- **50** „Keine Bots in Slots“ gilt bereits. NPC-Schiffe (17, 21, 40, 44) sind eigene Weltobjekte
+  mit eigener Steuerung, keine Mitspieler.
+
+### Phase 5 – Koop und Crew
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 24 | Ping pro Spieler | wie geplant (Befehl durch die Simulation, Marker in Spielerfarbe) |
+| 25 | Hot-Join | wie geplant |
+| 50 | Empfohlene Crewgröße | `crew: (min, max)` pro Schiff und pro Auftragsvorlage in den Daten, Anzeige in Werft, Lobby und Auftragsliste |
+
+### Phase 6 – Welt, Ereignisse, Erkunden
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 14 | Sektoren mit Effekten | wie geplant (Trümmer, Nebel, Sonnenwind) |
+| 16 | Zufallsereignisse | wie geplant (Meteoritenschauer, Notsignale, Sonneneruption) |
+| 37 | Scanner/Sonar | neues Werkzeug `Scanner` (Slot): Impuls mit Reichweite, zeigt Wracks, Erzvorkommen, Kapseln; Upgrade für Reichweite |
+| 42 | Kartografie | Scans füllen Sektordaten; an Stationen verkaufbar (Preis nach neuem, unverkauftem Gebiet) |
+
+### Phase 8 – Regeln, Aufträge, Atmosphäre (klein bis mittel)
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 53 | Schild lädt nach | nach einigen Sekunden ohne Treffer, Rate pro Schiff in den Daten |
+| 52 | Reparaturdrohnen | Upgrade: Hülle flickt sich im Flug langsam (nicht über ein Maximum hinaus) |
+| 43 | Zeit- und Sauberkeitsbonus | Bonus, wenn schneller als Richtzeit und/oder ohne Kollision; in der Auswertung ausgewiesen |
+| 39 | Passagiere | Auftrag mit Passagieren: Beschleunigungsspitzen und harte Stöße senken die Bezahlung (Zufriedenheit in der Auswertung) |
+| 46 | Funk beim Andocken | kurze Funksprüche der Station/Auftraggeber beim Anflug und Andocken (Daten) |
+
+### Phase 9 – Finanzen
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 47 | Dockgebühr, Versicherung, Kredit | Dockgebühr je Station (Daten, Ruf senkt sie), Versicherung als Abo pro Auftrag/Tag (übernimmt Teil der Bergung), Schiffskredit in der Werft mit Raten nach jedem Auftrag |
+| 48 | Schwankende Preise | Angebot/Nachfrage je Station: Verkäufe drücken den Preis, er erholt sich langsam; deterministisch, im Spielstand |
+| 49 | Crew-Abrechnung | Auswertung zeigt Einnahmen minus Kosten des Auftrags (Treibstoff, Reparatur, Gebühren); Rest geht in die Kasse |
+
+### Phase 10 – Minispiele für einzelne Slots
+
+Laufen in der Simulation (deterministisch, nur Slot-Tasten als Eingabe), damit sie später auch
+online funktionieren.
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 35 | Reparatur im Takt | Slot-Besitzer drückt im Takt einer Anzeige; Treffer flicken Hülle oder ein ausgefallenes Triebwerk |
+| 36 | Präzisionsarbeit | Bohren: Ertrag hängt von ruhiger Zielhand ab (Zielwinkel-Schwankung), Kran: weiches Anheben gibt Bonus, Ruck kostet |
+| 38 | Andockport hacken | kurzes Tastenmuster an Piraten-/Schmugglerstationen, Fehler lösen Alarm aus |
+
+### Phase 11 – Upgrades, Modulbau, Schiffseditor (Architektur, Rückfrage)
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 55–57 | Upgrades pro Teil mit Nachteil, Material- und Artefaktkosten | Upgrades hängen an Teilen (Triebwerk, Hülle, Schild, Fracht, Kran, Bohrer, Kanone, Scanner), ändern Masse und Schwerpunkt, kosten Credits + Material, starke Stufen + Artefakt; Kauf über Abstimmung |
+| 33 | Modular erweitern (Raft-Prinzip) | Jeder Rumpf hat feste Bauplätze (Daten). Teile aus Material und Bauteilen craften und dort anbauen; Masse/Schwerpunkt/Trägheit rechnen sich wie bisher aus den Teilen |
+| 34 | Schiffseditor | in der Werft: Bauplätze belegen und umbauen; die Belegung steht im Spielstand und lässt sich als RON-Datei exportieren. Neue Rümpfe nur über die Daten |
+
+### Phase 12 – NPC-Schiffe (Architektur, Rückfrage)
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 17 | NPC-Schiffe pendeln und docken | Schiffe mit echter Physik und Autopilot |
+| 21 | Gegner | Piratendrohnen, konkurrierende Schürfroboter |
+| 40 | Eskorte und Konvoi | NPC-Frachter begleiten, Gegner abwehren |
+| 41 | Schmuggel | Kontrollpunkte (Scans), Risiko, hoher Gewinn; Schmugglerstation mit Hack (38) |
+| 44 | Wiederkehrende NPCs | Händler mit Spezialsortiment, Mechaniker (Triebwerkstuning), Rivalen-Crew mit eigenem Schiff, die dieselben Aufträge jagt |
+
+### Phase 13 – Story, Lore, Artefakte, Monumente
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 58 | Lore indirekt | Funkfetzen, Logbücher in Wracks, Stationsnamen: verlassene Kolonien, gescheitertes Terraforming, verstummte Stationen |
+| 45, 59 | Roter Faden | Signal aus einer Anomalie; Kampagne als Auftragskette, Kapitel per Ruf und Artefakten; offenes Ende, Welt läuft weiter |
+| 60, 61e | Logbuch | Texte, Funkmitschnitte, „X von Y gefunden“ ohne Orte |
+| 61, 61a, 62, 63 | Artefakte | je Spielstand genau einmal, Ort per Seed beim Erzeugen festgelegt und gespeichert, kein Respawn; mit Masse und Nebenwirkung (stören Instrumente, ziehen Piraten an); Schlüssel für Kapitel und starke Upgrades |
+| 61d | Monumente | große feste Strukturen (Tor, Signalturm), reagieren auf Artefakte, Scans und Kapitel |
+| 61f | Artefakt bleibt im Wrack | bei Hülle 0 bleibt das Artefakt im Schiffswrack und muss geholt werden (abschaltbar) |
+
+### Phase 7 – Training und Zeitrennen (Rückfrage)
+
+| Nr. | Punkt |
+|---|---|
+| 28 | Trainingsmission Drehen/Bremsen/Andocken |
+| 29 | Zeit-Herausforderungen mit Bestenliste |
+
+---
+
 ## Entscheidungen
+
+- **Runde 3, Rückfragen (beantwortet):**
+  - NPC-Schiffe, Gegner, Eskorte, Rivalen (17, 21, 40, 41, 44): **volle Physik**. Die Simulation
+    führt künftig eine Liste von Schiffen mit derselben Physik; NPCs steuern per Autopilot über
+    echte Triebwerke. Grundlage auch für spätere Online-Crews.
+  - Modulbau und Editor (33, 34): **feste Bauplätze** pro Rumpf (Daten). Der Werft-Editor belegt
+    diese Plätze; kein freies Raster.
+  - Material (33, 55–57): **gemeinsames Crew-Lager** wie die Kasse, an jeder Station befüllbar,
+    in jeder Werft verbaubar.
+  - Training und Zeitrennen (28, 29): **in der offenen Welt** mit Toren, Bestenliste pro Spielstand.
 
 - **Schwerkraft (Punkt 15):** Nur Anomalien und Schwarze Löcher ziehen an. Planeten haben keine
   Anziehung mehr (in Runde 1 hatte ich ihnen welche gegeben). Das Konzept „keine Schwerkraft im
