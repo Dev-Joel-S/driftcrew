@@ -86,6 +86,8 @@ enum Act {
     SelectMount(Option<String>),
     Export,
     Store,
+    /// Eingebautes Upgrade ausbauen und verkaufen (zweimal bestätigen).
+    SellUpgrade(String),
 }
 
 /// Welcher Bauplatz im Werft-Editor gerade gewählt ist (reine Anzeige) und ob der Editor offen
@@ -94,6 +96,8 @@ enum Act {
 pub struct BuildView {
     pub open: bool,
     pub selected: Option<String>,
+    /// Upgrade, dessen Verkauf einmal bestätigt wurde (der zweite Druck verkauft).
+    pub sell_armed: Option<String>,
 }
 
 /// Inhalt des Crew-Lagers in einer Zeile.
@@ -240,6 +244,18 @@ fn build_items(sim: &SimState, sel: &Option<String>, v: &mut Vec<Item<Act>>) {
 }
 
 /// Parcours, die an dieser Station angeboten werden.
+/// Neue Crew an der Station des Grundkurses: Einführung anbieten (optional), bis sie einmal
+/// geschafft ist.
+pub fn intro_course(sim: &SimState) -> Option<usize> {
+    if sim.course.is_some() {
+        return None;
+    }
+    let ci = courses_here(sim)
+        .into_iter()
+        .find(|&c| sim.data.courses.courses[c].id == "grundkurs")?;
+    (sim.records[ci].finished == 0).then_some(ci)
+}
+
 fn courses_here(sim: &SimState) -> Vec<usize> {
     let Some(si) = sim.docked_station() else {
         return Vec::new();
@@ -478,7 +494,8 @@ fn tabs_for(sim: &SimState) -> Vec<Tab> {
     }
 }
 
-fn items_for(sim: &SimState, tab: Tab, sel: &Option<String>) -> Vec<Item<Act>> {
+fn items_for(sim: &SimState, tab: Tab, view: &BuildView) -> Vec<Item<Act>> {
+    let sel = &view.selected;
     let mut v: Vec<Item<Act>> = Vec::new();
     let price_or = |p: &Purchase| sim.purchase_info(p);
     match tab {
@@ -589,10 +606,24 @@ fn items_for(sim: &SimState, tab: Tab, sel: &Option<String>) -> Vec<Item<Act>> {
                     )
                 };
                 let it = if owned {
-                    Item::new(name, Act::Buy(p))
-                        .right("✓ eingebaut")
-                        .enabled(false)
-                        .detail(info)
+                    // Eingebaut: lässt sich zum halben Preis wieder ausbauen und verkaufen.
+                    let armed = view.sell_armed.as_deref() == Some(u.id.as_str());
+                    match sim.upgrade_sale(&u.id) {
+                        Ok(credits) if armed => Item::new(name, Act::SellUpgrade(u.id.clone()))
+                            .right(format!("nochmal: verkaufen +{credits} Cr"))
+                            .detail(format!(
+                                "{info}\nNoch einmal bestätigen: ausbauen und für {credits} Cr verkaufen"
+                            )),
+                        Ok(credits) => Item::new(name, Act::SellUpgrade(u.id.clone()))
+                            .right(format!("✓ eingebaut · {credits} Cr"))
+                            .detail(format!(
+                                "{info}\nAuswählen: ausbauen und verkaufen (halber Preis)"
+                            )),
+                        Err(reason) => Item::new(name, Act::Buy(p))
+                            .right("✓ eingebaut")
+                            .enabled(false)
+                            .detail(format!("{info}\nVerkauf: {reason}")),
+                    }
                 } else {
                     let it = Item::new(name, Act::Buy(p.clone())).right(format!("{} Cr", u.price));
                     match price_or(&p) {
@@ -1179,7 +1210,22 @@ fn station_menu(
     if !view.open {
         view.selected = None;
     }
-    let items = items_for(s, current, &view.selected);
+    let mut items = items_for(s, current, &view);
+    // Ganz oben im ersten Reiter: die Einführung für neue Crews (überspringen = einfach losfliegen).
+    if tab.0 == 0
+        && let Some(ci) = intro_course(s)
+    {
+        let c = &s.data.courses.courses[ci];
+        items.insert(
+            0,
+            Item::new("★ Einführung fliegen (optional)", Act::Course(ci))
+                .right(format!("{} · +{} Cr", c.name, c.prize))
+                .detail(format!(
+                    "{} Zum Überspringen einfach losfliegen – der Kurs bleibt im Reiter Parcours.",
+                    c.intro
+                )),
+        );
+    }
 
     let mut f = focus.0[MENU_STATION];
     // Bestätigen nur per Enter/Start (Gesichtstasten könnten Triebwerke sein).
@@ -1199,6 +1245,15 @@ fn station_menu(
         activate = Some(i);
     }
     focus.0[MENU_STATION] = f.min(items.len().saturating_sub(1));
+    // Verkaufsbestätigung verfällt, sobald ein anderer Eintrag gewählt ist.
+    if let Some(armed) = &view.sell_armed
+        && !matches!(
+            items.get(focus.0[MENU_STATION]).and_then(|it| it.action.as_ref()),
+            Some(Act::SellUpgrade(id)) if id == armed
+        )
+    {
+        view.sell_armed = None;
+    }
     if let Some(i) = activate
         && let Some(it) = items.get(i).filter(|it| it.enabled)
     {
@@ -1219,6 +1274,14 @@ fn station_menu(
                 focus.0[MENU_STATION] = 0;
             }
             Some(Act::Store) => pending.0.push(Command::StoreCargo),
+            Some(Act::SellUpgrade(id)) => {
+                if view.sell_armed.as_ref() == Some(&id) {
+                    view.sell_armed = None;
+                    pending.0.push(Command::SellUpgrade { id });
+                } else {
+                    view.sell_armed = Some(id);
+                }
+            }
             Some(Act::Export) => {
                 let msg = export_layout(s);
                 toasts.push(msg, crate::sim::ToastKind::Info);

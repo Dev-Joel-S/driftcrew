@@ -1,15 +1,16 @@
 //! Gamepads und Joy-Cons: eigene Anbindung an gilrs (ersetzt bevys `GilrsPlugin`).
 //!
 //! Ein einzelner Joy-Con wird zu einem kleinen Standard-Gamepad umgerechnet, damit Menüs, Slots
-//! und Zielen überall gleich funktionieren – quer oder hochkant gehalten:
-//! die vier Gesichtstasten nach ihrer Lage (unten = South, rechts = East …), SL/SR als
-//! Schultertasten, −/+ als Start, Aufnahme/Home als Select, der Stick als linker Stick.
-//! Der Griff lässt sich pro Joy-Con in der Lobby umschalten (Stick drücken).
+//! und Zielen überall gleich funktionieren. Gehalten wird er **hochkant** (wie eine Hälfte eines
+//! Controllers): die vier Tasten nach ihrer Lage (unten = South, rechts = East …), L/ZL bzw.
+//! R/ZR oben, SL/SR an der Schiene, −/+ als Start, Aufnahme/Home als Select, der Stick als
+//! linker Stick – ungedreht, oben ist oben.
 //!
 //! Unter Linux lesen wir Joy-Cons über die evdev-Codes des Kerneltreibers (hid-nintendo): Die
 //! SDL-Zuordnungstabelle in gilrs passt nicht zu den Tasten, die der Treiber meldet (dort wurde
-//! z. B. ← zu Start). Auf anderen Systemen gilt die SDL-Zuordnung (für quer gehaltene Joy-Cons)
-//! und wird von dort aus umgerechnet. Alle anderen Gamepads laufen unverändert durch.
+//! z. B. ← zu Start). Auf anderen Systemen gilt die SDL-Zuordnung – die ist für quer gehaltene
+//! Joy-Cons gedacht und wird hier auf hochkant zurückgedreht. Alle anderen Gamepads laufen
+//! unverändert durch.
 
 use std::sync::RwLock;
 
@@ -24,39 +25,12 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use gilrs::ev::filter::axis_dpad_to_button;
 use gilrs::{EventType, Filter, GilrsBuilder, MappingSource};
-use serde::{Deserialize, Serialize};
 
 /// Welcher Joy-Con.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Side {
     Left,
     Right,
-}
-
-/// Wie ein einzelner Joy-Con gehalten wird.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum Grip {
-    /// Waagerecht, Schiene mit SL/SR oben, Stick links.
-    #[default]
-    Sideways,
-    /// Senkrecht wie eine Hälfte eines normalen Controllers.
-    Upright,
-}
-
-impl Grip {
-    pub fn label(self) -> &'static str {
-        match self {
-            Grip::Sideways => "quer",
-            Grip::Upright => "hochkant",
-        }
-    }
-
-    pub fn toggled(self) -> Self {
-        match self {
-            Grip::Sideways => Grip::Upright,
-            Grip::Upright => Grip::Sideways,
-        }
-    }
 }
 
 /// Tasten eines einzelnen Joy-Cons, benannt nach dem Aufdruck.
@@ -203,72 +177,56 @@ pub fn phys_from_sdl(side: Side, b: GamepadButton) -> Option<Phys> {
     })
 }
 
-/// Joy-Con-Taste → Taste des virtuellen Standard-Gamepads, je nach Griff.
-pub fn virt(side: Side, grip: Grip, p: Phys) -> Option<GamepadButton> {
+/// Joy-Con-Taste → Taste des virtuellen Standard-Gamepads (hochkant gehalten).
+pub fn virt(side: Side, p: Phys) -> Option<GamepadButton> {
     use GamepadButton as G;
-    let b = match (grip, side, p) {
-        // Quer: Lage der vier Tasten, SL/SR als Schultertasten.
-        (Grip::Sideways, Side::Left, Phys::Left) => G::South,
-        (Grip::Sideways, Side::Left, Phys::Down) => G::East,
-        (Grip::Sideways, Side::Left, Phys::Up) => G::West,
-        (Grip::Sideways, Side::Left, Phys::Right) => G::North,
-        (Grip::Sideways, Side::Right, Phys::A) => G::South,
-        (Grip::Sideways, Side::Right, Phys::X) => G::East,
-        (Grip::Sideways, Side::Right, Phys::B) => G::West,
-        (Grip::Sideways, Side::Right, Phys::Y) => G::North,
-        (Grip::Sideways, _, Phys::Sl) => G::LeftTrigger,
-        (Grip::Sideways, _, Phys::Sr) => G::RightTrigger,
-        (Grip::Sideways, _, Phys::Shoulder) => G::LeftTrigger2,
-        (Grip::Sideways, _, Phys::Trigger) => G::RightTrigger2,
-        // Hochkant: Lage wie gedruckt, L/ZL bzw. R/ZR oben, SL/SR an der Schiene.
-        (Grip::Upright, Side::Left, Phys::Up) => G::North,
-        (Grip::Upright, Side::Left, Phys::Right) => G::East,
-        (Grip::Upright, Side::Left, Phys::Down) => G::South,
-        (Grip::Upright, Side::Left, Phys::Left) => G::West,
-        (Grip::Upright, Side::Left, Phys::Shoulder) => G::LeftTrigger,
-        (Grip::Upright, Side::Left, Phys::Trigger) => G::LeftTrigger2,
-        (Grip::Upright, Side::Left, Phys::Sl) => G::RightTrigger,
-        (Grip::Upright, Side::Left, Phys::Sr) => G::RightTrigger2,
-        (Grip::Upright, Side::Right, Phys::X) => G::North,
-        (Grip::Upright, Side::Right, Phys::A) => G::East,
-        (Grip::Upright, Side::Right, Phys::B) => G::South,
-        (Grip::Upright, Side::Right, Phys::Y) => G::West,
-        (Grip::Upright, Side::Right, Phys::Shoulder) => G::RightTrigger,
-        (Grip::Upright, Side::Right, Phys::Trigger) => G::RightTrigger2,
-        (Grip::Upright, Side::Right, Phys::Sl) => G::LeftTrigger,
-        (Grip::Upright, Side::Right, Phys::Sr) => G::LeftTrigger2,
-        (_, _, Phys::Menu) => G::Start,
-        (_, _, Phys::Extra) => G::Select,
-        (_, _, Phys::Stick) => G::LeftThumb,
+    let b = match (side, p) {
+        // Lage wie gedruckt, L/ZL bzw. R/ZR oben, SL/SR an der Schiene.
+        (Side::Left, Phys::Up) => G::North,
+        (Side::Left, Phys::Right) => G::East,
+        (Side::Left, Phys::Down) => G::South,
+        (Side::Left, Phys::Left) => G::West,
+        (Side::Left, Phys::Shoulder) => G::LeftTrigger,
+        (Side::Left, Phys::Trigger) => G::LeftTrigger2,
+        (Side::Left, Phys::Sl) => G::RightTrigger,
+        (Side::Left, Phys::Sr) => G::RightTrigger2,
+        (Side::Right, Phys::X) => G::North,
+        (Side::Right, Phys::A) => G::East,
+        (Side::Right, Phys::B) => G::South,
+        (Side::Right, Phys::Y) => G::West,
+        (Side::Right, Phys::Shoulder) => G::RightTrigger,
+        (Side::Right, Phys::Trigger) => G::RightTrigger2,
+        (Side::Right, Phys::Sl) => G::LeftTrigger,
+        (Side::Right, Phys::Sr) => G::LeftTrigger2,
+        (_, Phys::Menu) => G::Start,
+        (_, Phys::Extra) => G::Select,
+        (_, Phys::Stick) => G::LeftThumb,
         _ => return None,
     };
     Some(b)
 }
 
 /// Umkehrung von [`virt`]: welche Joy-Con-Taste steckt hinter der virtuellen Taste?
-pub fn phys_of(side: Side, grip: Grip, b: GamepadButton) -> Option<Phys> {
-    ALL_PHYS
-        .into_iter()
-        .find(|p| virt(side, grip, *p) == Some(b))
+pub fn phys_of(side: Side, b: GamepadButton) -> Option<Phys> {
+    ALL_PHYS.into_iter().find(|p| virt(side, *p) == Some(b))
 }
 
-/// Stick im Hochkant-Bezug (x zur Schiene bzw. von ihr weg, y zum oberen Ende) → virtueller
-/// linker Stick, so wie man den Joy-Con gerade hält.
-pub fn virt_stick(side: Side, grip: Grip, s: Vec2) -> Vec2 {
-    match (grip, side) {
-        (Grip::Upright, _) => s,
+/// SDL-Zuordnung (Windows/macOS) liefert den Stick quer gedreht – zurück auf hochkant
+/// (x zur Schiene bzw. von ihr weg, y zum oberen Ende). Links und rechts drehen entgegengesetzt.
+pub fn upright_from_sideways(side: Side, v: Vec2) -> Vec2 {
+    match side {
         // Linker Joy-Con quer: das obere Ende zeigt nach links.
-        (Grip::Sideways, Side::Left) => Vec2::new(-s.y, s.x),
+        Side::Left => Vec2::new(v.y, -v.x),
         // Rechter Joy-Con quer: das obere Ende zeigt nach rechts.
-        (Grip::Sideways, Side::Right) => Vec2::new(s.y, -s.x),
+        Side::Right => Vec2::new(-v.y, v.x),
     }
 }
 
-/// Umkehrung von [`virt_stick`] für quer gehaltene Joy-Cons (SDL-Zuordnung).
-pub fn upright_from_sideways(side: Side, v: Vec2) -> Vec2 {
+/// Umkehrung von [`upright_from_sideways`].
+pub fn sideways_from_upright(side: Side, s: Vec2) -> Vec2 {
     match side {
-        Side::Left => Vec2::new(v.y, -v.x),
-        Side::Right => Vec2::new(-v.y, v.x),
+        Side::Left => Vec2::new(-s.y, s.x),
+        Side::Right => Vec2::new(s.y, -s.x),
     }
 }
 
@@ -297,7 +255,7 @@ pub fn joycon_side(vendor: Option<u16>, product: Option<u16>, name: &str) -> Opt
     }
 }
 
-/// Verbundene Joy-Cons mit Seite und Griff. Den Griff hier ändern schaltet um (Lobby).
+/// Verbundene einzelne Joy-Cons und ihre Seite.
 #[derive(Resource, Default, Clone, Debug)]
 pub struct JoyCons(pub Vec<JoyConInfo>);
 
@@ -305,19 +263,6 @@ pub struct JoyCons(pub Vec<JoyConInfo>);
 pub struct JoyConInfo {
     pub pad: Entity,
     pub side: Side,
-    pub grip: Grip,
-}
-
-impl JoyCons {
-    pub fn get(&self, pad: Entity) -> Option<JoyConInfo> {
-        self.0.iter().find(|i| i.pad == pad).copied()
-    }
-
-    pub fn set_grip(&mut self, pad: Entity, grip: Grip) {
-        if let Some(i) = self.0.iter_mut().find(|i| i.pad == pad) {
-            i.grip = grip;
-        }
-    }
 }
 
 /// Spiegel von [`JoyCons`] für Tastenbeschriftungen (die kennen nur Gerät und Taste).
@@ -326,7 +271,7 @@ static LABELS: RwLock<Vec<JoyConInfo>> = RwLock::new(Vec::new());
 /// Beschriftung einer virtuellen Taste, wie sie auf dem Joy-Con steht (None = kein Joy-Con).
 pub fn button_label(pad: Entity, b: GamepadButton) -> Option<String> {
     let info = LABELS.read().ok()?.iter().find(|i| i.pad == pad).copied()?;
-    let p = phys_of(info.side, info.grip, b)?;
+    let p = phys_of(info.side, b)?;
     Some(phys_label(info.side, p).to_string())
 }
 
@@ -342,10 +287,8 @@ struct JoyCon {
     side: Side,
     /// Linux: Tasten über evdev-Codes lesen; sonst über die SDL-Zuordnung (quer).
     evdev: bool,
-    grip: Grip,
-    /// Stick im Hochkant-Bezug.
+    /// Stick, hochkant gehalten: oben = +y.
     stick: Vec2,
-    held: Vec<Phys>,
 }
 
 #[derive(Resource, Default)]
@@ -395,9 +338,8 @@ impl Out<'_> {
     }
 
     fn stick(&mut self, pad: Entity, jc: &JoyCon) {
-        let s = virt_stick(jc.side, jc.grip, jc.stick);
-        self.axis(pad, GamepadAxis::LeftStickX, s.x);
-        self.axis(pad, GamepadAxis::LeftStickY, s.y);
+        self.axis(pad, GamepadAxis::LeftStickX, jc.stick.x);
+        self.axis(pad, GamepadAxis::LeftStickY, jc.stick.y);
     }
 
     fn connection(&mut self, e: GamepadConnectionEvent) {
@@ -413,7 +355,6 @@ fn connect(
     commands: &mut Commands,
     map: &mut PadMap,
     joycons: &mut JoyCons,
-    default_grip: Grip,
     out: &mut Out,
 ) {
     let gp = g.gamepad(id);
@@ -427,14 +368,9 @@ fn connect(
         .get(&id)
         .map(|p| p.entity)
         .unwrap_or_else(|| commands.spawn_empty().id());
-    let grip = joycons.get(entity).map_or(default_grip, |i| i.grip);
     joycons.0.retain(|i| i.pad != entity);
     if let Some(side) = side {
-        joycons.0.push(JoyConInfo {
-            pad: entity,
-            side,
-            grip,
-        });
+        joycons.0.push(JoyConInfo { pad: entity, side });
     }
     let name = match side {
         Some(Side::Left) => "Joy-Con (L)".to_string(),
@@ -448,9 +384,7 @@ fn connect(
             joycon: side.map(|side| JoyCon {
                 side,
                 evdev,
-                grip,
                 stick: Vec2::ZERO,
-                held: Vec::new(),
             }),
         },
     );
@@ -470,14 +404,12 @@ fn connect_present(
     mut gilrs: ResMut<GilrsCell>,
     mut map: ResMut<PadMap>,
     mut joycons: ResMut<JoyCons>,
-    settings: Option<Res<crate::settings::Settings>>,
     mut out: Out,
 ) {
-    let grip = settings.map(|s| s.joycon_grip).unwrap_or_default();
     let g = gilrs.0.get();
     let ids: Vec<gilrs::GamepadId> = g.gamepads().map(|(id, _)| id).collect();
     for id in ids {
-        connect(id, g, &mut commands, &mut map, &mut joycons, grip, &mut out);
+        connect(id, g, &mut commands, &mut map, &mut joycons, &mut out);
     }
     mirror_labels(&joycons);
 }
@@ -491,13 +423,9 @@ fn evdev_code(code: gilrs::ev::Code, kind: u32) -> Option<u16> {
 const EV_KEY: u32 = 1;
 const EV_ABS: u32 = 3;
 
-/// Joy-Con-Taste gedrückt/losgelassen: merken und als virtuelle Taste weitergeben.
-fn joycon_button(pad: Entity, jc: &mut JoyCon, p: Phys, value: f32, out: &mut Out) {
-    jc.held.retain(|h| *h != p);
-    if value > 0.5 {
-        jc.held.push(p);
-    }
-    if let Some(b) = virt(jc.side, jc.grip, p) {
+/// Joy-Con-Taste gedrückt/losgelassen: als virtuelle Taste weitergeben.
+fn joycon_button(pad: Entity, jc: &JoyCon, p: Phys, value: f32, out: &mut Out) {
+    if let Some(b) = virt(jc.side, p) {
         out.button(pad, b, value);
     }
 }
@@ -508,49 +436,20 @@ fn read_pads(
     mut gilrs: ResMut<GilrsCell>,
     mut map: ResMut<PadMap>,
     mut joycons: ResMut<JoyCons>,
-    settings: Option<Res<crate::settings::Settings>>,
     mut out: Out,
 ) {
-    let default_grip = settings.map(|s| s.joycon_grip).unwrap_or_default();
-    // Griff gewechselt (Lobby): gehaltene Tasten loslassen, Stick neu drehen.
-    for pad in map.0.values_mut() {
-        let Some(jc) = &mut pad.joycon else { continue };
-        let Some(info) = joycons.get(pad.entity) else {
-            continue;
-        };
-        if info.grip == jc.grip {
-            continue;
-        }
-        for p in std::mem::take(&mut jc.held) {
-            if let Some(b) = virt(jc.side, jc.grip, p) {
-                out.button(pad.entity, b, 0.0);
-            }
-        }
-        jc.grip = info.grip;
-        out.stick(pad.entity, jc);
-    }
-
     let g = gilrs.0.get();
     while let Some(ev) = g.next_event().filter_ev(&axis_dpad_to_button, g) {
         g.update(&ev);
         match ev.event {
             EventType::Connected => {
-                connect(
-                    ev.id,
-                    g,
-                    &mut commands,
-                    &mut map,
-                    &mut joycons,
-                    default_grip,
-                    &mut out,
-                );
+                connect(ev.id, g, &mut commands, &mut map, &mut joycons, &mut out);
             }
             EventType::Disconnected => {
                 let Some(pad) = map.0.get_mut(&ev.id) else {
                     continue;
                 };
                 if let Some(jc) = &mut pad.joycon {
-                    jc.held.clear();
                     jc.stick = Vec2::ZERO;
                 }
                 out.connection(GamepadConnectionEvent::new(
@@ -616,7 +515,7 @@ fn read_pads(
                         out.stick(e, jc);
                     }
                     Some(jc) => {
-                        let mut v = virt_stick(jc.side, Grip::Sideways, jc.stick);
+                        let mut v = sideways_from_upright(jc.side, jc.stick);
                         match a {
                             gilrs::Axis::LeftStickX => v.x = value,
                             gilrs::Axis::LeftStickY => v.y = value,
@@ -696,45 +595,41 @@ mod tests {
     use GamepadButton as G;
 
     #[test]
-    fn every_joycon_button_has_exactly_one_virtual_button_per_grip() {
+    fn every_joycon_button_has_exactly_one_virtual_button() {
         for side in [Side::Left, Side::Right] {
-            for grip in [Grip::Sideways, Grip::Upright] {
-                let own: Vec<Phys> = ALL_PHYS
-                    .into_iter()
-                    .filter(|p| match p {
-                        Phys::Up | Phys::Down | Phys::Left | Phys::Right => side == Side::Left,
-                        Phys::A | Phys::B | Phys::X | Phys::Y => side == Side::Right,
-                        _ => true,
-                    })
-                    .collect();
-                let mut seen = Vec::new();
-                for p in own {
-                    let b = virt(side, grip, p).expect("jede Taste kommt an");
-                    assert!(!seen.contains(&b), "{side:?} {grip:?}: {b:?} doppelt");
-                    seen.push(b);
-                    assert_eq!(phys_of(side, grip, b), Some(p), "Umkehrung");
-                }
-                // Vier Gesichtstasten, Start und Select gibt es immer – Menüs gehen.
-                for b in [G::South, G::East, G::North, G::West, G::Start, G::Select] {
-                    assert!(seen.contains(&b), "{side:?} {grip:?} ohne {b:?}");
-                }
+            let own: Vec<Phys> = ALL_PHYS
+                .into_iter()
+                .filter(|p| match p {
+                    Phys::Up | Phys::Down | Phys::Left | Phys::Right => side == Side::Left,
+                    Phys::A | Phys::B | Phys::X | Phys::Y => side == Side::Right,
+                    _ => true,
+                })
+                .collect();
+            let mut seen = Vec::new();
+            for p in own {
+                let b = virt(side, p).expect("jede Taste kommt an");
+                assert!(!seen.contains(&b), "{side:?}: {b:?} doppelt");
+                seen.push(b);
+                assert_eq!(phys_of(side, b), Some(p), "Umkehrung");
+            }
+            // Vier Gesichtstasten, Start und Select gibt es immer – Menüs gehen.
+            for b in [G::South, G::East, G::North, G::West, G::Start, G::Select] {
+                assert!(seen.contains(&b), "{side:?} ohne {b:?}");
             }
         }
     }
 
     #[test]
-    fn sideways_left_joycon_uses_the_position_of_the_arrow_buttons() {
-        // Quer gehalten liegt ← unten, ↓ rechts, ↑ links, → oben.
-        let s = |p| virt(Side::Left, Grip::Sideways, p);
-        assert_eq!(s(Phys::Left), Some(G::South));
-        assert_eq!(s(Phys::Down), Some(G::East));
-        assert_eq!(s(Phys::Up), Some(G::West));
-        assert_eq!(s(Phys::Right), Some(G::North));
-        assert_eq!(s(Phys::Menu), Some(G::Start));
-        // Hochkant zählt der Aufdruck.
-        let u = |p| virt(Side::Left, Grip::Upright, p);
-        assert_eq!(u(Phys::Down), Some(G::South));
-        assert_eq!(u(Phys::Left), Some(G::West));
+    fn upright_buttons_follow_the_print() {
+        let l = |p| virt(Side::Left, p);
+        assert_eq!(l(Phys::Down), Some(G::South));
+        assert_eq!(l(Phys::Right), Some(G::East));
+        assert_eq!(l(Phys::Up), Some(G::North));
+        assert_eq!(l(Phys::Left), Some(G::West));
+        assert_eq!(l(Phys::Menu), Some(G::Start));
+        let r = |p| virt(Side::Right, p);
+        assert_eq!(r(Phys::B), Some(G::South));
+        assert_eq!(r(Phys::A), Some(G::East));
     }
 
     #[test]
@@ -742,7 +637,7 @@ mod tests {
         // Der Fehler aus dem Test: ← am linken Joy-Con darf nie Start sein.
         let left = phys_from_evdev(Side::Left, BTN_DPAD_LEFT).unwrap();
         assert_eq!(left, Phys::Left);
-        assert_ne!(virt(Side::Left, Grip::Sideways, left), Some(G::Start));
+        assert_ne!(virt(Side::Left, left), Some(G::Start));
         assert_eq!(phys_from_evdev(Side::Left, BTN_SELECT), Some(Phys::Menu));
         assert_eq!(phys_from_evdev(Side::Left, BTN_TR), Some(Phys::Sl));
         assert_eq!(phys_from_evdev(Side::Right, BTN_EAST), Some(Phys::A));
@@ -752,33 +647,30 @@ mod tests {
     }
 
     #[test]
-    fn stick_turns_with_the_grip() {
-        let up = Vec2::Y; // zum oberen Ende des Joy-Cons
-        let rail = Vec2::X; // linker Joy-Con: zur Schiene
+    fn sdl_sticks_are_turned_back_upright_differently_per_side() {
+        // Quer liefert SDL beim linken Joy-Con „nach oben (zum Stick-Ende)“ als links,
+        // beim rechten als rechts – hochkant ist beides wieder oben.
         assert_eq!(
-            virt_stick(Side::Left, Grip::Sideways, up),
-            Vec2::new(-1.0, 0.0)
+            upright_from_sideways(Side::Left, Vec2::new(-1.0, 0.0)),
+            Vec2::Y
         );
         assert_eq!(
-            virt_stick(Side::Left, Grip::Sideways, rail),
-            Vec2::new(0.0, 1.0)
+            upright_from_sideways(Side::Right, Vec2::new(1.0, 0.0)),
+            Vec2::Y
         );
-        assert_eq!(
-            virt_stick(Side::Right, Grip::Sideways, up),
-            Vec2::new(1.0, 0.0)
-        );
-        assert_eq!(virt_stick(Side::Right, Grip::Upright, up), up);
         for side in [Side::Left, Side::Right] {
             let s = Vec2::new(0.3, -0.7);
-            let v = virt_stick(side, Grip::Sideways, s);
+            let v = sideways_from_upright(side, s);
             assert!((upright_from_sideways(side, v) - s).length() < 1e-6);
         }
-        // SDL (quer) und evdev ergeben dieselbe Taste an derselben Stelle.
-        for b in [G::South, G::East, G::North, G::West] {
-            for side in [Side::Left, Side::Right] {
-                let p = phys_from_sdl(side, b).unwrap();
-                assert_eq!(virt(side, Grip::Sideways, p), Some(b));
-            }
+        // SDL (quer) und evdev landen bei derselben Taste.
+        for (side, b, p) in [
+            (Side::Left, G::South, Phys::Left),
+            (Side::Left, G::East, Phys::Down),
+            (Side::Right, G::South, Phys::A),
+            (Side::Right, G::East, Phys::X),
+        ] {
+            assert_eq!(phys_from_sdl(side, b), Some(p));
         }
     }
 

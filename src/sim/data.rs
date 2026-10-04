@@ -746,17 +746,20 @@ pub struct FlightDef {
 
 impl Default for FlightDef {
     fn default() -> Self {
+        // Runde 4, zweiter Spieltest: lange, langsam ausklingende Drift (Fahrt halbiert sich
+        // erst nach ~14 s), nur ein kleiner Stabilisator, schwache Grund-Bremse – mehr Bremskraft
+        // gibt es als Upgrade (Bremsdüsen).
         FlightDef {
             assist_thrust: 0.6,
-            assist_linear_damping: 0.22,
-            assist_angular_damping: 1.0,
-            stabilizer: 2.2,
+            assist_linear_damping: 0.05,
+            assist_angular_damping: 0.35,
+            stabilizer: 0.6,
             assist_turn: 1.8,
-            brake_accel: 7.0,
-            brake_spin: 4.0,
+            brake_accel: 2.0,
+            brake_spin: 1.2,
             brake_fuel: 1.0,
-            reverse_accel: 2.5,
-            reverse_max: 2.0,
+            reverse_accel: 0.8,
+            reverse_max: 1.2,
         }
     }
 }
@@ -891,6 +894,8 @@ pub enum UpgradeEffect {
     CannonDamage(f32),
     /// Kran: Tragkraft – das Seil hält mehr aus (Faktor).
     CraneLoad(f32),
+    /// Bremsdüsen: Bremskraft und Rückwärtsgang (Faktor).
+    Brake(f32),
 }
 
 /// Welches Schiffsteil ein Upgrade betrifft (dort sitzt auch die Zusatzmasse).

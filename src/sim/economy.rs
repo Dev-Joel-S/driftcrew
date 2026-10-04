@@ -118,6 +118,7 @@ pub fn stats_for(data: &GameData, upgrades: &[String]) -> ShipStats {
             UpgradeEffect::CannonRate(m) => s.cannon_rate *= m,
             UpgradeEffect::CannonDamage(m) => s.cannon_damage *= m,
             UpgradeEffect::CraneLoad(m) => s.crane_load *= m,
+            UpgradeEffect::Brake(m) => s.brake_mul *= m,
         }
         if u.mass > 0.0 {
             s.part_mass.push((u.part, u.mass));
@@ -497,6 +498,7 @@ impl SimState {
                 Command::AcceptMission { id } => self.accept_mission(*id),
                 Command::AbandonMission { id } => self.abandon_mission(*id),
                 Command::SellOre => self.sell_ore(),
+                Command::SellUpgrade { id } => self.sell_upgrade(id),
                 Command::SwitchShip { id } => self.switch_ship(id),
                 Command::Ping { player, pos } => self.add_ping(*player, *pos),
                 Command::SellCharts => self.sell_charts(),
@@ -859,7 +861,73 @@ impl SimState {
             ToastKind::Good,
         );
     }
+
+    /// Lässt sich das Upgrade hier ausbauen und verkaufen? Ok = Erlös in Credits.
+    pub fn upgrade_sale(&self, id: &str) -> Result<u32, String> {
+        let st = self
+            .docked_station()
+            .map(|i| &self.world.stations[i])
+            .ok_or("Nicht angedockt")?;
+        if !st.has(Service::Upgrades) {
+            return Err(format!("{} hat keine Upgrade-Werkstatt", st.name));
+        }
+        let u = self.data.upgrade(id).ok_or("Unbekannt")?;
+        if !self.crew.upgrades.iter().any(|x| x == id) {
+            return Err("Nicht eingebaut".into());
+        }
+        // Stufen bauen aufeinander auf: erst die höhere ausbauen.
+        if let Some(dep) = self
+            .crew
+            .upgrades
+            .iter()
+            .filter_map(|x| self.data.upgrade(x))
+            .find(|d| d.requires.as_deref() == Some(id))
+        {
+            return Err(format!("Erst {} ausbauen", dep.name));
+        }
+        // Die Fracht muss danach noch in den Frachtraum passen.
+        let rest: Vec<String> = self
+            .crew
+            .upgrades
+            .iter()
+            .filter(|x| *x != id)
+            .cloned()
+            .collect();
+        let def = self.current_def();
+        let loadout = super::gear::filter_loadout(&def, &self.crew.gear, self.loadout.clone());
+        let cap = super::ship::Ship::build(&def, &loadout, &stats_for(&self.data, &rest))
+            .cargo_capacity();
+        if self.ship.cargo_mass() > cap + 1e-3 {
+            return Err("Erst Fracht verkaufen – sonst passt sie nicht mehr".into());
+        }
+        Ok((u.price as f32 * UPGRADE_RESALE).round() as u32)
+    }
+
+    pub(crate) fn sell_upgrade(&mut self, id: &str) {
+        match self.upgrade_sale(id) {
+            Ok(credits) => {
+                let name = self
+                    .data
+                    .upgrade(id)
+                    .map(|u| u.name.clone())
+                    .unwrap_or_default();
+                self.crew.upgrades.retain(|x| x != id);
+                self.crew.credits += credits;
+                let loadout = self.loadout.clone();
+                self.rebuild_ship(loadout);
+                self.events.push(SimEvent::Sold { credits });
+                self.toast(
+                    format!("{name} ausgebaut und verkauft  +{credits} Credits"),
+                    ToastKind::Good,
+                );
+            }
+            Err(e) => self.toast(e, ToastKind::Warn),
+        }
+    }
 }
+
+/// Ausgebaute Upgrades bringen die Hälfte des Kaufpreises (Material und Bauteile bleiben weg).
+pub const UPGRADE_RESALE: f32 = 0.5;
 
 #[cfg(test)]
 mod tests {
@@ -887,6 +955,42 @@ mod tests {
             commands: vec![Command::Buy { purchase: p, voter }],
             ..Default::default()
         });
+    }
+
+    #[test]
+    fn upgrades_can_be_sold_top_tier_first() {
+        let mut s = sim(1);
+        s.crew.upgrades = vec!["thrust1".into(), "thrust2".into(), "cargo1".into()];
+        let loadout = s.loadout.clone();
+        s.rebuild_ship(loadout);
+        let thrust = s.ship.thrusters[0].thrust;
+        let sell = |s: &mut SimState, id: &str| {
+            s.step(&TickInput {
+                commands: vec![Command::SellUpgrade { id: id.into() }],
+                ..Default::default()
+            });
+        };
+        // Stufe I trägt Stufe II – erst die obere ausbauen.
+        assert!(s.upgrade_sale("thrust1").is_err());
+        let credits = s.crew.credits;
+        let price = s.data.upgrade("thrust2").unwrap().price;
+        sell(&mut s, "thrust2");
+        assert!(!s.crew.upgrades.contains(&"thrust2".to_string()));
+        assert_eq!(s.crew.credits, credits + price / 2);
+        assert!(s.ship.thrusters[0].thrust < thrust, "Schub wieder kleiner");
+        assert!(s.upgrade_sale("thrust1").is_ok());
+        // Volle Fracht: der größere Frachtraum lässt sich nicht verkaufen.
+        let cap = s.ship.cargo_capacity();
+        s.ship.store_item(crate::sim::ship::CargoItem::new(
+            crate::sim::ship::CargoKind::Ore(Ore::Ferrit),
+            cap * 0.9,
+            crate::sim::data::CargoTrait::None,
+        ));
+        assert!(s.upgrade_sale("cargo1").is_err());
+        // Nicht eingebaut oder unterwegs: geht nicht.
+        assert!(s.upgrade_sale("drill1").is_err());
+        s.ship.docked = None;
+        assert!(s.upgrade_sale("thrust1").is_err());
     }
 
     #[test]

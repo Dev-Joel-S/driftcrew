@@ -297,6 +297,36 @@ die Phasen 14–18 den Rest). Phase 19 setzt die Rückmeldungen aus dem ersten S
 
 ## Protokoll
 
+### Runde 4 – Phase 19, Teil 7: Feinschliff nach dem zweiten Spieltest (erledigt)
+
+- Rückmeldung: „Fast perfekt. Am Anfang vielleicht eine Art Tutorial (optional).
+  Stabilisierung und Bremse zu stark: nach dem Schub deutlich länger, aber langsam driften –
+  dafür gibt es ja die Bremse. Bremse/Rückwärtsgang deutlich schlechter, dann upgraden.
+  Upgrades verkaufen. Joysticks immer noch falsch: einfach nur vertikal – rechts ist unten,
+  unten ist rechts; linker und rechter Stick müssen unterschiedlich gedreht werden.“
+- **Joy-Cons nur hochkant:** Die Sticks waren für quer gehaltene Joy-Cons gedreht (Standard),
+  gehalten wurden sie hochkant – linker und rechter Joy-Con drehen quer in entgegengesetzte
+  Richtungen, daher die vertauschten Richtungen. Die Wahl quer/hochkant ist wieder raus, der
+  Stick geht ungedreht durch. Unter Windows (SDL-Zuordnung, für quer gedacht) dreht
+  `pads::upright_from_sideways` je Seite zurück. Einstellung `joycon_grip` entfernt.
+- **Flugassistenz:** `assist_linear_damping` 0,22 → 0,05 (Fahrt halbiert sich erst nach ~14 s),
+  `assist_angular_damping` 1,0 → 0,35, `stabilizer` 2,2 → 0,6.
+- **Bremse schwächer, dafür Upgrades:** `brake_accel` 7 → 2 m/s², `brake_spin` 4 → 1,2,
+  `reverse_accel` 2,5 → 0,8, `reverse_max` 2 → 1,2 m/s. Neue Upgrades (Bordsysteme):
+  **Bremsdüsen I** (×1,8), **Bremsdüsen II** (×1,6), **Gegenschub-Ring** (×1,4) –
+  `UpgradeEffect::Brake`, `Ship::brake_mul`. Rückwärts wächst langsamer mit und bleibt unter
+  2,4 m/s (Landegrenze 2,6).
+- **Upgrades verkaufen:** `Command::SellUpgrade`, `SimState::upgrade_sale` – halber Kaufpreis
+  (nur Credits), nur in einer Upgrade-Werkstatt, höchste Stufe zuerst, Frachtraum-Upgrade nur,
+  wenn die Fracht danach passt. Im Reiter Upgrades: eingebautes Upgrade wählen, zweimal
+  bestätigen.
+- **Einführung:** Der Grundkurs erklärt jetzt auch Abdocken, die Bremse (↓) und das
+  Rückwärts-Aufsetzen. Neue Crews sehen ihn ganz oben im Stationsmenü als „Einführung fliegen
+  (optional)“, bis er einmal geschafft ist; überspringen = einfach losfliegen.
+- Tests: Drift/Stabilisator neu kalibriert, Bremse braucht für 13 m/s gut 6 s, Bremsdüsen
+  verkürzen den Bremsweg (I < ⅔, alle drei < ½ von I), Verkauf (Reihenfolge, Erlös, Fracht,
+  nur angedockt). 170 Tests grün.
+
 ### Runde 4 – Phase 19, Teil 6: Joy-Cons, belegbare Bremse, Bremsdüsen (erledigt)
 
 - Rückmeldung: „Probleme mit dem Controller: man kommt nicht zurück, braucht mindestens zwei

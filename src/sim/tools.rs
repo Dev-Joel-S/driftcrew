@@ -105,8 +105,12 @@ impl SimState {
         self.reversing = false;
         if input.brake && !voting && self.ship.docked.is_none() {
             let fl = &self.data.world.flight;
-            let (acc, spin, fuel) = (fl.brake_accel, fl.brake_spin, fl.brake_fuel);
-            let (rev_acc, rev_max) = (fl.reverse_accel, fl.reverse_max);
+            // Bremsdüsen-Upgrades verstärken alles; die Höchstfahrt rückwärts wächst langsamer
+            // und bleibt unter der Landegrenze.
+            let m = self.ship.brake_mul;
+            let (acc, spin, fuel) = (fl.brake_accel * m, fl.brake_spin * m, fl.brake_fuel);
+            let rev_acc = fl.reverse_accel * m;
+            let rev_max = (fl.reverse_max * (1.0 + (m - 1.0) * 0.4)).min(2.4);
             let v = self.ship.vel.length();
             if !self.reverse_engaged && v < 0.4 && self.ship.ang_vel.abs() < 0.3 {
                 self.reverse_engaged = true;

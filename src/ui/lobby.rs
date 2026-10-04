@@ -289,10 +289,6 @@ fn lobby_input(
     mut sim: ResMut<Sim>,
     mut active: ResMut<ActiveBindings>,
     mut next: ResMut<NextState<AppState>>,
-    (mut joycons, mut settings): (
-        ResMut<crate::pads::JoyCons>,
-        ResMut<crate::settings::Settings>,
-    ),
 ) {
     let def = sim.0.current_def();
     let ts = targets(&def, &sim.0.crew.gear);
@@ -349,34 +345,6 @@ fn lobby_input(
             2.5,
         ));
         state.hold = None;
-        changed = true;
-    }
-
-    // Joy-Con: Stick drücken schaltet zwischen quer und hochkant um. Belegte Tasten bleiben
-    // dieselben Tasten am Gerät.
-    for (e, g, _) in &pads {
-        let Some(info) = joycons.get(e) else { continue };
-        if !g.just_pressed(bevy::input::gamepad::GamepadButton::LeftThumb) {
-            continue;
-        }
-        let grip = info.grip.toggled();
-        for b in &mut crew.bindings {
-            if let Btn::Pad(pe, vb) = b.btn
-                && pe == e
-                && let Some(p) = crate::pads::phys_of(info.side, info.grip, vb)
-                && let Some(nb) = crate::pads::virt(info.side, grip, p)
-            {
-                b.btn = Btn::Pad(e, nb);
-            }
-        }
-        joycons.set_grip(e, grip);
-        settings.joycon_grip = grip;
-        crate::settings::store(&settings);
-        let side = match info.side {
-            crate::pads::Side::Left => "links",
-            crate::pads::Side::Right => "rechts",
-        };
-        state.message = Some((format!("Joy-Con {side}: jetzt {}", grip.label()), 2.5));
         changed = true;
     }
 
@@ -477,8 +445,6 @@ fn draw_lobby(
     mode: Res<LobbyMode>,
     active: Res<ActiveBindings>,
     mut root: Query<(Entity, &mut Signature), With<LobbyRoot>>,
-    joycons: Res<crate::pads::JoyCons>,
-    connected: Query<Entity, With<Gamepad>>,
 ) {
     let Ok((root, mut sig)) = root.single_mut() else {
         return;
@@ -491,17 +457,9 @@ fn draw_lobby(
         .filter(|(_, t)| *t > 0.0)
         .map(|(m, _)| m.clone());
     let hold = state.hold.map(|(b, t)| (b, (t / HOLD_RELEASE * 5.0) as u8));
-    // Verbundene einzelne Joy-Cons mit Griff (links zuerst).
-    let mut jcs: Vec<crate::pads::JoyConInfo> = joycons
-        .0
-        .iter()
-        .filter(|i| connected.contains(i.pad))
-        .copied()
-        .collect();
-    jcs.sort_by_key(|i| (i.side == crate::pads::Side::Right, i.pad));
     let key = format!(
-        "{:?}|{}|{:?}|{:?}|{:?}|{:?}|{:?}",
-        crew.bindings, state.cursor, msg, active.0, *mode, hold, jcs
+        "{:?}|{}|{:?}|{:?}|{:?}|{:?}",
+        crew.bindings, state.cursor, msg, active.0, *mode, hold
     );
     let s = super::sig_of(&key);
     if sig.0 == s {
@@ -649,25 +607,6 @@ fn draw_lobby(
             }
             for pl in players {
                 p.spawn(text(pl, 15.0, TEAL));
-            }
-            for jc in &jcs {
-                let side = match jc.side {
-                    crate::pads::Side::Left => "links",
-                    crate::pads::Side::Right => "rechts",
-                };
-                let tip = match jc.grip {
-                    crate::pads::Grip::Sideways => "SL/SR oben, Stick links",
-                    crate::pads::Grip::Upright => "wie eine Controller-Hälfte",
-                };
-                p.spawn(text(
-                    format!(
-                        "Joy-Con {side}: {} ({tip}) – Stick drücken: {}",
-                        jc.grip.label(),
-                        jc.grip.toggled().label()
-                    ),
-                    13.0,
-                    MUTED,
-                ));
             }
             if let Some(m) = &msg {
                 p.spawn(text(m.clone(), 16.0, BAD));

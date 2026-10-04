@@ -134,17 +134,16 @@ Spielers, mit Beschriftung, was dort ist („Wrack“, „Kepler-Außenposten“
 | Tab / ↑ ↓ / Stick / Klick | anderen Slot markieren |
 | eigene Taste ~1 s halten | Slot abgeben |
 | Rücktaste | letzte Tastatur-Belegung lösen |
-| Stick drücken (Joy-Con) | Joy-Con quer ↔ hochkant |
 | Enter / Start (Joy-Con − / +) | Spiel starten |
 | Esc / Select (Joy-Con Foto / Home) | zurück |
 
 Der letzte Slot **„Bremse / rückwärts“** ist freiwillig: Wer ihn belegt, bremst mit dieser Taste
 wie mit ↓ – gedacht für Geräte ohne Steuerkreuz (einzelner Joy-Con).
 
-**Joy-Cons:** Jeder einzelne Joy-Con ist ein eigenes Crewmitglied und wird wie ein kleines
-Gamepad behandelt – quer (Standard; SL/SR oben, Stick links) oder hochkant, pro Joy-Con in der
-Lobby mit Stick-Druck umschaltbar. Tasten zählen nach ihrer Lage: unten bestätigt, rechts geht
-zurück, − / + wirkt wie Start, Foto / Home wie Select. Beschriftet sind Slots mit dem Aufdruck
+**Joy-Cons:** Jeder einzelne Joy-Con ist ein eigenes Crewmitglied und wird **hochkant**
+gehalten wie eine Hälfte eines Controllers – der Stick zeigt, wohin man ihn drückt. Tasten zählen
+nach ihrer Lage: unten bestätigt, rechts geht zurück, − / + wirkt wie Start, Foto / Home wie
+Select. Beschriftet sind Slots mit dem Aufdruck
 (←, ↓, SL, A …). Unter Linux liest das Spiel einzelne Joy-Cons direkt über die Kernelcodes
 (hid-nintendo), weil die übliche Zuordnungstabelle dort falsche Tasten liefert
 (`src/pads.rs`). Gekoppelte Paare (joycon „Combined“) laufen als normales Gamepad.
@@ -328,9 +327,11 @@ Draußen in der Welt stehen **Tore** mit Pfosten und Leuchtkappen. Wer in Pfeilr
 **Parcours**) und fliegt dann hin. Oben in der Mitte stehen Schritt, Zeit, Strafzeit und ein
 Hinweis; das nächste Ziel leuchtet, ein Pfeil am Rand zeigt die Richtung.
 
-- **Grundkurs** (Training vor Nova) – Starttor, Nase auf eine Boje drehen und halten, Schub durch
-  ein Tor, im Feld zum Stillstand bremsen, an Nova andocken. Einmal geschafft gibt es einen
-  Ausbildungszuschuss.
+- **Grundkurs** (Training vor Nova, zugleich die **Einführung**) – Abdocken, Starttor, Nase auf
+  eine Boje drehen und halten, Schub durch ein Tor, mit ↓ im Feld zum Stillstand bremsen, an Nova
+  andocken (gern rückwärts). Eine neue Crew findet ihn ganz oben im Stationsmenü als
+  „Einführung fliegen (optional)“ – wer lieber gleich losfliegt, fliegt einfach los. Einmal
+  geschafft gibt es einen Ausbildungszuschuss.
 - **Nova-Ring** – einmal um den Hub und mitten durch den Ring.
 - **Dockprüfung** – durch die rechte Öffnung auf die obere Plattform: Versatz zur Mitte und
   Aufsetzgeschwindigkeit kosten Strafsekunden.
@@ -362,6 +363,10 @@ Pausemenü beendet den Lauf ohne Wertung; durch das eigene Starttor fliegen star
   Kosten: Credits plus Material aus dem Lager, höhere Stufen auch Bauteile; die stärkste Stufe
   braucht ein bestimmtes Artefakt in der Sammlung als Schlüssel (es wird nicht verbraucht).
   Gekauft wird über die Abstimmung.
+- **Upgrades verkaufen:** Eingebaute Upgrades lassen sich in jeder Upgrade-Werkstatt wieder
+  ausbauen – zweimal bestätigen, es gibt die Hälfte des Kaufpreises (Material und Bauteile
+  nicht). Stufen bauen aufeinander auf: erst die höchste ausbauen. Ein größerer Frachtraum geht
+  nur, wenn die Fracht danach noch passt.
 
 ### Geschichte: das Signal, Artefakte, Monumente
 
@@ -420,8 +425,12 @@ entscheidet, **Gleichstand bedeutet Nein**. Allein gespielt wird direkt gekauft.
 | ↓ (halten) | Steuerkreuz ↓ (halten) oder belegte Bremstaste | Bremsen; steht das Schiff, weiter halten = langsam rückwärts (Landen). Steuerdüsen zeigen, wohin gebremst wird |
 | F11 | – | Vollbild (wie in den Einstellungen) |
 
-**Flugassistenz** (Standard an): sanfterer Schub, das Schiff rollt aus, ein Stabilisator fängt
-Drehungen ab. In den Einstellungen abschaltbar – dann gilt die reibungsfreie Physik.
+**Flugassistenz** (Standard an): sanfterer Schub, das Schiff driftet nach dem Schub lange weiter
+und rollt nur langsam aus (die Fahrt halbiert sich nach etwa 14 s), ein kleiner Stabilisator
+dämpft Drehungen. In den Einstellungen abschaltbar – dann gilt die reibungsfreie Physik.
+
+**Bremse:** Die Grund-Bremse ist bewusst schwach (2 m/s², rückwärts höchstens 1,2 m/s). Stärker
+wird sie mit den Upgrades **Bremsdüsen I/II** und dem **Gegenschub-Ring** (Bordsysteme).
 
 **Ausrüstung:** Eine neue Crew hat nur Triebwerke, Bohrer und Scanner. Kran, Kanone und
 Schildgenerator gibt es in Werften (Reiter „Upgrades“) oder versteckt in Wracks. Danach eine

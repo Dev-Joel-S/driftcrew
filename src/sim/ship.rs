@@ -39,6 +39,8 @@ pub struct ShipStats {
     pub cannon_rate: f32,
     pub cannon_damage: f32,
     pub crane_load: f32,
+    /// Bremsdüsen: Faktor auf Bremse und Rückwärtsgang.
+    pub brake_mul: f32,
     /// Nachteil der Upgrades: Zusatzmasse pro betroffenem Teil.
     pub part_mass: Vec<(UpgradePart, f32)>,
 }
@@ -61,6 +63,7 @@ impl Default for ShipStats {
             cannon_rate: 1.0,
             cannon_damage: 1.0,
             crane_load: 1.0,
+            brake_mul: 1.0,
             part_mass: Vec::new(),
         }
     }
@@ -325,6 +328,8 @@ pub struct Ship {
     pub ammo: u32,
     pub max_ammo: u32,
     pub ang_damp: f32,
+    /// Bremsdüsen-Upgrades: Faktor auf Bremse und Rückwärtsgang.
+    pub brake_mul: f32,
     pub crane_range: f32,
     pub drill_rate: f32,
     pub fuel: f32,
@@ -514,6 +519,7 @@ impl Ship {
             ammo: max_ammo,
             max_ammo,
             ang_damp: def.angular_damping + stats.gyro,
+            brake_mul: stats.brake_mul,
             crane_range: 20.0 * stats.crane_mul,
             drill_rate: 1.6 * stats.drill_mul,
             fuel: max_fuel,

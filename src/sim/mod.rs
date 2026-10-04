@@ -116,6 +116,10 @@ pub enum Command {
         id: u32,
     },
     SellOre,
+    /// Ein eingebautes Upgrade in der Werkstatt ausbauen und verkaufen (halber Preis).
+    SellUpgrade {
+        id: String,
+    },
     SwitchShip {
         id: String,
     },
@@ -1322,13 +1326,18 @@ mod tests {
         for _ in 0..120 {
             s.step(&TickInput::default());
         }
+        // Lange, langsam ausklingende Drift (zweiter Spieltest): nach 2 s noch fast volle Fahrt.
         let v = s.ship.vel.length();
-        assert!(v < 2.0 && v > 0.5, "rollt sanft aus: {v}");
-        assert!(
-            s.ship.ang_vel.abs() < 0.1,
-            "Stabilisator: {}",
-            s.ship.ang_vel
-        );
+        assert!(v < 3.0 && v > 2.5, "driftet lange weiter: {v}");
+        // Kleiner Stabilisator: die Drehung ist gebremst, aber nicht sofort weg.
+        let w = s.ship.ang_vel.abs();
+        assert!(w < 0.5 && w > 0.02, "Stabilisator: {w}");
+        for _ in 0..(15 * 60) {
+            s.step(&TickInput::default());
+        }
+        let v = s.ship.vel.length();
+        assert!(v < 1.6 && v > 0.8, "nach ~15 s etwa halbiert: {v}");
+        assert!(s.ship.ang_vel.abs() < 0.01);
     }
 
     #[test]
@@ -1345,8 +1354,11 @@ mod tests {
             ..Default::default()
         };
         // Bremsen, bis das Schiff steht (danach legt die gehaltene Taste den Rückwärtsgang ein).
+        // Die Grund-Bremse ist schwach: 13 m/s brauchen gut 6 s.
         let mut stopped = false;
-        for _ in 0..180 {
+        let mut ticks = 0;
+        for _ in 0..(9 * 60) {
+            ticks += 1;
             s.step(&brake);
             if s.reverse_engaged {
                 stopped = true;
@@ -1354,7 +1366,8 @@ mod tests {
             }
             assert!(s.braking && !s.reversing);
         }
-        assert!(stopped, "steht nach kurzer Zeit: {:?}", s.ship.vel);
+        assert!(stopped, "steht irgendwann: {:?}", s.ship.vel);
+        assert!(ticks > 5 * 60, "aber nicht sofort: {ticks}");
         assert!(s.ship.ang_vel.abs() < 0.3);
         assert!(s.ship.fuel < fuel, "kostet Treibstoff");
         assert!(s.ship.thrusters.iter().all(|t| !t.firing));
@@ -1363,6 +1376,55 @@ mod tests {
         assert!(d.ship.docked.is_some());
         d.step(&brake);
         assert!(d.ship.docked.is_some());
+    }
+
+    #[test]
+    fn brake_thruster_upgrades_make_the_brake_stronger() {
+        let stop_ticks = |upgrades: &[&str]| {
+            let mut s = new_sim();
+            s.crew.upgrades = upgrades.iter().map(|u| u.to_string()).collect();
+            let loadout = s.loadout.clone();
+            s.rebuild_ship(loadout);
+            s.flight_assist = false;
+            s.ship.docked = None;
+            s.ship.pos = Vec2::new(0.0, 300.0);
+            s.ship.vel = Vec2::new(10.0, 0.0);
+            let brake = TickInput {
+                brake: true,
+                ..Default::default()
+            };
+            for t in 0..(12 * 60) {
+                s.step(&brake);
+                if s.reverse_engaged {
+                    return t;
+                }
+            }
+            panic!("hält nicht an");
+        };
+        let base = stop_ticks(&[]);
+        let one = stop_ticks(&["brake1"]);
+        let three = stop_ticks(&["brake1", "brake2", "brake3"]);
+        assert!(one < base * 2 / 3, "{one} gegen {base}");
+        assert!(three < one / 2, "{three} gegen {one}");
+        // Rückwärts bleibt auch voll ausgebaut unter der Landegrenze.
+        let mut s = new_sim();
+        s.crew.upgrades = vec!["brake1".into(), "brake2".into(), "brake3".into()];
+        let loadout = s.loadout.clone();
+        s.rebuild_ship(loadout);
+        s.ship.docked = None;
+        s.ship.pos = Vec2::new(0.0, 300.0);
+        let brake = TickInput {
+            brake: true,
+            ..Default::default()
+        };
+        for _ in 0..(6 * 60) {
+            s.step(&brake);
+        }
+        assert!(
+            s.reversing && s.ship.vel.length() < 2.5,
+            "{}",
+            s.ship.vel.length()
+        );
     }
 
     #[test]
