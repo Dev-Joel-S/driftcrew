@@ -1683,7 +1683,13 @@ mod tests {
         s.dock_at_station(to);
         s.on_docked(Owner::Station(to));
         assert!(s.active.is_empty());
-        assert_eq!(s.crew.credits, credits + m.reward);
+        // Grundlohn, dazu womöglich Zeit- und Sauberkeitsbonus.
+        let paid = s.crew.credits - credits;
+        assert!(
+            paid >= m.reward && paid <= m.reward * 13 / 10,
+            "bezahlt {paid} für {}",
+            m.reward
+        );
         assert!(s.ship.cargo_mass() < 1e-4);
     }
 }

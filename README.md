@@ -404,7 +404,16 @@ entscheidet, **Gleichstand bedeutet Nein**. Allein gespielt wird direkt gekauft.
 | Mausrad | – | Zoom |
 | `^` | Stick drücken | Ping |
 | F5 / F6 / F7 / F8 / F9 | Steuerkreuz ↓ / ↓↓ / ← / → / ↑ | Zuruf: Bremsen / Schub aus / Links drehen / Rechts drehen / Werkzeug bereit |
+| ↓ (halten) | Steuerkreuz ↓ (halten) | Bremsassistent: Fahrt und Drehung abbremsen |
 | F11 | – | Vollbild (wie in den Einstellungen) |
+
+**Flugassistenz** (Standard an): sanfterer Schub, das Schiff rollt aus, ein Stabilisator fängt
+Drehungen ab. In den Einstellungen abschaltbar – dann gilt die reibungsfreie Physik.
+
+**Ausrüstung:** Eine neue Crew hat nur Triebwerke, Bohrer und Scanner. Kran, Kanone und
+Schildgenerator gibt es in Werften (Reiter „Upgrades“) oder versteckt in Wracks. Danach eine
+freie Taste drücken – sie steuert dann das neue Werkzeug. Der Schild lädt nicht von selbst:
+Ladung wird wie Munition an Stationen gekauft und ist bei einer Zerstörung weg.
 
 **Einstellungen** (Titel oder Pause): Gesamt-, Effekt- und Musiklautstärke, Vollbild, Ton bei
 Zurufen, Bildschirmwackeln und „Ton testen“. Gespeichert in `settings.ron` neben dem Spielstand.

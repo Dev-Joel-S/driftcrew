@@ -298,6 +298,41 @@ Stand nach Phase 13: Punkte 1–63 sowie 65, 71, 72, 74, 75 sind umgesetzt. Offe
 
 ## Protokoll
 
+### Runde 4 – Phase 19: Rückmeldungen aus dem ersten Test (erledigt)
+
+Rückmeldungen beim Spielen auf NixOS mit Joy-Con, umgesetzt nach kurzer Abstimmung:
+
+- **Lobby:** eigene Taste ~1 s halten = Slot abgeben (Fortschritt sichtbar); Losfliegen mit
+  Enter, Start (+) **oder Select (−)** – vorher konnte ein einzelner linker Joy-Con nicht
+  starten, weil Select „letzten Slot lösen“ war. Klarere Hinweise (Nehmen/Abgeben/Wählen/Los).
+- **Sticks in allen Menüs** wie das Steuerkreuz (mit Wiederholung beim Halten) – nur wenn ein
+  Menü offen ist, im freien Flug zielen sie weiter. Der rechte Joy-Con hat kein Steuerkreuz.
+- **Flugassistenz mit Stabilisator** (Standard an, Einstellungen): 60 % Schub, Fahrt rollt mit
+  22 %/s aus, Drehmoment ×1,8, Drehdämpfung +1/s und ohne Schub +2,2/s (Stabilisator). Aus =
+  reibungsfreie Physik wie bisher. Werte in `world.ron` → `flight`. Grund: „bei leichtem Schub
+  driftet man schon, kann sich kaum drehen, schwebt zu weit“ (Vorbild ΔV: Rings of Saturn).
+- **Bremsassistent** (Entscheidung der Crew: feste Taste statt Bremsdüsen-Slot): ↓ bzw.
+  Steuerkreuz ↓ halten bremst Fahrt (7 m/s²) und Drehung, kostet Treibstoff, dockt nicht ab.
+  Läuft über `TickInput.brake` (deterministisch, auch in der Wiederholung).
+- **Müll:** Deko-Trümmer ohne Kollision entfernt; Deko-Felsen hinter Asteroidenfeldern weit nach
+  hinten (z −120…−260) und abgedunkelt. Echte Trümmer auf ~⅓ (22 statt 70 bei voller Dichte),
+  Splittergürtel 280 → 160, Kobaltschwarm 130 → 85 Brocken (mehr Erzanteil). Regel: was im
+  Vordergrund liegt, ist echt.
+- **Ausrüstung** (`src/sim/gear.rs`): Kran, Kanone, Schildgenerator fehlen einer neuen Crew.
+  Kaufen in Werften (260/380/320 Cr) oder finden: Jäger Rabe (Kanone), Schlepper Albatros
+  (Kran), Frachter Nadir (Schild) – das erste abgerissene Teil (Kran oder Bohrer-Präzisionsarbeit)
+  ist dann die Ausrüstung, goldene Kiste, einsammeln = eingebaut. Ohne Ausrüstung gibt es den
+  Slot nicht; danach übernimmt die nächste freie Taste der Crew das neue Werkzeug im Flug.
+  Alte Spielstände behalten alles. Abschleppen und Sperrgut verlangen einen Kran.
+- **Schild wie Munition:** lädt nicht mehr von selbst (auch nicht aus der Zusatzenergie);
+  Ladung an Stationen kaufen. Munition und Schildladung stehen im Spielstand.
+- **Zerstörung:** Munition und Schildladung sind weg, Geräte bleiben.
+- **Pause:** „Tasten & Slots ändern“ (früher „Slots neu verteilen“).
+- **Leere Gegenden:** Kieselfeld nördlich von Nova, Frostwolke (Ionit) im hohen Norden,
+  Glimmerband (Solarit) im Nordosten, fünf neue Wracks, Sektoren „Polarlicht“ und
+  „Nordostrand“, ein Eisriese im Hintergrund, drei weitere Notruforte.
+- Tests: Flugassistenz, Bremse, Ausrüstung (`gear_tests.rs`, 5) – gesamt 159 grün.
+
 ### Nachtrag: Einstellungen, Musik, Menüklänge (nach Rückmeldung aus dem Test)
 
 - Rückmeldung: „300 Credits beim Start?“, „Einstellungen fehlen“, „keine Sounds“. Ursache für

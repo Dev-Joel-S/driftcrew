@@ -189,3 +189,7 @@ Was sich gegenüber der ersten Fassung geändert hat (Begründungen und Details 
 - **Backlog, Fracht:** Umladen zwischen Frachtmodulen über den Ladeplan im Pausemenü (angedockt sofort, im Flug mit Laufzeit); Rettungen brauchen Frachtraum pro Person *(umgesetzt in Phase 14)*
 - **Backlog, Wiederholung:** nutzt die deterministische Simulation – Schnappschuss alle 2 s plus Eingaben, kein Video *(umgesetzt in Phase 18)*
 - **Backlog, Welt reagiert:** Wirkungen erledigter Aufträge gelten 10 Minuten im Umkreis der Station; Routen stehen als Daten in world.ron *(umgesetzt in Phase 16)*
+- **Runde 4, Flugmodell:** Flugassistenz mit Stabilisator ist Standard (weniger Schub, Ausrollen, kräftigere und abgefangene Drehung); die reibungsfreie Physik bleibt als Einstellung. Grund: aus dem ersten Spieltest „zu glatt“ *(umgesetzt in Phase 19)*
+- **Runde 4, Bremsen:** feste Bremstaste für alle (Bremsassistent) statt eines Bremsdüsen-Slots – bewusste Ausnahme vom reinen Slot-Prinzip *(umgesetzt in Phase 19)*
+- **Runde 4, Ausrüstung:** Kran, Kanone und Schildgenerator gehören nicht mehr zur Grundausstattung, sondern werden gekauft oder in Wracks gefunden; erst dann gibt es den Slot. Bohrer und Scanner sind immer an Bord *(umgesetzt in Phase 19)*
+- **Runde 4, Schild:** keine Selbstladung mehr, Schildladung ist wie Munition ein Verbrauchsgut; bei Zerstörung sind beide weg *(umgesetzt in Phase 19)*
