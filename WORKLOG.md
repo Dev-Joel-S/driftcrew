@@ -223,6 +223,8 @@ Der Rest wird in die bestehenden Phasen einsortiert bzw. bekommt eigene Phasen.
 
 ## Plan: Rest des Backlogs (Phasen 14–18)
 
+Reihenfolge auf Wunsch: 14, 18, 16, 17, zuletzt 15.
+
 Stand nach Phase 13: Punkte 1–63 sowie 65, 71, 72, 74, 75 sind umgesetzt. Offen sind 64, 66
 (zwei Kräne an einer Last), 67–70, 73, 76–82. Reihenfolge wie vereinbart: Energieverwaltung
 (70) und Wiederholung (80) zuletzt.
@@ -260,7 +262,7 @@ Stand nach Phase 13: Punkte 1–63 sowie 65, 71, 72, 74, 75 sind umgesetzt. Offe
 | 81 | Schiffsname und Plaketten | Crew benennt das Schiff (Werft), Plaketten für besondere Bergungen, Monumente, Wiederaufbau – sichtbar am Rumpf und im Logbuch |
 | 82 | Crew-Logbuch | Erlebnisse (erstes Andocken, knappste Rettung, größte Bergung, besuchte Sektoren) automatisch; eigene Notizen und Kartenmarkierungen |
 
-### Phase 18 – Unfall-Wiederholung
+### Phase 18 – Unfall-Wiederholung (erledigt, siehe Protokoll)
 
 | Nr. | Punkt | Umsetzung |
 |---|---|---|
@@ -295,6 +297,21 @@ Stand nach Phase 13: Punkte 1–63 sowie 65, 71, 72, 74, 75 sind umgesetzt. Offe
 ---
 
 ## Protokoll
+
+### Runde 3 – Phase 18: Unfall-Wiederholung (erledigt)
+
+- **80** `src/sim/replay.rs`: Ringpuffer mit einem Zustands-Schnappschuss alle 2 s und den
+  Eingaben jedes Ticks (14 s). Weil die Simulation deterministisch ist, ergibt Schnappschuss +
+  dieselben Eingaben exakt denselben Ablauf (Test vergleicht Position, Winkel, Hülle bitgenau).
+- Auslöser: Zerstörung oder ein Treffer über ein Drittel der Hülle. 0,9 s später (der Knall soll
+  drauf sein) wird ein Ausschnitt von ~9 s angeboten: Banner „Unfall ansehen? Enter / Select“,
+  10 s lang. Ein Druck startet für alle am Bildschirm, Enter/Esc/Start überspringt.
+- Wiedergabe (`game.rs`, `src/ui/replay.rs`): der echte Zustand wird beiseitegelegt, die Kopie
+  spielt die aufgezeichneten Eingaben ab – die Slot-Leiste zeigt dabei, wer was gedrückt hat,
+  weil sie den Zustand der Simulation liest. Die letzten 1,5 s in Zeitlupe. Weitergegeben werden
+  nur Bild- und Tonereignisse (keine Meldungen, kein Speichern, keine Lobby). Eingaben während
+  der Wiedergabe zählen nicht; Speichern beim Beenden nimmt immer den echten Zustand.
+- Tests: 2 neue (139 gesamt). Kurzer Start unter Xvfb ohne Fehler.
 
 ### Runde 3 – Phase 14: Fracht und Bergung (erledigt)
 

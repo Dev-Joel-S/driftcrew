@@ -9,6 +9,7 @@ pub mod map;
 pub mod minigame;
 pub mod pause;
 pub mod radio;
+pub mod replay;
 pub mod report;
 pub mod station;
 pub mod title;
@@ -77,6 +78,7 @@ impl Plugin for UiPlugin {
                 minigame::MinigamePlugin,
                 logbook::LogbookPlugin,
                 cargo::CargoPlanPlugin,
+                replay::ReplayUiPlugin,
             ));
     }
 }

@@ -35,6 +35,7 @@ pub mod precision;
 #[cfg(test)]
 mod progress_tests;
 pub mod project;
+pub mod replay;
 pub mod rng;
 pub mod sector;
 pub mod ship;

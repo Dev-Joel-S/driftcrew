@@ -8,8 +8,9 @@ use bevy::prelude::*;
 
 use crate::input::{ActiveBindings, Aims, Crew, InputLatch, build_tick_input};
 use crate::sim::data::{CrewSave, GameData};
+use crate::sim::replay::{Clip, REPLAY_SECONDS, Recorder};
 use crate::sim::ship::Loadout;
-use crate::sim::{Command, SimEvent, SimState, TICK_HZ};
+use crate::sim::{Command, DT, SimEvent, SimState, TICK_HZ, TickInput};
 
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AppState {
@@ -45,6 +46,92 @@ pub struct PendingCommands(pub Vec<Command>);
 
 #[derive(Resource, Default)]
 pub struct HasSave(pub bool);
+
+/// Unfall-Wiederholung (80): Aufzeichnung, Angebot nach einem Unfall, laufende Wiedergabe.
+#[derive(Resource, Default)]
+pub struct Replay {
+    pub rec: Recorder,
+    /// Ticks bis der Ausschnitt nach einem Unfall genommen wird (der Knall soll mit drauf).
+    pub capture_in: u32,
+    /// Angebotener Ausschnitt und wie lange das Angebot noch steht (Sekunden).
+    pub offer: Option<Clip>,
+    pub offer_left: f32,
+    pub play: Option<Playback>,
+}
+
+/// Laufende Wiedergabe: der echte Zustand wartet, die Kopie spielt die Eingaben noch einmal ab.
+pub struct Playback {
+    pub real: SimState,
+    pub clip: Clip,
+    pub idx: usize,
+    pub frame: u32,
+    /// Nach dem letzten aufgezeichneten Tick noch kurz weiterlaufen lassen.
+    pub hold: f32,
+}
+
+impl Playback {
+    /// Sekunden bis zum Ende der Aufzeichnung (für die Anzeige „−3,2 s“).
+    pub fn left(&self) -> f32 {
+        (self.clip.inputs.len() - self.idx.min(self.clip.inputs.len())) as f32 / TICK_HZ as f32
+    }
+    pub fn progress(&self) -> f32 {
+        self.idx as f32 / self.clip.inputs.len().max(1) as f32
+    }
+    /// Die letzten 1,5 s laufen in halber Geschwindigkeit.
+    pub fn slow(&self) -> bool {
+        self.left() < 1.5
+    }
+}
+
+impl Replay {
+    /// Wiedergabe starten: echten Zustand beiseitelegen, Ausschnitt laden.
+    pub fn start(&mut self, sim: &mut SimState) {
+        let Some(clip) = self.offer.take() else {
+            return;
+        };
+        self.offer_left = 0.0;
+        let real = std::mem::replace(sim, clip.start.clone());
+        self.play = Some(Playback {
+            real,
+            clip,
+            idx: 0,
+            frame: 0,
+            hold: 1.2,
+        });
+    }
+
+    /// Wiedergabe beenden (oder überspringen): zurück zum echten Zustand.
+    pub fn stop(&mut self, sim: &mut SimState) {
+        if let Some(p) = self.play.take() {
+            *sim = p.real;
+        }
+    }
+
+    /// Der echte Spielzustand (auch während einer Wiedergabe).
+    pub fn real<'a>(&'a self, sim: &'a SimState) -> &'a SimState {
+        self.play.as_ref().map_or(sim, |p| &p.real)
+    }
+}
+
+/// Was eine Wiedergabe an Ereignissen weitergibt: nur Bild und Ton, keine Meldungen, kein
+/// Speichern, keine Zustandswechsel.
+fn replay_visible(e: &SimEvent) -> bool {
+    matches!(
+        e,
+        SimEvent::Impact { .. }
+            | SimEvent::ShieldHit { .. }
+            | SimEvent::Damage { .. }
+            | SimEvent::Explosion { .. }
+            | SimEvent::Shot { .. }
+            | SimEvent::ProjectileHit { .. }
+            | SimEvent::CraneFire
+            | SimEvent::CraneAttach { .. }
+            | SimEvent::CraneRelease
+            | SimEvent::ShipDestroyed
+            | SimEvent::DroneDown { .. }
+            | SimEvent::Jettisoned { .. }
+    )
+}
 
 /// Ereignisse der Simulation für Effekte, Sound und UI.
 #[derive(Message, Clone, Debug)]
@@ -89,6 +176,7 @@ impl Plugin for GamePlugin {
             .init_resource::<Paused>()
             .init_resource::<MapOpen>()
             .init_resource::<PendingCommands>()
+            .init_resource::<Replay>()
             .add_message::<SimMsg>()
             .add_systems(
                 FixedUpdate,
@@ -96,10 +184,16 @@ impl Plugin for GamePlugin {
             )
             .add_systems(
                 OnEnter(AppState::Playing),
-                |mut p: ResMut<Paused>, mut m: ResMut<MapOpen>| {
+                |mut p: ResMut<Paused>, mut m: ResMut<MapOpen>, mut r: ResMut<Replay>| {
                     p.0 = false;
                     m.0 = false;
+                    r.rec.clear();
+                    r.offer = None;
                 },
+            )
+            .add_systems(
+                OnExit(AppState::Playing),
+                |mut sim: ResMut<Sim>, mut r: ResMut<Replay>| r.stop(&mut sim.0),
             )
             .add_systems(Update, react_to_events.run_if(in_state(AppState::Playing)))
             .add_systems(Update, toggle_fullscreen)
@@ -127,9 +221,10 @@ fn save_on_exit(
     state: Res<State<AppState>>,
     sim: Res<Sim>,
     has_save: Res<HasSave>,
+    replay: Res<Replay>,
 ) {
     if exit.read().next().is_some() && (*state.get() == AppState::Playing || has_save.0) {
-        write_save(&sim.0.to_save());
+        write_save(&replay.real(&sim.0).to_save());
     }
 }
 
@@ -161,14 +256,73 @@ fn fixed_tick(
     mut pending: ResMut<PendingCommands>,
     scripted: Option<Res<crate::demo::ScriptedSlots>>,
     mut out: MessageWriter<SimMsg>,
+    mut replay: ResMut<Replay>,
 ) {
+    if replay.play.is_some() {
+        play_tick(&mut sim.0, &mut replay, &mut out);
+        // Eingaben während der Wiedergabe zählen nicht.
+        pending.0.clear();
+        latch.0 = 0;
+        return;
+    }
     let mut input = build_tick_input(&bindings, &mut latch, &aims, &keys, &mouse, &pads);
     input.commands = std::mem::take(&mut pending.0);
     if let Some(s) = scripted {
         input.slots |= s.0;
     }
+    replay.rec.before_step(&sim.0);
     sim.0.step(&input);
+    replay.rec.after_step(&sim.0, &input);
+    // Schwerer Unfall: Zerstörung oder ein Treffer, der mehr als ein Drittel der Hülle kostet.
+    let max_hull = sim.0.ship.max_hull;
+    let crash = sim.0.events.iter().any(|e| match e {
+        SimEvent::ShipDestroyed => true,
+        SimEvent::Damage { amount } => *amount >= max_hull * 0.34,
+        _ => false,
+    });
+    if crash && replay.capture_in == 0 {
+        replay.capture_in = (TICK_HZ * 0.9) as u32;
+    }
+    if replay.capture_in > 0 {
+        replay.capture_in -= 1;
+        if replay.capture_in == 0 {
+            replay.offer = replay.rec.clip(REPLAY_SECONDS + 0.9);
+            replay.offer_left = 10.0;
+        }
+    }
+    if replay.offer.is_some() {
+        replay.offer_left -= DT;
+        if replay.offer_left <= 0.0 {
+            replay.offer = None;
+        }
+    }
     for e in sim.0.events.iter() {
+        out.write(SimMsg(e.clone()));
+    }
+}
+
+/// Ein Tick der Wiedergabe (die letzten Sekunden in Zeitlupe).
+fn play_tick(sim: &mut SimState, replay: &mut Replay, out: &mut MessageWriter<SimMsg>) {
+    let Some(p) = replay.play.as_mut() else {
+        return;
+    };
+    p.frame += 1;
+    if p.slow() && p.frame % 2 == 1 {
+        return;
+    }
+    if p.idx < p.clip.inputs.len() {
+        let input = p.clip.inputs[p.idx].clone();
+        p.idx += 1;
+        sim.step(&input);
+    } else {
+        p.hold -= DT;
+        sim.step(&TickInput::default());
+        if p.hold <= 0.0 {
+            replay.stop(sim);
+            return;
+        }
+    }
+    for e in sim.events.iter().filter(|e| replay_visible(e)) {
         out.write(SimMsg(e.clone()));
     }
 }
