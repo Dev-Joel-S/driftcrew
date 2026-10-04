@@ -56,8 +56,8 @@ fn items(sim: &SimState) -> Vec<Item<PauseAct>> {
         );
     }
     v.extend([
-        Item::new("Slots neu verteilen", PauseAct::Redistribute)
-            .detail("Jemand kommt dazu oder fällt aus"),
+        Item::new("Tasten & Slots ändern", PauseAct::Redistribute)
+            .detail("Andere Taste fürs Triebwerk/Werkzeug, jemand kommt dazu oder geht"),
         Item::new("Logbuch", PauseAct::Logbook).detail(format!(
             "Kapitel, Artefakte ({}/{}), Funde ({}/{}) · Tagebuch mit eigenen Notizen",
             sim.crew.artifacts.len(),

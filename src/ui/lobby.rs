@@ -28,12 +28,47 @@ impl Plugin for LobbyPlugin {
                     .chain()
                     .run_if(in_state(AppState::Lobby)),
             )
-            .add_systems(Update, hot_join.run_if(in_state(AppState::Playing)));
+            .init_resource::<NewTools>()
+            .add_systems(
+                Update,
+                (note_new_gear, hot_join)
+                    .chain()
+                    .run_if(in_state(AppState::Playing)),
+            );
     }
+}
+
+/// Werkzeuge, die gerade neu an Bord gekommen sind (gekauft/gefunden) und noch eine Taste
+/// suchen: die nächste freie Taste irgendeines Crewmitglieds übernimmt sie.
+#[derive(Resource, Default)]
+pub struct NewTools(pub Vec<ClaimTarget>);
+
+fn note_new_gear(
+    mut msgs: MessageReader<crate::game::SimMsg>,
+    sim: Res<Sim>,
+    crew: Res<Crew>,
+    mut new: ResMut<NewTools>,
+) {
+    for crate::game::SimMsg(e) in msgs.read() {
+        let crate::sim::SimEvent::GearUnlocked { gear } = e else {
+            continue;
+        };
+        let Some(kind) = gear.tool() else { continue };
+        let def = sim.0.current_def();
+        for (i, (_, _, k)) in def.tool_parts().enumerate() {
+            let t = ClaimTarget::Tool(i);
+            if k == kind && !crew.bindings.iter().any(|b| b.target == t) && !new.0.contains(&t) {
+                new.0.push(t);
+            }
+        }
+    }
+    new.0
+        .retain(|t| !crew.bindings.iter().any(|b| b.target == *t));
 }
 
 /// Hot-Join: Ein Gerät, das noch nicht zur Crew gehört, drückt mitten im Flug eine Taste und
 /// übernimmt damit den nächsten freien Slot. Der Umbau läuft als Befehl durch die Simulation.
+/// Ist gerade ein Werkzeug neu an Bord, übernimmt es die nächste freie Taste der Crew.
 #[allow(clippy::too_many_arguments)]
 fn hot_join(
     keys: Res<ButtonInput<KeyCode>>,
@@ -46,15 +81,43 @@ fn hot_join(
     mut pending: ResMut<crate::game::PendingCommands>,
     mut toasts: ResMut<super::Toasts>,
     mut full_warned: Local<Vec<Device>>,
+    mut new_tools: ResMut<NewTools>,
 ) {
     if paused.0 {
         return;
     }
     let def = sim.0.current_def();
-    let ts = targets(&def);
+    let ts = targets(&def, &sim.0.crew.gear);
     for btn in fresh_claimable(&keys, &mouse, &pads) {
         let device = btn.device();
         if crew.players.iter().any(|p| p.device == device) {
+            // Bekanntes Gerät: nur eine noch freie Taste für ein neues Werkzeug.
+            if new_tools.0.is_empty() || crew.bindings.iter().any(|b| b.btn == btn) {
+                continue;
+            }
+            let target = new_tools.0.remove(0);
+            let player = crew.player_for(device, &pads);
+            crew.bindings.push(Binding {
+                btn,
+                player,
+                target,
+            });
+            let loadout = crew.loadout();
+            pending.0.push(crate::sim::Command::SetLoadout {
+                thrusters: loadout.thrusters,
+                tools: loadout.tools,
+                crew_size: crew.players.len() as u8,
+            });
+            active.0 = crew.resolve(&def);
+            toasts.push(
+                format!(
+                    "{} liegt jetzt auf [{}] (Spieler {})",
+                    target_name(&def, target),
+                    btn.label(),
+                    player + 1
+                ),
+                crate::sim::ToastKind::Good,
+            );
             continue;
         }
         let Some(target) = ts
@@ -121,12 +184,18 @@ struct SlotLabel(usize);
 #[derive(Component)]
 struct SlotLabelLayer;
 
-/// Alle belegbaren Ziele des Schiffs in Belegungsreihenfolge.
-pub fn targets(def: &ShipDef) -> Vec<ClaimTarget> {
+/// Alle belegbaren Ziele des Schiffs in Belegungsreihenfolge – Werkzeuge nur, wenn die Crew
+/// sie hat (Kran und Kanone muss man erst kaufen oder finden).
+pub fn targets(def: &ShipDef, gear: &Option<Vec<crate::sim::data::Gear>>) -> Vec<ClaimTarget> {
     let mut v: Vec<ClaimTarget> = (0..def.max_thrusters() as usize)
         .map(ClaimTarget::Thruster)
         .collect();
-    v.extend((0..def.tool_parts().count()).map(ClaimTarget::Tool));
+    v.extend(
+        def.tool_parts()
+            .enumerate()
+            .filter(|(_, (_, _, k))| crate::sim::gear::tool_owned(gear, *k))
+            .map(|(i, _)| ClaimTarget::Tool(i)),
+    );
     v
 }
 
@@ -166,7 +235,7 @@ fn enter_lobby(
     mut state: ResMut<LobbyState>,
 ) {
     let def = sim.0.current_def();
-    let ts = targets(&def);
+    let ts = targets(&def, &sim.0.crew.gear);
     state.cursor = first_free(&crew, &ts);
     state.backup = (*mode == LobbyMode::Redistribute).then(|| crew.clone());
     state.message = None;
@@ -219,7 +288,7 @@ fn lobby_input(
     mut next: ResMut<NextState<AppState>>,
 ) {
     let def = sim.0.current_def();
-    let ts = targets(&def);
+    let ts = targets(&def, &sim.0.crew.gear);
     if ts.is_empty() {
         return;
     }
@@ -377,7 +446,7 @@ fn draw_lobby(
         return;
     };
     let def = sim.0.current_def();
-    let ts = targets(&def);
+    let ts = targets(&def, &sim.0.crew.gear);
     let msg = state
         .message
         .as_ref()
@@ -505,6 +574,21 @@ fn draw_lobby(
                 )
             };
             p.spawn(text(status.0, 15.0, status.1));
+            let missing: Vec<&str> = crate::sim::data::Gear::ALL
+                .iter()
+                .filter(|g| !sim.0.has_gear(**g))
+                .map(|g| g.label())
+                .collect();
+            if !missing.is_empty() {
+                p.spawn(text(
+                    format!(
+                        "Noch nicht an Bord: {} – in der Werft kaufen oder in Wracks finden",
+                        missing.join(", ")
+                    ),
+                    13.0,
+                    MUTED,
+                ));
+            }
             let players: Vec<String> = crew
                 .players
                 .iter()

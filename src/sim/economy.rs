@@ -29,6 +29,8 @@ pub enum Purchase {
     /// Sonderangebot der Händlerin (Index in `traffic.ron`, merchant.goods) – nur, wenn ihr
     /// Schiff an derselben Station angedockt hat.
     Goods(usize),
+    /// Ausrüstung in der Werft: Kran, Kanone, Schildgenerator.
+    Gear(super::data::Gear),
     /// Lackierung des aktuellen Schiffs ändern (`None` = zurück zum Werkslack).
     Paint {
         part: PaintPart,
@@ -290,6 +292,19 @@ impl SimState {
                 }
                 self.can_afford(&upgrade_cost(u))?;
                 (u.name.clone(), u.price)
+            }
+            Purchase::Gear(g) => {
+                if !st.has(Service::Upgrades) && !st.has(Service::Ships) {
+                    return Err(format!("{} baut keine Ausrüstung ein", st.name));
+                }
+                if self.has_gear(*g) {
+                    return Err("Bereits an Bord".into());
+                }
+                let price = self.gear_price(*g).ok_or("Nicht im Angebot")?;
+                if self.crew.credits < price {
+                    return Err("Zu wenig Credits".into());
+                }
+                (g.label().to_string(), price)
             }
             Purchase::Ship(id) => {
                 if !st.has(Service::Ships) {
@@ -665,6 +680,7 @@ impl SimState {
                 self.ship.shield += (self.ship.max_shield - old_max_shield).max(0.0);
                 self.ship.fuel += (self.ship.max_fuel - old_max_fuel).max(0.0);
             }
+            Purchase::Gear(g) => self.unlock_gear(*g, "eingebaut"),
             Purchase::Ship(id) => {
                 self.crew.owned_ships.push(id.clone());
                 self.switch_ship(id);

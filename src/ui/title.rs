@@ -96,8 +96,13 @@ pub const HELP_TEXT: &[&str] = &[
     "",
     "ÜBERSTEUERN & ZUSATZENERGIE",
     "Slot-Taste zweimal tippen und halten: +60 % Schub, aber das Triebwerk heizt auf – bei voller",
-    "Hitze 4 s Notabschaltung. Übersteuern, Schild-Schnellladen und Werkzeug-Boost teilen sich",
-    "die Zusatzenergie. Leer fällt nur der Bonus weg, alles andere geht weiter.",
+    "Hitze 4 s Notabschaltung. Übersteuern und Werkzeug-Boost teilen sich die Zusatzenergie.",
+    "Leer fällt nur der Bonus weg, alles andere geht weiter.",
+    "",
+    "AUSRÜSTUNG, SCHILD, BREMSE",
+    "Kran, Kanone und Schildgenerator gibt es in Werften oder versteckt in Wracks. Danach eine",
+    "freie Taste drücken, um sie zu übernehmen. Der Schild lädt nicht von selbst: Ladung kauft",
+    "man an Stationen, wie Munition. ↓ bzw. Steuerkreuz ↓ halten = Bremsassistent für alle.",
     "",
     "ZURUFE (keine Pflichtrollen)",
     "F5 Bremsen · F6 Schub aus · F7 Links drehen · F8 Rechts drehen · F9 Werkzeug bereit",
@@ -268,7 +273,11 @@ pub fn title_input(
             next.set(AppState::Lobby);
         }
         TitleAction::NewGame => {
-            let save = CrewSave::new_game_seeded(&data.0, crate::game::story_seed());
+            let mut save = CrewSave::new_game_seeded(&data.0, crate::game::story_seed());
+            // Neue Crew: Kran, Kanone und Schild muss sie erst kaufen oder finden.
+            save.gear = Some(Vec::new());
+            save.ammo = Some(0);
+            save.shield = Some(0.0);
             write_save(&save);
             has_save.0 = true;
             let def = data.0.ship(&save.current_ship).clone();

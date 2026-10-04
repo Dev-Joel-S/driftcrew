@@ -134,22 +134,12 @@ fn empty_energy_only_removes_the_bonus() {
         "{v} vs {}",
         n.ship.vel.length()
     );
-    // Schild lädt auch ohne Energie, nur langsamer.
+    // Der Schild lädt nicht von selbst – auch nicht aus der Zusatzenergie (Phase 19).
     let mut a = sim();
-    let mut b = sim();
-    for x in [&mut a, &mut b] {
-        x.ship.shield = 0.0;
-        x.ship.since_hit = 100.0;
-    }
-    b.ship.energy = 0.0;
-    b.ship.max_energy = 0.0;
+    a.ship.shield = 0.0;
+    a.ship.since_hit = 100.0;
     press(&mut a, 0, 120);
-    press(&mut b, 0, 120);
-    assert!(b.ship.shield > 0.0, "Grundfunktion");
-    assert!(
-        a.ship.shield > b.ship.shield * 1.5,
-        "Schnellladen mit Energie"
-    );
+    assert_eq!(a.ship.shield, 0.0, "Schildladung gibt es an Stationen");
     // Energie lädt, wenn nichts zieht.
     let mut c = sim();
     c.ship.energy = 10.0;

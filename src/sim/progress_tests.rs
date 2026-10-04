@@ -546,20 +546,17 @@ fn random_events_cover_all_kinds() {
 }
 
 #[test]
-fn shield_recharges_but_hull_needs_drones() {
+fn neither_shield_nor_hull_heal_by_themselves_but_drones_patch_the_hull() {
     let mut s = sim();
     free_at(&mut s, Vec2::new(0.0, 500.0));
     s.ship.shield = 0.0;
     s.ship.hull = 50.0;
     s.ship.since_hit = 0.0;
-    for _ in 0..60 {
+    for _ in 0..(7 * 60) {
         s.step(&TickInput::default());
     }
-    assert_eq!(s.ship.shield, 0.0, "erst nach der Pause");
-    for _ in 0..(6 * 60) {
-        s.step(&TickInput::default());
-    }
-    assert!(s.ship.shield > 5.0, "lädt nach: {}", s.ship.shield);
+    // Phase 19: Schildladung gibt es nur an Stationen.
+    assert_eq!(s.ship.shield, 0.0, "Schild lädt nicht von selbst");
     assert_eq!(s.ship.hull, 50.0, "Hülle heilt nicht von selbst");
     // Reparaturdrohnen kaufen → Hülle flickt sich langsam (Material liegt im Crew-Lager).
     s.crew.storage = [20.0; 5];

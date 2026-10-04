@@ -5,9 +5,10 @@
 //!   Eingabe, normales langes Drücken übersteuert nie. +60 % Schub, aber das Triebwerk heizt auf.
 //!   Bei 65 % und 88 % Hitze kommen Warnungen, bei 100 % schaltet es 4 s lang ab. Jeder
 //!   Triebwerks-Slot hat seine eigene Hitze.
-//! * Zusatzenergie: Übersteuern, Schnellladen des Schilds und Werkzeug-Boost (Bohrer schneller,
-//!   Kran holt schneller ein) ziehen aus demselben Speicher. Ist er leer, fällt nur der Bonus
-//!   weg – Schub, Schild und Werkzeuge funktionieren normal weiter. Er lädt, wenn nichts zieht.
+//! * Zusatzenergie: Übersteuern und Werkzeug-Boost (Bohrer schneller, Kran holt schneller ein)
+//!   ziehen aus demselben Speicher. Ist er leer, fällt nur der Bonus weg – Schub und Werkzeuge
+//!   funktionieren normal weiter. Er lädt, wenn nichts zieht. (Der Schild lädt seit Phase 19
+//!   gar nicht mehr von selbst, auch nicht aus der Zusatzenergie.)
 
 use super::ship::Thruster;
 use super::thruster_label as sim_label;
@@ -22,9 +23,8 @@ pub const COOL_RATE: f32 = 0.16;
 pub const COOL_OFF: f32 = 4.0;
 pub const ENERGY_MAX: f32 = 100.0;
 pub const ENERGY_REGEN: f32 = 7.0;
-/// Verbrauch pro Sekunde: je übersteuertem Triebwerk, Schild-Schnellladen, Werkzeug-Boost.
+/// Verbrauch pro Sekunde: je übersteuertem Triebwerk, Werkzeug-Boost.
 pub const DRAW_OVERDRIVE: f32 = 9.0;
-pub const DRAW_SHIELD: f32 = 8.0;
 pub const DRAW_TOOL: f32 = 6.0;
 /// Werkzeug-Boost: Bohrer und Kran so viel schneller.
 pub const TOOL_BOOST: f32 = 1.5;
@@ -135,7 +135,7 @@ impl SimState {
         if *e <= 0.0 && draw > 0.0 && !self.energy_warned {
             self.energy_warned = true;
             self.toast(
-                "Zusatzenergie leer – Übersteuern, Schild-Schnellladen und Werkzeug-Boost ruhen, alles andere geht",
+                "Zusatzenergie leer – Übersteuern und Werkzeug-Boost ruhen, alles andere geht",
                 ToastKind::Warn,
             );
         } else if *e > self.ship.max_energy * 0.5 {

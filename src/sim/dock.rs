@@ -302,7 +302,7 @@ impl SimState {
                     mission,
                     "Schiff verloren, die Geretteten sind mit in die Kapsel",
                 ),
-                CargoKind::Ore(_) | CargoKind::Salvage { .. } => {}
+                CargoKind::Ore(_) | CargoKind::Salvage { .. } | CargoKind::Gear(_) => {}
             }
         }
         let vel = self.ship.vel;
@@ -362,8 +362,9 @@ impl SimState {
         self.escape = None;
         self.ship.destroyed = false;
         self.ship.hull = self.ship.max_hull;
-        self.ship.shield = self.ship.max_shield;
-        self.ship.ammo = self.ship.ammo.max(self.ship.max_ammo / 2);
+        // Verbrauchtes ist weg (Phase 19): Schildladung und Munition müssen nachgekauft werden.
+        self.ship.shield = 0.0;
+        self.ship.ammo = 0;
         self.ship.fuel = self.ship.fuel.max(self.ship.max_fuel * 0.5);
         self.fuel_warned = 0;
         for t in &mut self.ship.thrusters {

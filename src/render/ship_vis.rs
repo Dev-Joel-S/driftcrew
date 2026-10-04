@@ -1318,6 +1318,12 @@ pub fn sync_bodies(
                 use crate::sim::ship::CargoKind;
                 let (band_c, bulb_c, glow) = match (&item.kind, item.traits) {
                     (CargoKind::Ore(o), _) => (srgb(o.color()), srgb(o.color()), 1.2),
+                    // Ausrüstung aus einem Wrack: golden leuchtend, damit man sie sieht.
+                    (CargoKind::Gear(_), _) => (
+                        Color::srgb(1.0, 0.78, 0.25),
+                        Color::srgb(1.0, 0.85, 0.4),
+                        2.6,
+                    ),
                     (_, CargoTrait::Tank) => (
                         Color::srgb(0.25, 0.55, 0.95),
                         Color::srgb(0.4, 0.7, 1.0),

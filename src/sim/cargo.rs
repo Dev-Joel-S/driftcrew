@@ -98,6 +98,7 @@ impl SimState {
             CargoKind::Salvage { name, value } => format!("Bauteil: {name} ({value} Cr)"),
             CargoKind::Artifact { id } => format!("Artefakt: {}", self.artifact_name(id)),
             CargoKind::Survivor { .. } => "Gerettete Person".into(),
+            CargoKind::Gear(g) => format!("Ausrüstung: {}", g.label()),
         }
     }
 

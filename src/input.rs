@@ -436,11 +436,22 @@ fn send_pings(
     }
 }
 
+/// Stick als Menü-Steuerkreuz: Richtung, seit wann gehalten (für Wiederholung).
+#[derive(Default)]
+pub struct StickNav(Vec<(Entity, IVec2, f32)>);
+
+#[allow(clippy::too_many_arguments)]
 pub fn read_menu_input(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<(Entity, &Gamepad, Option<&Name>)>,
     bindings: Res<ActiveBindings>,
     mut menu: ResMut<MenuInput>,
+    time: Res<Time>,
+    state: Option<Res<State<AppState>>>,
+    paused: Option<Res<crate::game::Paused>>,
+    map: Option<Res<crate::game::MapOpen>>,
+    sim: Option<Res<crate::game::Sim>>,
+    mut sticks: Local<StickNav>,
 ) {
     let bound = |e: Entity, b: GamepadButton| bindings.0.iter().any(|x| x.btn == Btn::Pad(e, b));
     let mut m = MenuInput {
@@ -479,6 +490,56 @@ pub fn read_menu_input(
         }
         if g.just_pressed(GamepadButton::East) && !bound(e, GamepadButton::East) {
             m.back = true;
+        }
+    }
+    // Sticks bedienen Menüs wie das Steuerkreuz – nur wenn ein Menü offen ist (im freien Flug
+    // zielen sie mit den Werkzeugen). Halten wiederholt nach kurzer Pause.
+    let menu_open = match state.as_deref().map(|s| *s.get()) {
+        Some(AppState::Playing) => {
+            paused.is_some_and(|p| p.0)
+                || map.is_some_and(|m| m.0)
+                || sim.is_some_and(|s| s.0.ship.docked.is_some())
+        }
+        _ => true,
+    };
+    let dt = time.delta_secs();
+    for (e, g, _) in &pads {
+        let (l, r) = (g.left_stick(), g.right_stick());
+        let st = if r.length() > l.length() { r } else { l };
+        let dir = if st.length() < 0.55 {
+            IVec2::ZERO
+        } else if st.x.abs() > st.y.abs() {
+            IVec2::new(st.x.signum() as i32, 0)
+        } else {
+            IVec2::new(0, st.y.signum() as i32)
+        };
+        let entry = match sticks.0.iter_mut().position(|(x, _, _)| *x == e) {
+            Some(i) => &mut sticks.0[i],
+            None => {
+                sticks.0.push((e, IVec2::ZERO, 0.0));
+                sticks.0.last_mut().unwrap()
+            }
+        };
+        let fire = if dir == IVec2::ZERO {
+            false
+        } else if dir != entry.1 {
+            entry.2 = -0.35;
+            true
+        } else {
+            entry.2 += dt;
+            if entry.2 >= 0.12 {
+                entry.2 = 0.0;
+                true
+            } else {
+                false
+            }
+        };
+        entry.1 = dir;
+        if fire && menu_open {
+            m.up |= dir.y > 0;
+            m.down |= dir.y < 0;
+            m.left |= dir.x < 0;
+            m.right |= dir.x > 0;
         }
     }
     *menu = m;

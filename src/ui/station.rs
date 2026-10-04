@@ -538,6 +538,29 @@ fn items_for(sim: &SimState, tab: Tab, sel: &Option<String>) -> Vec<Item<Act>> {
             );
         }
         Tab::Upgrades => {
+            // Ausrüstung zuerst: ohne Kran, Kanone, Schild fehlen ganze Spielarten.
+            for gd in &sim.data.shop.gear {
+                let p = Purchase::Gear(gd.gear);
+                let name = format!("Ausrüstung · {}", gd.gear.label());
+                let it = if sim.has_gear(gd.gear) {
+                    Item::new(name, Act::Buy(p))
+                        .right("✓ an Bord")
+                        .enabled(false)
+                        .detail(gd.description.clone())
+                } else {
+                    let it = Item::new(name, Act::Buy(p.clone())).right(format!("{} Cr", gd.price));
+                    match price_or(&p) {
+                        Ok(_) => it.detail(format!(
+                            "{} · danach eine freie Taste drücken, um ihn zu übernehmen",
+                            gd.description
+                        )),
+                        Err(reason) => it
+                            .detail(format!("{} – {reason}", gd.description))
+                            .enabled(false),
+                    }
+                };
+                v.push(it);
+            }
             for u in &sim.data.shop.upgrades {
                 // Feintuning gibt es nur dort, wo die Person arbeitet.
                 let vendor = u
@@ -1035,6 +1058,7 @@ fn items_for(sim: &SimState, tab: Tab, sel: &Option<String>) -> Vec<Item<Act>> {
                         format!("Artefakt: {}", sim.artifact_name(id))
                     }
                     crate::sim::ship::CargoKind::Survivor { .. } => "Gerettete Person".into(),
+                    crate::sim::ship::CargoKind::Gear(g) => g.label().to_string(),
                 };
                 v.push(
                     Item::new(name, Act::Sell)

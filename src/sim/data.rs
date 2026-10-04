@@ -624,6 +624,10 @@ pub struct AnomalyDef {
 #[derive(Deserialize, Clone, Debug)]
 pub struct WreckDef {
     pub name: String,
+    /// Ausrüstung, die in diesem Wrack steckt (der erste abgerissene Teil, solange die Crew sie
+    /// noch nicht hat).
+    #[serde(default)]
+    pub gear: Option<Gear>,
     /// Schiffsmodell, nach dem das Wrack aussieht.
     pub ship: String,
     pub pos: P,
@@ -783,6 +787,40 @@ impl RouteKind {
     }
 }
 
+/// Ausrüstung, die man erst kaufen oder finden muss. Bohrer und Scanner sind immer an Bord.
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Gear {
+    Crane,
+    Cannon,
+    Shield,
+}
+
+impl Gear {
+    pub const ALL: [Gear; 3] = [Gear::Crane, Gear::Cannon, Gear::Shield];
+    pub fn label(self) -> &'static str {
+        match self {
+            Gear::Crane => "Kran",
+            Gear::Cannon => "Kanone",
+            Gear::Shield => "Schildgenerator",
+        }
+    }
+    /// Welches Werkzeug diese Ausrüstung freischaltet.
+    pub fn tool(self) -> Option<ToolKind> {
+        match self {
+            Gear::Crane => Some(ToolKind::Crane),
+            Gear::Cannon => Some(ToolKind::Cannon),
+            Gear::Shield => None,
+        }
+    }
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct GearDef {
+    pub gear: Gear,
+    pub price: u32,
+    pub description: String,
+}
+
 /// Auswirkung eines erledigten Auftrags auf die Umgebung einer Station (76).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EffectKind {
@@ -937,6 +975,9 @@ pub struct FlameDef {
 #[derive(Deserialize, Clone, Debug)]
 pub struct ShopDef {
     pub start_credits: u32,
+    /// Ausrüstung zum Kaufen in Werften (Kran, Kanone, Schildgenerator).
+    #[serde(default)]
+    pub gear: Vec<GearDef>,
     /// Bergungskosten nach Zerstörung: fester Betrag + Anteil der Kasse (höchstens die Kasse).
     pub respawn_fee: f32,
     #[serde(default)]
@@ -1790,6 +1831,14 @@ pub struct CrewSave {
     /// Schiffsnamen, Plaketten, Tagebuch, Kartenmarkierungen (81, 82).
     #[serde(default)]
     pub journal: crate::sim::journal::Journal,
+    /// Ausrüstung der Crew (None = alter Spielstand: alles an Bord). Munition und Schildladung
+    /// werden mitgespeichert, weil sie gekauft werden müssen.
+    #[serde(default)]
+    pub gear: Option<Vec<Gear>>,
+    #[serde(default)]
+    pub ammo: Option<u32>,
+    #[serde(default)]
+    pub shield: Option<f32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -1913,6 +1962,9 @@ impl CrewSave {
             routes: Vec::new(),
             route_best: Vec::new(),
             journal: Default::default(),
+            gear: None,
+            ammo: None,
+            shield: None,
         }
     }
 

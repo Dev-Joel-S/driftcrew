@@ -1,6 +1,15 @@
 // Preise und Upgrades. Gekauft wird nur angedockt an Stationen und Werften.
 (
     start_credits: 300,
+    // Ausrüstung (Phase 19): fehlt am Anfang, gibt es in Werften (Stationen mit Upgrades oder
+    // Schiffen) oder versteckt in Wracks (world.ron, wrecks: gear). Erst danach gibt es den
+    // Slot. Die Kanone kommt mit einer Ladung Munition, der Schildgenerator voll geladen –
+    // nachladen kostet danach an Stationen (Munition, Schild aufladen).
+    gear: [
+        (gear: Crane,  price: 260, description: "Greifer am Seil: Kapseln einsammeln, Wracks abschleppen, Lasten tragen."),
+        (gear: Cannon, price: 380, description: "Gegen Piratendrohnen und Gestein. Munition kauft man nach."),
+        (gear: Shield, price: 320, description: "Fängt Treffer ab, bevor die Hülle leidet. Lädt nicht von selbst – Ladung an Stationen."),
+    ],
     // Bergungsgebühr nach Zerstörung: fester Betrag + Anteil der Kasse (höchstens die Kasse).
     salvage_base: 40,
     respawn_fee: 0.12,

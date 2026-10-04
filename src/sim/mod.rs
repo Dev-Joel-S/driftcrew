@@ -24,6 +24,9 @@ pub mod explore;
 pub mod finance;
 #[cfg(test)]
 mod finance_tests;
+pub mod gear;
+#[cfg(test)]
+mod gear_tests;
 pub mod geom;
 pub mod hazards;
 pub mod journal;
@@ -321,6 +324,10 @@ pub enum SimEvent {
         player: u8,
         call: Call,
     },
+    /// Neue Ausrüstung (gekauft oder gefunden) – Werkzeuge brauchen jetzt eine Taste.
+    GearUnlocked {
+        gear: data::Gear,
+    },
     /// Fracht abgeworfen (treibt jetzt in der Welt).
     Jettisoned {
         pos: Vec2,
@@ -564,6 +571,8 @@ pub struct Crew {
     pub builds: Vec<(String, Vec<(String, String)>)>,
     /// Gerettete Besatzungen, die sich noch melden werden.
     pub rescued: Vec<data::RescuedSave>,
+    /// Ausrüstung (None = alles an Bord, alte Spielstände).
+    pub gear: Option<Vec<data::Gear>>,
 }
 
 impl Crew {
@@ -719,6 +728,7 @@ impl SimState {
             artifacts: Vec::new(),
             builds: save.builds.clone(),
             rescued: Vec::new(),
+            gear: save.gear.clone(),
         };
         let stats = economy::stats_for(&data, &crew.upgrades);
         let build: Vec<(String, String)> = crew
@@ -728,6 +738,7 @@ impl SimState {
             .map(|(_, b)| b.clone())
             .unwrap_or_default();
         let def = data.built_ship(&crew.current_ship, &build);
+        let loadout = gear::filter_loadout(&def, &crew.gear, loadout);
         let ship = Ship::build(&def, &loadout, &stats);
         let n_zones = data.world.meteor_zones.len();
         let n_stations = data.world.stations.len();
@@ -810,6 +821,7 @@ impl SimState {
         s.load_cargo_state(save);
         s.load_world_state(save);
         s.load_journal(save);
+        s.load_gear(save);
         s.populate_fields();
         s.populate_wrecks();
         s.refresh_offers();
@@ -837,6 +849,7 @@ impl SimState {
     pub fn rebuild_ship(&mut self, loadout: Loadout) {
         let stats = economy::stats_for(&self.data, &self.crew.upgrades);
         let def = self.current_def();
+        let loadout = gear::filter_loadout(&def, &self.crew.gear, loadout);
         let old = self.ship.clone();
         let mut ship = Ship::build(&def, &loadout, &stats);
         let same_ship = old.def_id == ship.def_id;
@@ -866,6 +879,7 @@ impl SimState {
         }
         self.ship = ship;
         self.loadout = loadout;
+        self.apply_gear();
         if let Some(pad) = self.ship.docked {
             self.snap_to_pad(pad);
         }
@@ -914,6 +928,9 @@ impl SimState {
             routes: Vec::new(),
             route_best: Vec::new(),
             journal: Default::default(),
+            gear: self.crew.gear.clone(),
+            ammo: Some(self.ship.ammo),
+            shield: Some(self.ship.shield),
         };
         self.save_finance(&mut save);
         self.save_workshop(&mut save);
@@ -1062,14 +1079,8 @@ impl SimState {
         if self.ship.destroyed {
             return;
         }
+        // Der Schild lädt nicht von selbst: Ladung gibt es an Stationen (Phase 19).
         self.ship.since_hit += DT;
-        if self.ship.since_hit > self.ship.shield_delay && !self.flare() {
-            // Schnellladen aus der Zusatzenergie (70), solange der Schild nicht voll ist.
-            let fast = self.ship.shield < self.ship.max_shield - 0.01
-                && self.draw_energy(power::DRAW_SHIELD);
-            let regen = self.ship.shield_regen * if fast { 2.5 } else { 1.0 };
-            self.ship.shield = (self.ship.shield + regen * DT).min(self.ship.max_shield);
-        }
         if self.ship.hull_regen > 0.0 && self.ship.hull > 0.0 {
             self.ship.hull = (self.ship.hull + self.ship.hull_regen * DT).min(self.ship.max_hull);
         }

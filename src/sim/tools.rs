@@ -479,19 +479,71 @@ impl SimState {
 
     /// Reißt ein Bauteil aus einem Wrack. Gibt den Index des neuen Körpers zurück.
     fn tear_part(&mut self, bi: usize, mount: Vec2) -> Option<usize> {
+        let BodyKind::Wreck { idx: widx, .. } = self.bodies[bi].kind else {
+            return None;
+        };
+        // Steckt hier Ausrüstung, die die Crew noch nicht hat (und die nicht schon draußen
+        // treibt)? Dann kommt zuerst sie heraus.
+        let gear = self
+            .data
+            .world
+            .wrecks
+            .get(widx)
+            .and_then(|w| w.gear)
+            .filter(|g| {
+                !self.has_gear(*g)
+                    && !self.bodies.iter().any(|b| {
+                        b.alive
+                            && matches!(&b.kind, BodyKind::Dropped { item } if item.kind == CargoKind::Gear(*g))
+                    })
+            });
         let BodyKind::Wreck { parts, .. } = &mut self.bodies[bi].kind else {
             return None;
         };
-        if *parts == 0 {
+        if *parts == 0 && gear.is_none() {
             return None;
         }
-        *parts -= 1;
+        *parts = parts.saturating_sub(1);
         let (wpos, wr, wvel) = (
             self.bodies[bi].pos,
             self.bodies[bi].radius,
             self.bodies[bi].vel,
         );
         let toward = (mount - wpos).normalize_or_zero();
+        if let Some(g) = gear {
+            let id = self.next_id();
+            let pos = wpos + toward * (wr * 0.9 + 1.0);
+            let item =
+                super::ship::CargoItem::new(CargoKind::Gear(g), 1.5, super::data::CargoTrait::None);
+            self.bodies.push(Body {
+                id,
+                kind: BodyKind::Dropped { item },
+                pos,
+                vel: wvel + toward * 2.0,
+                angle: 0.0,
+                ang_vel: self.rng.range(-1.0, 1.0),
+                radius: 1.0,
+                mass: 1.5,
+                prev_pos: pos,
+                prev_angle: 0.0,
+                alive: true,
+                seed: super::rng::hash32(id),
+                age: 0.0,
+            });
+            self.events.push(SimEvent::Explosion {
+                pos,
+                size: 1.8,
+                color: [1.0, 0.85, 0.35],
+            });
+            self.toast(
+                format!(
+                    "Im Wrack steckte ein {} – einsammeln, dann gehört er euch!",
+                    g.label()
+                ),
+                ToastKind::Good,
+            );
+            return Some(self.bodies.len() - 1);
+        }
         let shop = self.data.shop.clone();
         let name = if shop.salvage_names.is_empty() {
             "Bauteil".to_string()

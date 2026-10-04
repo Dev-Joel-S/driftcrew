@@ -529,14 +529,24 @@ impl SimState {
     /// Last am Seil muss noch genug Beschleunigung bleiben.)
     pub fn bulky_feasible(&self, mass: f32) -> Result<(), String> {
         if !self.ship.has_tool(ToolKind::Crane) {
-            return Err("Braucht einen belegten Kran".into());
+            return Err(if self.has_gear(super::data::Gear::Crane) {
+                "Braucht einen belegten Kran".into()
+            } else {
+                "Braucht einen Kran (Werft oder Fund im Wrack)".into()
+            });
         }
+        let assist = if self.flight_assist {
+            self.data.world.flight.assist_thrust
+        } else {
+            1.0
+        };
         let thrust: f32 = self
             .ship
             .thrusters
             .iter()
             .map(|t| t.effective_thrust())
-            .sum();
+            .sum::<f32>()
+            * assist;
         let accel = thrust / (self.ship.mass + mass);
         if accel < 1.6 {
             let name = &self.data.ship(&self.crew.current_ship).name;
@@ -1125,6 +1135,13 @@ impl SimState {
             MissionKind::Tow {
                 site, body, name, ..
             } => {
+                if !self.ship.has_tool(ToolKind::Crane) {
+                    self.toast(
+                        "Abschleppen braucht einen Kran – in der Werft kaufen oder in einem Wrack finden",
+                        ToastKind::Warn,
+                    );
+                    return;
+                }
                 let bid = self.next_id();
                 let pos = *site;
                 self.bodies.push(Body {

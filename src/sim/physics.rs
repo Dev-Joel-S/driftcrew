@@ -551,6 +551,25 @@ impl SimState {
                 CargoItem::new(CargoKind::Artifact { id: id.clone() }, b.mass, none),
                 format!("Artefakt: {}", self.artifact_name(id)),
             ),
+            // Ausrüstung aus einem Wrack wird sofort eingebaut, sie braucht keinen Frachtraum.
+            BodyKind::Dropped { item } if matches!(item.kind, CargoKind::Gear(_)) => {
+                let CargoKind::Gear(g) = item.kind else {
+                    unreachable!()
+                };
+                self.bodies[bi].alive = false;
+                for t in &mut self.ship.tools {
+                    if let super::ship::CraneState::Attached { body, .. } = t.crane
+                        && body == b.id
+                    {
+                        t.crane = super::ship::CraneState::Idle;
+                    }
+                }
+                self.events.push(SimEvent::Stowed {
+                    what: g.label().to_string(),
+                });
+                self.unlock_gear(g, "gefunden");
+                return true;
+            }
             // Abgeworfenes kommt mit Zustand und Eigenschaften zurück.
             BodyKind::Dropped { item } => (item.clone(), self.cargo_label(&item.kind)),
             _ => return false,

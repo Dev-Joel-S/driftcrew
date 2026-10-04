@@ -252,6 +252,8 @@ pub enum CargoKind {
     Survivor {
         mission: u32,
     },
+    /// Ausrüstung aus einem Wrack (wird beim Einsammeln sofort eingebaut).
+    Gear(super::data::Gear),
 }
 
 /// Ein Frachtstück in einem Frachtmodul (Befestigungspunkt).
@@ -333,9 +335,13 @@ pub struct Ship {
     pub cannon_damage: f32,
     pub crane_load: f32,
     pub scan_range: f32,
+    /// Selbstladen des Schilds – seit Phase 19 abgeschaltet (Ladung gibt es an Stationen), die
+    /// Werte aus der Schiffsdefinition bleiben für ein mögliches Upgrade erhalten.
+    #[allow(dead_code)]
     pub shield_regen: f32,
+    #[allow(dead_code)]
     pub shield_delay: f32,
-    /// Sekunden seit dem letzten Treffer (für das Nachladen des Schilds).
+    /// Sekunden seit dem letzten Treffer.
     pub since_hit: f32,
     /// Gemeinsame Zusatzenergie (70).
     pub energy: f32,
