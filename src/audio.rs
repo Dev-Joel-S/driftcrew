@@ -283,6 +283,7 @@ fn play_event_sounds(
     mut events: MessageReader<SimMsg>,
     sounds: Option<Res<Sounds>>,
     sim: Res<Sim>,
+    callout_sound: Res<crate::ui::callout::CalloutSound>,
 ) {
     let Some(s) = sounds else { return };
     let me = sim.0.ship.pos;
@@ -311,6 +312,7 @@ fn play_event_sounds(
             }
             SimEvent::Docked { .. } => one_shot(&mut commands, &s.dock, 0.5),
             SimEvent::Ping { .. } => one_shot(&mut commands, &s.blip, 0.6),
+            SimEvent::Callout { .. } if callout_sound.0 => one_shot(&mut commands, &s.blip, 0.45),
             SimEvent::Purchased { .. }
             | SimEvent::MissionCompleted { .. }
             | SimEvent::Sold { .. } => one_shot(&mut commands, &s.coin, 0.5),

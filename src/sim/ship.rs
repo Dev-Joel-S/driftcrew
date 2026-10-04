@@ -89,6 +89,15 @@ pub struct Thruster {
     pub level: f32,
     /// Zustand 0..1. Unter [`STUTTER_BELOW`] stottert das Triebwerk, bei 0 fällt es aus.
     pub health: f32,
+    /// Übersteuerung (69): aktiv, Hitze 0..1, Abkühlpause nach Notabschaltung, Warnstufe,
+    /// Tastenverlauf für den Doppeltipp (Ticks gehalten, seit dem Loslassen, letzter war Tipp).
+    pub overdrive: bool,
+    pub heat: f32,
+    pub cool_off: f32,
+    pub heat_warn: u8,
+    pub held: u32,
+    pub since_release: u32,
+    pub tap: bool,
 }
 
 /// Ab diesem Zustand setzt ein Triebwerk zufällig aus.
@@ -328,6 +337,9 @@ pub struct Ship {
     pub shield_delay: f32,
     /// Sekunden seit dem letzten Treffer (für das Nachladen des Schilds).
     pub since_hit: f32,
+    /// Gemeinsame Zusatzenergie (70).
+    pub energy: f32,
+    pub max_energy: f32,
     /// Reparaturdrohnen: Hüllenpunkte pro Sekunde.
     pub hull_regen: f32,
 
@@ -397,6 +409,13 @@ impl Ship {
                 firing: false,
                 level: 0.0,
                 health: 1.0,
+                overdrive: false,
+                heat: 0.0,
+                cool_off: 0.0,
+                heat_warn: 0,
+                held: 0,
+                since_release: u32::MAX,
+                tap: false,
             });
         }
 
@@ -501,6 +520,8 @@ impl Ship {
             shield_regen: def.shield_regen,
             shield_delay: def.shield_delay,
             since_hit: 0.0,
+            energy: super::power::ENERGY_MAX,
+            max_energy: super::power::ENERGY_MAX,
             hull_regen: stats.hull_regen,
             docked: None,
             dock_timer: 0.0,

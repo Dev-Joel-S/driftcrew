@@ -472,6 +472,19 @@ impl SimState {
                 Command::AddNote { text } => self.add_note(text),
                 Command::AddMark { pos, text } => self.add_mark(*pos, text),
                 Command::RemoveMark { idx } => self.remove_mark(*idx),
+                Command::Callout { player, call } => {
+                    // Ein Zuruf pro Crewmitglied; ein neuer ersetzt den alten.
+                    self.callouts.retain(|c| c.player != *player);
+                    self.callouts.push(super::Callout {
+                        player: *player,
+                        call: *call,
+                        life: super::CALLOUT_SECONDS,
+                    });
+                    self.events.push(SimEvent::Callout {
+                        player: *player,
+                        call: *call,
+                    });
+                }
                 Command::StartCourse { course } => self.arm_course(*course),
                 Command::AbortCourse => self.abort_course("auf Wunsch der Crew"),
                 Command::SetLoadout {

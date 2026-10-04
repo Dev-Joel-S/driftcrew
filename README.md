@@ -402,7 +402,29 @@ entscheidet, **Gleichstand bedeutet Nein**. Allein gespielt wird direkt gekauft.
 | Enter | Start | Bestätigen |
 | Mausrad | – | Zoom |
 | `^` | Stick drücken | Ping |
+| F5 / F6 / F7 / F8 / F9 | Steuerkreuz ↓ / ↓↓ / ← / → / ↑ | Zuruf: Bremsen / Schub aus / Links drehen / Rechts drehen / Werkzeug bereit |
 | F11 | – | Vollbild |
+
+### Zusammenarbeit, Fracht und Andenken (Phasen 14–18)
+
+- **Übersteuern:** eigene Slot-Taste zweimal tippen und halten – +60 % Schub, das Triebwerk
+  heizt auf, warnt zweimal und schaltet bei voller Hitze 4 s ab. Normales langes Drücken
+  übersteuert nie.
+- **Zusatzenergie:** Übersteuern, Schild-Schnellladen und Werkzeug-Boost (Bohrer, Kran) teilen
+  sich einen Speicher (violetter Balken). Leer fällt nur der Bonus weg.
+- **Zurufe:** kurze Signale in der eigenen Farbe über dem Schiff, Ton im Pausemenü abschaltbar.
+- **Ladeplan** (Pause): Fracht zwischen Modulen umladen (Schwerpunkt!) oder abwerfen – sie
+  treibt dann in der Welt und lässt sich später wieder einsammeln. Tanks schwappen,
+  empfindliche Geräte vertragen keine Stöße, instabile Fracht keine harte Beschleunigung.
+- **Rettung:** havariertes Schiff, längsseits gehen holt die Besatzung an Bord – jede Person
+  braucht Platz. Gerettete melden sich später mit einem Geschenk.
+- **Die Welt reagiert:** erledigte Aufträge versorgen Stationen, räumen Trümmer oder bringen
+  Sender zum Laufen (10 Minuten). Versteckte Routen (Abkürzungen und sichere Umwege) findet der
+  Scanner, ein Gerücht an der Station oder ein Sender; wer sie abfliegt, bekommt eine Zeit.
+- **Persönliches:** Schiff taufen (Pause), Plaketten für besondere Leistungen am Rumpf, Tagebuch
+  im Logbuch (←→) mit eigenen Notizen, Kartenmarkierungen in der Karte.
+- **Unfall-Wiederholung:** nach einem schweren Unfall Enter / Select – die letzten Sekunden mit
+  allen Slot-Eingaben, am Ende in Zeitlupe. Enter/Esc überspringt.
 
 ---
 

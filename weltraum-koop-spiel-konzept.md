@@ -183,3 +183,9 @@ Was sich gegenüber der ersten Fassung geändert hat (Begründungen und Details 
 - **Runde 3, Modulbau und Schiffseditor:** feste Bauplätze pro Rumpf (Daten) statt freiem Raster; die Belegung steht im Spielstand und lässt sich als RON exportieren *(umgesetzt in Phase 11)*
 - **Runde 3, Material:** gemeinsames Crew-Lager wie die Kasse *(umgesetzt in Phase 11)*
 - **Runde 3, Upgrades:** pro Schiffsteil mit Masse als Nachteil und Materialkosten; sie gelten weiter für die Crew (nicht pro Rumpf), Module dagegen gehören zum Rumpf
+- **Backlog, Übersteuern:** eigene Eingabe ist ein Doppeltipp und halten auf der Slot-Taste (kein zusätzlicher Knopf), Hitze pro Triebwerk *(umgesetzt in Phase 15)*
+- **Backlog, Zusatzenergie:** ein gemeinsamer Speicher für Übersteuern, Schild-Schnellladen und Werkzeug-Boost; ohne Energie fällt nur der Bonus weg *(umgesetzt in Phase 15)*
+- **Backlog, Zurufe:** feste Funktionstasten (F5–F9) bzw. Steuerkreuz, nur im Flug ohne offenes Menü *(umgesetzt in Phase 15)*
+- **Backlog, Fracht:** Umladen zwischen Frachtmodulen über den Ladeplan im Pausemenü (angedockt sofort, im Flug mit Laufzeit); Rettungen brauchen Frachtraum pro Person *(umgesetzt in Phase 14)*
+- **Backlog, Wiederholung:** nutzt die deterministische Simulation – Schnappschuss alle 2 s plus Eingaben, kein Video *(umgesetzt in Phase 18)*
+- **Backlog, Welt reagiert:** Wirkungen erledigter Aufträge gelten 10 Minuten im Umkreis der Station; Routen stehen als Daten in world.ron *(umgesetzt in Phase 16)*

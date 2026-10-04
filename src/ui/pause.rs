@@ -42,11 +42,12 @@ enum PauseAct {
     CargoPlan,
     NameShip,
     Note,
+    CalloutSound,
     SaveTitle,
     Quit,
 }
 
-fn items(sim: &SimState) -> Vec<Item<PauseAct>> {
+fn items(sim: &SimState, sound: bool) -> Vec<Item<PauseAct>> {
     let mut v = vec![Item::new("Weiter", PauseAct::Resume)];
     if let Some(r) = &sim.course {
         let name = &sim.data.courses.courses[r.course].name;
@@ -77,8 +78,17 @@ fn items(sim: &SimState) -> Vec<Item<PauseAct>> {
             ),
             None => "Noch namenlos – gebt ihm einen Namen".to_string(),
         }),
-        Item::new("Notiz ins Logbuch", PauseAct::Note)
-            .detail(format!("Tagebuch: {} Einträge", sim.journal.entries.len())),
+        Item::new("Notiz ins Logbuch", PauseAct::Note).detail(match sim.journal.entries.len() {
+            1 => "Tagebuch: 1 Eintrag".to_string(),
+            n => format!("Tagebuch: {n} Einträge"),
+        }),
+        Item::new(
+            format!(
+                "Ton bei Zurufen (F5–F9): {}",
+                if sound { "an" } else { "aus" }
+            ),
+            PauseAct::CalloutSound,
+        ),
         Item::new("Steuerung & Spielprinzip", PauseAct::Help),
         Item::new("Speichern & zum Titel", PauseAct::SaveTitle),
         Item::new("Spiel beenden", PauseAct::Quit).detail("Der Spielstand wird gespeichert"),
@@ -86,7 +96,7 @@ fn items(sim: &SimState) -> Vec<Item<PauseAct>> {
     v
 }
 
-fn spawn_pause(commands: &mut Commands, sim: &SimState) {
+fn spawn_pause(commands: &mut Commands, sim: &SimState, sound: bool) {
     commands
         .spawn((
             Node {
@@ -109,7 +119,7 @@ fn spawn_pause(commands: &mut Commands, sim: &SimState) {
                     height: Val::Px(8.0),
                     ..default()
                 });
-                spawn_items(p, MENU_PAUSE, &items(sim));
+                spawn_items(p, MENU_PAUSE, &items(sim, sound));
             });
         });
 }
@@ -140,9 +150,12 @@ pub fn pause_input(
     help: Query<Entity, With<PauseHelp>>,
     mut exit: MessageWriter<AppExit>,
     mut pending: ResMut<PendingCommands>,
-    mut book: ResMut<super::logbook::Logbook>,
-    mut plan: ResMut<super::cargo::CargoPlan>,
-    mut entry: ResMut<super::text_entry::TextEntry>,
+    (mut book, mut plan, mut entry, mut sound): (
+        ResMut<super::logbook::Logbook>,
+        ResMut<super::cargo::CargoPlan>,
+        ResMut<super::text_entry::TextEntry>,
+        ResMut<super::callout::CalloutSound>,
+    ),
 ) {
     if book.open || plan.open || entry.open {
         return;
@@ -167,7 +180,7 @@ pub fn pause_input(
         if !map.0 && (input.escape || start_pauses) {
             paused.0 = true;
             focus.0[MENU_PAUSE] = 0;
-            spawn_pause(&mut commands, &sim.0);
+            spawn_pause(&mut commands, &sim.0, sound.0);
         }
         return;
     }
@@ -175,7 +188,7 @@ pub fn pause_input(
         close(&mut commands, &mut paused);
         return;
     }
-    let its = items(&sim.0);
+    let its = items(&sim.0, sound.0);
     let mut f = focus.0[MENU_PAUSE];
     let mut act = if navigate(&mut f, its.len(), &input) {
         Some(f)
@@ -234,6 +247,13 @@ pub fn pause_input(
         PauseAct::Logbook => {
             book.open = true;
             book.opened = true;
+        }
+        PauseAct::CalloutSound => {
+            sound.0 = !sound.0;
+            for e in &roots {
+                commands.entity(e).despawn();
+            }
+            spawn_pause(&mut commands, &sim.0, sound.0);
         }
         PauseAct::NameShip => {
             let name = sim.0.ship_name().unwrap_or_default().to_string();

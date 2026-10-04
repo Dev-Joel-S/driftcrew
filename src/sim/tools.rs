@@ -44,7 +44,9 @@ impl SimState {
         for t in &mut self.ship.thrusters {
             let pressed = !voting && input.pressed(t.slot);
             any_pressed |= pressed;
-            t.firing = pressed && thruster_works(t, tick);
+            // Doppeltipp und halten = Übersteuerung (69).
+            super::power::track_taps(t, pressed);
+            t.firing = pressed && t.cool_off <= 0.0 && thruster_works(t, tick);
             let target = if t.firing { 1.0 } else { 0.0 };
             t.level += (target - t.level) * (DT * 16.0).min(1.0);
         }
@@ -82,11 +84,12 @@ impl SimState {
             if !t.firing {
                 continue;
             }
-            let f = rot(t.dir, self.ship.angle) * t.effective_thrust() * reserve;
+            let od = self.thrust_factor(t);
+            let f = rot(t.dir, self.ship.angle) * t.effective_thrust() * reserve * od;
             let at = self.ship.to_world(t.pos);
             force += f;
             torque += cross(at - self.ship.pos, f);
-            burned += t.thrust * self.ship.fuel_burn * DT;
+            burned += t.thrust * od * self.ship.fuel_burn * DT;
         }
         if self.ship.docked.is_none() {
             self.ship.vel += force / self.ship.mass * DT;
@@ -335,7 +338,12 @@ impl SimState {
                     let stowable = self.bodies[bi].stowable();
                     let mut rope = rope;
                     if stowable {
-                        rope = (rope - 6.0 * DT).max(0.0);
+                        let boost = if self.draw_energy(super::power::DRAW_TOOL) {
+                            super::power::TOOL_BOOST
+                        } else {
+                            1.0
+                        };
+                        rope = (rope - 6.0 * boost * DT).max(0.0);
                     } else if rope > TOW_ROPE {
                         // Schwere Last: Seil langsam auf Schlepplänge einholen.
                         rope = (rope - 2.5 * DT).max(TOW_ROPE);
@@ -566,7 +574,13 @@ impl SimState {
         self.ship.apply_impulse(-dir * 3.0 * DT, mount);
         // Ruhige Hand bringt mehr Ertrag, Zittern weniger (Punkt 36).
         let steady = super::ship::steady_factor(self.ship.tools[i].jitter);
-        let rate = self.ship.drill_rate * DT * steady;
+        // Werkzeug-Boost aus der Zusatzenergie (70).
+        let boost = if self.draw_energy(super::power::DRAW_TOOL) {
+            super::power::TOOL_BOOST
+        } else {
+            1.0
+        };
+        let rate = self.ship.drill_rate * DT * steady * boost;
         let free = (self.ship.cargo_capacity() - self.ship.cargo_mass()).max(0.0);
         let mut mined_ore = None;
         let mut mined_amt = 0.0;

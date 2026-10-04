@@ -191,12 +191,16 @@ fn drones_spawn_near_their_nest_and_shoot_at_the_crew() {
     float_at(&mut s, nest + Vec2::new(0.0, 120.0));
     let (shield, hull) = (s.ship.shield, s.ship.hull);
     let mut shots = 0;
+    // Tiefster Stand (der Schild lädt mit Zusatzenergie zwischendurch schnell nach).
+    let (mut min_shield, mut min_hull) = (shield, hull);
     for _ in 0..60 * 30 {
         // Die Crew hält still (Position festhalten, damit nur die Drohnen arbeiten).
         s.ship.pos = nest + Vec2::new(0.0, 120.0);
         s.ship.vel = Vec2::ZERO;
         s.step(&TickInput::default());
         shots += s.projectiles.iter().filter(|p| p.hostile).count().min(1);
+        min_shield = min_shield.min(s.ship.shield);
+        min_hull = min_hull.min(s.ship.hull);
     }
     let drones = s
         .npcs
@@ -206,10 +210,8 @@ fn drones_spawn_near_their_nest_and_shoot_at_the_crew() {
     assert!(drones >= 2, "Drohnen aus dem Nest: {drones}");
     assert!(shots > 0, "Drohnen feuern");
     assert!(
-        s.ship.shield < shield || s.ship.hull < hull,
-        "Treffer: Schild {shield} → {}, Hülle {hull} → {}",
-        s.ship.shield,
-        s.ship.hull
+        min_shield < shield || min_hull < hull,
+        "Treffer: Schild {shield} → {min_shield}, Hülle {hull} → {min_hull}"
     );
 }
 

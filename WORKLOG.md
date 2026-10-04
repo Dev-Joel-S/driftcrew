@@ -240,7 +240,7 @@ Stand nach Phase 13: Punkte 1–63 sowie 65, 71, 72, 74, 75 sind umgesetzt. Offe
 | 77 | Freiwillige Zusatzbergung | Bei Notrufen und Bergungen liegt manchmal ein wertvoller, schwerer (teils instabiler) Zusatzfund in der Nähe – mitnehmen ist freiwillig, der Auftrag bleibt ohne ihn erfüllbar |
 | 78 | Rettung mit Platzentscheidung | Neuer Notruf „havariertes Schiff“: ein manövrierunfähiges NPC-Schiff mit Besatzung. Langsam längsseits gehen holt sie an Bord – jede Person braucht Platz im Frachtraum; reicht er nicht, muss eigene Fracht abgeworfen werden. Gerettete melden sich später mit Dank und einem Geschenk |
 
-### Phase 15 – Zusammenarbeit am Schiff
+### Phase 15 – Zusammenarbeit am Schiff (erledigt, siehe Protokoll)
 
 | Nr. | Punkt | Umsetzung |
 |---|---|---|
@@ -297,6 +297,25 @@ Stand nach Phase 13: Punkte 1–63 sowie 65, 71, 72, 74, 75 sind umgesetzt. Offe
 ---
 
 ## Protokoll
+
+### Runde 3 – Phase 15: Zusammenarbeit am Schiff (erledigt)
+
+- **69 Übersteuern** (`src/sim/power.rs`): Doppeltipp (Tipp ≤ 0,25 s, Pause ≤ 0,3 s) und
+  halten – eine eigene Eingabe, langes Drücken übersteuert nie. +60 % Schub und Verbrauch,
+  Hitze pro Triebwerk (≈ 4,5 s bis voll), Warnungen bei 65 % und 88 % (mit Alarmton), bei 100 %
+  4 s Notabschaltung. HUD: Slotkästchen orange→rot beim Übersteuern, dunkelrot in der Pause,
+  Hitzezeile unter den Balken.
+- **70 Zusatzenergie**: Speicher 100, lädt 7/s wenn nichts zieht. Verbraucher: Übersteuern
+  9/s je Triebwerk, Schild-Schnellladen 8/s (×2,5), Werkzeug-Boost 6/s (Bohrer und Einholen am
+  Kran ×1,5). Leer → nur der Bonus fällt weg, Meldung einmal. Violetter Balken im HUD.
+- **73 Zurufe** (`src/ui/callout.rs`): F5–F9 bzw. Steuerkreuz (↓ Bremsen, zweimal = Schub aus,
+  ←/→ drehen, ↑ Werkzeug bereit) – nur im Flug ohne offenes Menü, weil das Steuerkreuz sonst
+  Menüs bedient. Über `Command::Callout` in die Simulation (ein Zuruf pro Person, 2,5 s),
+  Sprechblase in Spielerfarbe über dem Schiff, kurzer Ton (Pausemenü: an/aus). Keine Rollen.
+- Angepasst: Drohnen-Test misst den tiefsten Schildstand (Schnellladen füllt ihn sonst wieder).
+- Tests: `src/sim/power_tests.rs` (4), gesamt 151 grün, clippy sauber, Start unter Xvfb ok.
+
+Damit sind alle 82 Punkte umgesetzt.
 
 ### Runde 3 – Phase 17: Persönlichkeit (erledigt)
 

@@ -256,10 +256,11 @@ impl SimState {
     /// Jeder Tick: Flugzeit, neue Sektoren, Meilensteine aus den Ereignissen.
     pub(crate) fn update_journal(&mut self) {
         self.journal.playtime += super::DT;
-        if self.tick.is_multiple_of(30) && !self.ship.destroyed {
-            if let Some(name) = self.region_at(self.ship.pos) {
-                self.first(format!("sector:{name}"), format!("Sektor erkundet: {name}"));
-            }
+        if self.tick.is_multiple_of(30)
+            && !self.ship.destroyed
+            && let Some(name) = self.region_at(self.ship.pos)
+        {
+            self.first(format!("sector:{name}"), format!("Sektor erkundet: {name}"));
         }
         let milestones: Vec<SimEvent> = self
             .events

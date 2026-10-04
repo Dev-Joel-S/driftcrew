@@ -37,6 +37,9 @@ pub mod npc;
 #[cfg(test)]
 mod npc_tests;
 pub mod physics;
+pub mod power;
+#[cfg(test)]
+mod power_tests;
 pub mod precision;
 #[cfg(test)]
 mod progress_tests;
@@ -150,6 +153,11 @@ pub enum Command {
     },
     RemoveMark {
         idx: usize,
+    },
+    /// Zuruf (73): kurzes Signal eines Crewmitglieds an alle.
+    Callout {
+        player: u8,
+        call: Call,
     },
     /// Slots neu verteilt (z. B. Hot-Join mitten im Flug): Schiff umbauen.
     SetLoadout {
@@ -304,11 +312,48 @@ pub enum SimEvent {
     ChapterDone {
         chapter: usize,
     },
+    /// Zuruf eines Crewmitglieds (für den optionalen Ton).
+    Callout {
+        player: u8,
+        call: Call,
+    },
     /// Fracht abgeworfen (treibt jetzt in der Welt).
     Jettisoned {
         pos: Vec2,
     },
 }
+
+/// Zurufe (73): kurze Signale ohne Pflichtrollen – jeder darf alles rufen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Call {
+    Brake,
+    ThrustOff,
+    TurnLeft,
+    TurnRight,
+    ToolReady,
+}
+
+impl Call {
+    pub fn label(self) -> &'static str {
+        match self {
+            Call::Brake => "Bremsen!",
+            Call::ThrustOff => "Schub aus!",
+            Call::TurnLeft => "Links drehen!",
+            Call::TurnRight => "Rechts drehen!",
+            Call::ToolReady => "Werkzeug bereit!",
+        }
+    }
+}
+
+/// Ein Zuruf über dem Schiff, verblasst nach [`CALLOUT_SECONDS`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct Callout {
+    pub player: u8,
+    pub call: Call,
+    pub life: f32,
+}
+
+pub const CALLOUT_SECONDS: f32 = 2.5;
 
 /// Markierung eines Crewmitglieds (Ping), verblasst nach [`PING_SECONDS`].
 #[derive(Clone, Debug, PartialEq)]
@@ -617,6 +662,10 @@ pub struct SimState {
     pub route_rest: Option<usize>,
     /// Schiffsname, Plaketten, Tagebuch, Kartenmarkierungen (81, 82).
     pub journal: journal::Journal,
+    /// Zusammenarbeit (69, 70, 73): Energiebedarf dieses Ticks, Warnung „leer“ gezeigt, Zurufe.
+    pub power_draw: f32,
+    pub energy_warned: bool,
+    pub callouts: Vec<Callout>,
 }
 
 impl SimState {
@@ -740,6 +789,9 @@ impl SimState {
             route_run: None,
             route_rest: None,
             journal: journal::Journal::default(),
+            power_draw: 0.0,
+            energy_warned: false,
+            callouts: Vec::new(),
         };
         s.load_projects(save);
         s.load_records(save);
@@ -920,11 +972,16 @@ impl SimState {
         self.update_tracking();
         self.update_precision();
         self.update_regen();
+        self.update_power();
         self.check_ship_health();
         self.update_journal();
         for p in &mut self.pings {
             p.life -= DT;
         }
+        for c in &mut self.callouts {
+            c.life -= DT;
+        }
+        self.callouts.retain(|c| c.life > 0.0);
         self.pings.retain(|p| p.life > 0.0);
 
         self.bodies.retain(|b| b.alive);
@@ -997,8 +1054,11 @@ impl SimState {
         }
         self.ship.since_hit += DT;
         if self.ship.since_hit > self.ship.shield_delay && !self.flare() {
-            self.ship.shield =
-                (self.ship.shield + self.ship.shield_regen * DT).min(self.ship.max_shield);
+            // Schnellladen aus der Zusatzenergie (70), solange der Schild nicht voll ist.
+            let fast = self.ship.shield < self.ship.max_shield - 0.01
+                && self.draw_energy(power::DRAW_SHIELD);
+            let regen = self.ship.shield_regen * if fast { 2.5 } else { 1.0 };
+            self.ship.shield = (self.ship.shield + regen * DT).min(self.ship.max_shield);
         }
         if self.ship.hull_regen > 0.0 && self.ship.hull > 0.0 {
             self.ship.hull = (self.ship.hull + self.ship.hull_regen * DT).min(self.ship.max_hull);

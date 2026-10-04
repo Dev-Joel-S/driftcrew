@@ -49,11 +49,13 @@ struct BarText(BarKind);
 enum BarKind {
     Hull,
     Shield,
+    Energy,
     Fuel,
     Cargo,
 }
 
 const FUEL_COLOR: Color = Color::srgb(0.95, 0.62, 0.2);
+const ENERGY_COLOR: Color = Color::srgb(0.65, 0.45, 1.0);
 #[derive(Component)]
 struct StatusText;
 #[derive(Component)]
@@ -218,6 +220,7 @@ fn spawn_hud(mut commands: Commands) {
                 for (kind, label, color) in [
                     (BarKind::Hull, "HÜLLE", GOOD),
                     (BarKind::Shield, "SCHILD", TEAL),
+                    (BarKind::Energy, "ZUSATZENERGIE", ENERGY_COLOR),
                     (BarKind::Fuel, "TREIBSTOFF", FUEL_COLOR),
                     (BarKind::Cargo, "FRACHT", ACCENT),
                 ] {
@@ -619,6 +622,7 @@ fn update_bars(
     let frac = |k: BarKind| match k {
         BarKind::Hull => (s.hull / s.max_hull).clamp(0.0, 1.0),
         BarKind::Shield => (s.shield / s.max_shield.max(1.0)).clamp(0.0, 1.0),
+        BarKind::Energy => (s.energy / s.max_energy.max(1.0)).clamp(0.0, 1.0),
         BarKind::Fuel => (s.fuel / s.max_fuel.max(1.0)).clamp(0.0, 1.0),
         BarKind::Cargo => (s.cargo_mass() / s.cargo_capacity().max(0.1)).clamp(0.0, 1.0),
     };
@@ -642,6 +646,8 @@ fn update_bars(
         let v = match b.0 {
             BarKind::Hull => format!("{:.0} / {:.0}", s.hull.max(0.0), s.max_hull),
             BarKind::Shield => format!("{:.0} / {:.0}", s.shield, s.max_shield),
+            BarKind::Energy if s.energy < 0.5 => "leer – nur Grundfunktionen".to_string(),
+            BarKind::Energy => format!("{:.0} / {:.0}", s.energy, s.max_energy),
             BarKind::Fuel if s.fuel_empty() => "LEER · Notreserve 25 % Schub".to_string(),
             BarKind::Fuel => format!("{:.0} / {:.0}", s.fuel, s.max_fuel),
             BarKind::Cargo => format!(
@@ -679,6 +685,27 @@ fn update_bars(
                 _ => None,
             })
             .collect();
+        // Übersteuerung (69): Hitze der Triebwerke, die gerade warm sind.
+        let n = s.thrusters.len();
+        let heat: Vec<String> = s
+            .thrusters
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.heat > 0.05 || t.cool_off > 0.0)
+            .map(|(i, t)| {
+                let name = crate::sim::thruster_label(i, n);
+                if t.cool_off > 0.0 {
+                    format!("{name} AUS {:.0} s", t.cool_off.ceil())
+                } else {
+                    format!("{name} {:.0} %", t.heat * 100.0)
+                }
+            })
+            .collect();
+        let heat = if heat.is_empty() {
+            String::new()
+        } else {
+            format!("\nHitze: {}", heat.join(" · "))
+        };
         let delicate = if delicate.is_empty() {
             String::new()
         } else {
@@ -690,7 +717,7 @@ fn update_bars(
             s.mass,
             ammo,
             delicate
-        );
+        ) + &heat;
         if t.0 != v {
             t.0 = v;
         }
@@ -875,8 +902,15 @@ fn update_slots(
             || ship.tools.iter().any(|t| t.slot == slot && t.pressed)
     };
     // Ruhezustand: nur Rahmen in Slotfarbe. Gedrückt: ganz in Slotfarbe gefüllt.
+    // Übersteuert: orange bis rot nach Hitze; Notabschaltung: dunkelrot.
     for (sb, mut bg) in &mut boxes {
-        bg.0 = if on(sb.0) { slot_color(sb.0) } else { BG };
+        let th = ship.thrusters.iter().find(|t| t.slot == sb.0);
+        bg.0 = match th {
+            Some(t) if t.cool_off > 0.0 => Color::srgb(0.45, 0.05, 0.05),
+            Some(t) if t.overdrive && t.firing => Color::srgb(1.0, 0.55 - 0.45 * t.heat, 0.1),
+            _ if on(sb.0) => slot_color(sb.0),
+            _ => BG,
+        };
     }
     for (st, mut tc) in &mut texts {
         tc.0 = match (on(st.slot), st.accent) {

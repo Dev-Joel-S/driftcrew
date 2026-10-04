@@ -1,5 +1,6 @@
 //! Benutzeroberfläche: gemeinsame Bausteine, Menülisten, Meldungen.
 
+pub mod callout;
 pub mod cargo;
 pub mod course;
 pub mod hud;
@@ -81,6 +82,7 @@ impl Plugin for UiPlugin {
                 cargo::CargoPlanPlugin,
                 replay::ReplayUiPlugin,
                 text_entry::TextEntryPlugin,
+                callout::CalloutPlugin,
             ));
     }
 }
