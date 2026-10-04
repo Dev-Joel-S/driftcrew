@@ -54,9 +54,10 @@ eigener Name, eigener Look, alle Grafiken und Klänge werden beim Start prozedur
   unsignierte Programme manchmal („Weitere Informationen → Trotzdem ausführen“).
 - **Linux:** `driftcrew-linux.tar.gz` entpacken, `./driftcrew` starten (Vulkan-Treiber nötig,
   glibc ab 2.39).
-- **NixOS:** Ein fertiges Linux-Binary findet dort seine Bibliotheken nicht. Entweder aus dem
-  Quellcode: `nix run .` im Repository (baut über `flake.nix`, beim ersten Mal einige Minuten),
-  oder das fertige Binary mit `nix-shell -p steam-run --run "steam-run ./driftcrew"` starten.
+- **NixOS:** `driftcrew-nixos.tar.gz` entpacken und `./start.sh` ausführen. Das Skript holt
+  über `shell.nix` die Bibliotheken (Vulkan, ALSA, udev, X11/Wayland) und startet das Binary mit
+  dem glibc-Lader aus Nix – ohne steam-run, ohne Unfreies. Die beiden Dateien liegen auch unter
+  `packaging/nixos/`. Alternativ aus dem Quellcode: `nix run .` (baut über `flake.nix`).
 
 Stürzt das Spiel ab, steht der Grund in `crash.txt` neben dem Spielstand (Pfade unten).
 
