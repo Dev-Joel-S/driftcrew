@@ -706,8 +706,10 @@ fn update_bars(
         } else {
             format!("\nHitze: {}", heat.join(" · "))
         };
-        let heat = if sim.0.braking {
-            format!("{heat}\nBREMSE")
+        let heat = if sim.0.reversing {
+            format!("{heat}\nRÜCKWÄRTS (↓ loslassen = stoppen)")
+        } else if sim.0.braking {
+            format!("{heat}\nBREMSE (weiter halten = rückwärts)")
         } else {
             heat
         };

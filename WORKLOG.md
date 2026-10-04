@@ -297,6 +297,19 @@ die Phasen 14–18 den Rest). Phase 19 setzt die Rückmeldungen aus dem ersten S
 
 ## Protokoll
 
+### Runde 4 – Phase 19, Teil 5: Rückwärtsgang (erledigt)
+
+- Rückmeldung: „Es gibt keinen Rückwärtsgang – Landen ohne Schwerkraft ist (anders als bei
+  Rakete) sehr nervig.“ Bei Rakete zieht die Schwerkraft das Schiff auf die Plattform; hier
+  muss man ohne sie heck voran sinken.
+- Lösung wie beim Auto: **↓ halten bremst**; steht das Schiff (unter 0,4 m/s, kaum Drehung)
+  und die Taste bleibt gedrückt, legt der Bremsassistent den **Rückwärtsgang** ein – heck voran
+  bis 2 m/s (unter der Landegrenze von 2,6 m/s), seitliches Driften und Drehen werden abgefangen,
+  kostet Treibstoff. Loslassen nimmt ihn heraus. Werte in `world.ron` → `flight`
+  (`reverse_accel`, `reverse_max`). HUD zeigt BREMSE bzw. RÜCKWÄRTS.
+- Landen: Nase hoch über der Plattform stehen, ↓ halten – Test `landing_tail_first_with_the_
+  reverse_gear` setzt so ohne Schaden auf. 161 Tests grün.
+
 ### Runde 4 – Phase 19, Teil 4: der äußere Ring (erledigt)
 
 - Rückmeldung: „Raum noch etwas leer – schwer, aber so, dass es Spaß macht.“ Eine Übersicht

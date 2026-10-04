@@ -98,13 +98,35 @@ impl SimState {
             torque += cross(at - self.ship.pos, f) * assist_turn;
             burned += t.thrust * od * self.ship.fuel_burn * DT;
         }
-        // Bremsassistent: bremst Fahrt und Drehung, ohne dass ein Slot zündet.
+        // Bremsassistent: bremst Fahrt und Drehung, ohne dass ein Slot zündet. Steht das Schiff
+        // und die Taste bleibt gedrückt, legt er den Rückwärtsgang ein: langsam heck voran (zum
+        // Landen ohne Schwerkraft – Nase hoch über der Plattform, ↓ halten, sanft aufsetzen).
         self.braking = false;
+        self.reversing = false;
         if input.brake && !voting && self.ship.docked.is_none() {
             let fl = &self.data.world.flight;
             let (acc, spin, fuel) = (fl.brake_accel, fl.brake_spin, fl.brake_fuel);
+            let (rev_acc, rev_max) = (fl.reverse_accel, fl.reverse_max);
             let v = self.ship.vel.length();
-            if v > 0.02 || self.ship.ang_vel.abs() > 0.02 {
+            if !self.reverse_engaged && v < 0.4 && self.ship.ang_vel.abs() < 0.3 {
+                self.reverse_engaged = true;
+            }
+            if self.reverse_engaged {
+                let back = rot(-Vec2::Y, self.ship.angle);
+                let along = self.ship.vel.dot(back);
+                let side = self.ship.vel - back * along;
+                // Seitliches Driften abfangen, rückwärts bis zur Höchstgeschwindigkeit.
+                let ds = (acc * reserve * DT).min(side.length());
+                if ds > 0.0 {
+                    self.ship.vel -= side.normalize() * ds;
+                }
+                let target = rev_max;
+                let dv = (target - along).clamp(-acc * reserve * DT, rev_acc * reserve * DT);
+                self.ship.vel += back * dv;
+                self.ship.ang_vel *= 1.0 - (spin * DT).min(0.5);
+                burned += fuel * DT;
+                self.reversing = true;
+            } else if v > 0.02 || self.ship.ang_vel.abs() > 0.02 {
                 let dv = (acc * reserve * DT).min(v);
                 if v > 0.0 {
                     self.ship.vel -= self.ship.vel / v * dv;
@@ -113,6 +135,8 @@ impl SimState {
                 burned += fuel * DT;
                 self.braking = true;
             }
+        } else {
+            self.reverse_engaged = false;
         }
         if self.ship.docked.is_none() {
             self.ship.vel += force / self.ship.mass * DT;

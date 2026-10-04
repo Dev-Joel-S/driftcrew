@@ -682,6 +682,9 @@ pub struct SimState {
     /// Flugassistenz an (Standard) und ob der Bremsassistent gerade bremst.
     pub flight_assist: bool,
     pub braking: bool,
+    /// Rückwärtsgang: eingelegt (solange die Bremstaste gehalten wird) und gerade aktiv.
+    pub reverse_engaged: bool,
+    pub reversing: bool,
 }
 
 impl SimState {
@@ -812,6 +815,8 @@ impl SimState {
             callouts: Vec::new(),
             flight_assist: true,
             braking: false,
+            reverse_engaged: false,
+            reversing: false,
         };
         s.load_projects(save);
         s.load_records(save);
@@ -1339,11 +1344,18 @@ mod tests {
             brake: true,
             ..Default::default()
         };
+        // Bremsen, bis das Schiff steht (danach legt die gehaltene Taste den Rückwärtsgang ein).
+        let mut stopped = false;
         for _ in 0..180 {
             s.step(&brake);
+            if s.reverse_engaged {
+                stopped = true;
+                break;
+            }
+            assert!(s.braking && !s.reversing);
         }
-        assert!(s.ship.vel.length() < 0.05, "steht: {:?}", s.ship.vel);
-        assert!(s.ship.ang_vel.abs() < 0.05);
+        assert!(stopped, "steht nach kurzer Zeit: {:?}", s.ship.vel);
+        assert!(s.ship.ang_vel.abs() < 0.3);
         assert!(s.ship.fuel < fuel, "kostet Treibstoff");
         assert!(s.ship.thrusters.iter().all(|t| !t.firing));
         // Angedockt: die Bremse dockt nicht ab.
@@ -1351,5 +1363,70 @@ mod tests {
         assert!(d.ship.docked.is_some());
         d.step(&brake);
         assert!(d.ship.docked.is_some());
+    }
+
+    #[test]
+    fn holding_brake_after_stopping_reverses_slowly() {
+        let mut s = new_sim();
+        s.ship.docked = None;
+        s.ship.pos = Vec2::new(0.0, 300.0);
+        s.ship.vel = Vec2::ZERO;
+        s.ship.angle = 0.7;
+        let brake = TickInput {
+            brake: true,
+            ..Default::default()
+        };
+        for _ in 0..240 {
+            s.step(&brake);
+        }
+        assert!(s.reversing);
+        let back = geom::rot(-Vec2::Y, s.ship.angle);
+        let along = s.ship.vel.dot(back);
+        let max = s.data.world.flight.reverse_max;
+        assert!(
+            along > max * 0.8 && along <= max + 0.01,
+            "rückwärts {along}"
+        );
+        assert!(
+            (s.ship.vel - back * along).length() < 0.05,
+            "kein Seitendrift"
+        );
+        // Loslassen: Rückwärtsgang aus.
+        s.step(&TickInput::default());
+        assert!(!s.reverse_engaged && !s.reversing);
+    }
+
+    #[test]
+    fn landing_tail_first_with_the_reverse_gear() {
+        // Nase hoch über der Plattform stehen, ↓ halten – das Schiff setzt sanft auf.
+        let mut s = new_sim();
+        let pad = s.ship.docked.unwrap();
+        let p = s.world.pads[pad].clone();
+        s.ship.docked = None;
+        s.ship.angle = p.ship_angle();
+        s.ship.prev_angle = s.ship.angle;
+        s.ship.pos = p.center + p.normal * (s.ship.rest_height() + 6.0);
+        s.ship.prev_pos = s.ship.pos;
+        s.ship.vel = Vec2::ZERO;
+        s.ship.ang_vel = 0.0;
+        s.ship.dock_cooldown = 0.0;
+        let brake = TickInput {
+            brake: true,
+            ..Default::default()
+        };
+        let mut docked = false;
+        for _ in 0..(10 * 60) {
+            s.step(&brake);
+            if s.ship.docked == Some(pad) {
+                docked = true;
+                break;
+            }
+        }
+        assert!(
+            docked,
+            "aufgesetzt: pos {:?} vel {:?}",
+            s.ship.pos, s.ship.vel
+        );
+        assert!(s.ship.hull >= s.ship.max_hull - 0.5, "ohne Schaden");
     }
 }

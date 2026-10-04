@@ -404,7 +404,7 @@ entscheidet, **Gleichstand bedeutet Nein**. Allein gespielt wird direkt gekauft.
 | Mausrad | – | Zoom |
 | `^` | Stick drücken | Ping |
 | F5 / F6 / F7 / F8 / F9 | Steuerkreuz ↓ / ↓↓ / ← / → / ↑ | Zuruf: Bremsen / Schub aus / Links drehen / Rechts drehen / Werkzeug bereit |
-| ↓ (halten) | Steuerkreuz ↓ (halten) | Bremsassistent: Fahrt und Drehung abbremsen |
+| ↓ (halten) | Steuerkreuz ↓ (halten) | Bremsen; steht das Schiff, weiter halten = langsam rückwärts (Landen) |
 | F11 | – | Vollbild (wie in den Einstellungen) |
 
 **Flugassistenz** (Standard an): sanfterer Schub, das Schiff rollt aus, ein Stabilisator fängt

@@ -193,3 +193,4 @@ Was sich gegenüber der ersten Fassung geändert hat (Begründungen und Details 
 - **Runde 4, Bremsen:** feste Bremstaste für alle (Bremsassistent) statt eines Bremsdüsen-Slots – bewusste Ausnahme vom reinen Slot-Prinzip *(umgesetzt in Phase 19)*
 - **Runde 4, Ausrüstung:** Kran, Kanone und Schildgenerator gehören nicht mehr zur Grundausstattung, sondern werden gekauft oder in Wracks gefunden; erst dann gibt es den Slot. Bohrer und Scanner sind immer an Bord *(umgesetzt in Phase 19)*
 - **Runde 4, Schild:** keine Selbstladung mehr, Schildladung ist wie Munition ein Verbrauchsgut; bei Zerstörung sind beide weg *(umgesetzt in Phase 19)*
+- **Runde 4, Rückwärtsgang:** Die Bremstaste legt nach dem Stillstand einen langsamen Rückwärtsgang ein (bis 2 m/s) – Ersatz für die Schwerkraft beim Landen, die es hier anders als bei Rakete nicht gibt *(umgesetzt in Phase 19)*

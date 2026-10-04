@@ -392,8 +392,12 @@ fn update_loops(
     mut drill: Query<&mut AudioSink, (With<DrillLoop>, Without<ThrustLoop>)>,
 ) {
     let ship = &sim.0.ship;
-    let level: f32 =
-        ship.thrusters.iter().map(|t| t.level).sum::<f32>() + if sim.0.braking { 1.2 } else { 0.0 };
+    let level: f32 = ship.thrusters.iter().map(|t| t.level).sum::<f32>()
+        + if sim.0.braking || sim.0.reversing {
+            1.2
+        } else {
+            0.0
+        };
     let tv = if paused.0 || ship.destroyed {
         0.0
     } else {

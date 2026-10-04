@@ -738,6 +738,10 @@ pub struct FlightDef {
     pub brake_accel: f32,
     pub brake_spin: f32,
     pub brake_fuel: f32,
+    /// Rückwärtsgang (Bremstaste weiter halten, wenn das Schiff steht): Beschleunigung und
+    /// Höchstgeschwindigkeit – unter der Landegrenze, damit man rückwärts aufsetzen kann.
+    pub reverse_accel: f32,
+    pub reverse_max: f32,
 }
 
 impl Default for FlightDef {
@@ -751,6 +755,8 @@ impl Default for FlightDef {
             brake_accel: 7.0,
             brake_spin: 4.0,
             brake_fuel: 1.0,
+            reverse_accel: 2.5,
+            reverse_max: 2.0,
         }
     }
 }
