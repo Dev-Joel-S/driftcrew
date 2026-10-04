@@ -40,6 +40,8 @@ enum PauseAct {
     Help,
     Logbook,
     CargoPlan,
+    NameShip,
+    Note,
     SaveTitle,
     Quit,
 }
@@ -68,6 +70,15 @@ fn items(sim: &SimState) -> Vec<Item<PauseAct>> {
             sim.ship.cargo_mass().max(0.0),
             sim.ship.cargo_capacity()
         )),
+        Item::new("Schiff taufen", PauseAct::NameShip).detail(match sim.ship_name() {
+            Some(n) => format!(
+                "Jetzt: „{n}“ · {} Plaketten am Rumpf",
+                sim.ship_plaques().len()
+            ),
+            None => "Noch namenlos – gebt ihm einen Namen".to_string(),
+        }),
+        Item::new("Notiz ins Logbuch", PauseAct::Note)
+            .detail(format!("Tagebuch: {} Einträge", sim.journal.entries.len())),
         Item::new("Steuerung & Spielprinzip", PauseAct::Help),
         Item::new("Speichern & zum Titel", PauseAct::SaveTitle),
         Item::new("Spiel beenden", PauseAct::Quit).detail("Der Spielstand wird gespeichert"),
@@ -131,8 +142,9 @@ pub fn pause_input(
     mut pending: ResMut<PendingCommands>,
     mut book: ResMut<super::logbook::Logbook>,
     mut plan: ResMut<super::cargo::CargoPlan>,
+    mut entry: ResMut<super::text_entry::TextEntry>,
 ) {
-    if book.open || plan.open {
+    if book.open || plan.open || entry.open {
         return;
     }
     if !help.is_empty() {
@@ -222,6 +234,13 @@ pub fn pause_input(
         PauseAct::Logbook => {
             book.open = true;
             book.opened = true;
+        }
+        PauseAct::NameShip => {
+            let name = sim.0.ship_name().unwrap_or_default().to_string();
+            entry.start(super::text_entry::Purpose::ShipName, name, &mut paused);
+        }
+        PauseAct::Note => {
+            entry.start(super::text_entry::Purpose::Note, String::new(), &mut paused);
         }
         PauseAct::CargoPlan => {
             // Im Flug läuft die Welt weiter, angedockt bleibt sie angehalten.

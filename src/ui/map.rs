@@ -35,6 +35,9 @@ struct MapRoot;
 enum MapAct {
     Accept(u32),
     Abandon(u32),
+    /// Kartenmarkierung hier (am Schiff) setzen bzw. eine entfernen (82).
+    Mark,
+    Unmark(usize),
 }
 
 const MAP: f32 = 620.0;
@@ -150,6 +153,16 @@ fn items(sim: &crate::sim::SimState) -> Vec<Item<MapAct>> {
                 .detail(m.detail(sim)),
         );
     }
+    v.push(
+        Item::new("✎ Markierung hier setzen", MapAct::Mark)
+            .detail("Beschriftete Markierung an der Position des Schiffs (für alle)"),
+    );
+    for (i, mk) in sim.journal.marks.iter().enumerate() {
+        v.push(Item::new(
+            format!("✎ {} entfernen", mk.text),
+            MapAct::Unmark(i),
+        ));
+    }
     for m in sim.offers.iter().filter(|m| m.is_distress()) {
         let (lo, hi) = m.crew(sim);
         v.push(
@@ -169,8 +182,10 @@ fn map_input(
     buttons: Query<(&Interaction, &ItemButton), Changed<Interaction>>,
     mut focus: ResMut<MenuFocus>,
     mut pending: ResMut<PendingCommands>,
+    mut entry: ResMut<super::text_entry::TextEntry>,
+    mut paused: ResMut<Paused>,
 ) {
-    if !open.0 {
+    if !open.0 || entry.open {
         return;
     }
     let its = items(&sim.0);
@@ -195,6 +210,12 @@ fn map_input(
         match it.action.clone() {
             Some(MapAct::Accept(id)) => pending.0.push(Command::AcceptMission { id }),
             Some(MapAct::Abandon(id)) => pending.0.push(Command::AbandonMission { id }),
+            Some(MapAct::Mark) => entry.start(
+                super::text_entry::Purpose::Mark(sim.0.ship.pos),
+                String::new(),
+                &mut paused,
+            ),
+            Some(MapAct::Unmark(idx)) => pending.0.push(Command::RemoveMark { idx }),
             None => {}
         }
     }
@@ -247,7 +268,12 @@ fn draw_map(
         s.crew.credits,
         s.explored.version,
         s.course.as_ref().map(|r| (r.course, r.step))
-    ) + &format!("|{:?}|{}", s.routes_known, s.effects.len());
+    ) + &format!(
+        "|{:?}|{}|{:?}",
+        s.routes_known,
+        s.effects.len(),
+        s.journal.marks
+    );
     let h = super::sig_of(&key);
     if sig.0 == h {
         return;
@@ -472,6 +498,13 @@ fn draw_map(
                         c,
                     );
                 }
+            }
+            // Markierungen der Crew (82).
+            for mk in &s.journal.marks {
+                let at = to_map(Vec2::new(mk.pos.0, mk.pos.1));
+                let c = Color::srgb(1.0, 0.9, 0.4);
+                dot(m, at, 7.0, c, false);
+                label(m, at, format!("✎ {}", mk.text), c);
             }
             // Wirkungen erledigter Aufträge an den Stationen (76).
             for e in &s.effects {

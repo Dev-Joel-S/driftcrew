@@ -1748,6 +1748,9 @@ pub struct CrewSave {
     pub routes: Vec<String>,
     #[serde(default)]
     pub route_best: Vec<(String, f32)>,
+    /// Schiffsnamen, Plaketten, Tagebuch, Kartenmarkierungen (81, 82).
+    #[serde(default)]
+    pub journal: crate::sim::journal::Journal,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -1870,6 +1873,7 @@ impl CrewSave {
             effects: Vec::new(),
             routes: Vec::new(),
             route_best: Vec::new(),
+            journal: Default::default(),
         }
     }
 

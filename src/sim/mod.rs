@@ -26,6 +26,9 @@ pub mod finance;
 mod finance_tests;
 pub mod geom;
 pub mod hazards;
+pub mod journal;
+#[cfg(test)]
+mod journal_tests;
 pub mod minigame;
 #[cfg(test)]
 mod minigame_tests;
@@ -133,6 +136,20 @@ pub enum Command {
     },
     Jettison {
         id: u32,
+    },
+    /// Persönliches (81, 82): Schiff taufen, Notiz ins Logbuch, Kartenmarkierung setzen/entfernen.
+    NameShip {
+        name: String,
+    },
+    AddNote {
+        text: String,
+    },
+    AddMark {
+        pos: Vec2,
+        text: String,
+    },
+    RemoveMark {
+        idx: usize,
     },
     /// Slots neu verteilt (z. B. Hot-Join mitten im Flug): Schiff umbauen.
     SetLoadout {
@@ -598,6 +615,8 @@ pub struct SimState {
     pub route_run: Option<effects::RouteRun>,
     /// Gerade beendete Route: startet erst wieder, wenn das Schiff die Enden verlassen hat.
     pub route_rest: Option<usize>,
+    /// Schiffsname, Plaketten, Tagebuch, Kartenmarkierungen (81, 82).
+    pub journal: journal::Journal,
 }
 
 impl SimState {
@@ -720,6 +739,7 @@ impl SimState {
             route_best: Vec::new(),
             route_run: None,
             route_rest: None,
+            journal: journal::Journal::default(),
         };
         s.load_projects(save);
         s.load_records(save);
@@ -728,6 +748,7 @@ impl SimState {
         s.load_story(save);
         s.load_cargo_state(save);
         s.load_world_state(save);
+        s.load_journal(save);
         s.populate_fields();
         s.populate_wrecks();
         s.refresh_offers();
@@ -831,12 +852,14 @@ impl SimState {
             effects: Vec::new(),
             routes: Vec::new(),
             route_best: Vec::new(),
+            journal: Default::default(),
         };
         self.save_finance(&mut save);
         self.save_workshop(&mut save);
         self.save_story(&mut save);
         self.save_cargo_state(&mut save);
         self.save_world_state(&mut save);
+        self.save_journal(&mut save);
         save
     }
 
@@ -898,6 +921,7 @@ impl SimState {
         self.update_precision();
         self.update_regen();
         self.check_ship_health();
+        self.update_journal();
         for p in &mut self.pings {
             p.life -= DT;
         }

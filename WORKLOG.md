@@ -255,7 +255,7 @@ Stand nach Phase 13: Punkte 1–63 sowie 65, 71, 72, 74, 75 sind umgesetzt. Offe
 | 76 | Lokale Folgen | Erledigte Aufträge wirken eine Weile: geräumte Trümmerzone ist dünner, belieferte Station hat Rabatt/Munition, reparierter Sender verbessert Radar in der Region. Anzeige bei Abschluss und auf der Karte |
 | 79 | Verborgene Wege | Sichere Schneisen durch Trümmerfelder und Anomalierand, Hinweise per Scanner/Logbuch, danach auf der Karte |
 
-### Phase 17 – Persönlichkeit
+### Phase 17 – Persönlichkeit (erledigt, siehe Protokoll)
 
 | Nr. | Punkt | Umsetzung |
 |---|---|---|
@@ -297,6 +297,24 @@ Stand nach Phase 13: Punkte 1–63 sowie 65, 71, 72, 74, 75 sind umgesetzt. Offe
 ---
 
 ## Protokoll
+
+### Runde 3 – Phase 17: Persönlichkeit (erledigt)
+
+- **81 Schiffsname** (`src/sim/journal.rs`, `src/ui/text_entry.rs`): Pause → „Schiff taufen“.
+  Texteingabe mit Tastatur (Simulation ruht, Slot-Tasten schreiben nur Text, danach wird der
+  Tastenspeicher geleert – nichts zündet nachträglich); am Pad ←→ Namensvorschläge. Der Name
+  steht im HUD, im Logbuch und im Spielstand (pro Schiffstyp).
+- **81 Plaketten**: Rettung („Retter der …“), sperrige Bergung, erwachtes Monument, jede
+  Wiederaufbau-Etappe. Leuchtende Abzeichen in einer Reihe auf dem größten Rumpfteil des
+  Schiffs, an dem sie verdient wurden; Liste im Logbuch.
+- **82 Tagebuch** (Logbuch, ←→ zweite Seite): automatisch – erstes Andocken überhaupt und an
+  jeder Station, jeder neu besuchte Sektor, knappste Rettung (Hülle in %), größte Bergung,
+  Plaketten, abgeschlossene Kapitel; jeweils mit Flugzeit (über alle Sitzungen). Eigene Notizen
+  mit Enter im Tagebuch oder Pause → „Notiz ins Logbuch“.
+- **82 Kartenmarkierungen**: Karte → „Markierung hier setzen“ (beschriftet, sonst nach dem Ort
+  benannt), höchstens 16, einzeln entfernbar, für alle sichtbar, gespeichert.
+- Tests: `src/sim/journal_tests.rs` (4), gesamt 147 grün, clippy sauber, Start unter Xvfb ohne
+  Fehler.
 
 ### Runde 3 – Phase 16: Die Welt reagiert (erledigt)
 

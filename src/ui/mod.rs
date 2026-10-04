@@ -12,6 +12,7 @@ pub mod radio;
 pub mod replay;
 pub mod report;
 pub mod station;
+pub mod text_entry;
 pub mod title;
 
 use bevy::prelude::*;
@@ -79,6 +80,7 @@ impl Plugin for UiPlugin {
                 logbook::LogbookPlugin,
                 cargo::CargoPlanPlugin,
                 replay::ReplayUiPlugin,
+                text_entry::TextEntryPlugin,
             ));
     }
 }

@@ -167,6 +167,58 @@ fn part_depth(kind: &PartKind) -> f32 {
     }
 }
 
+/// Plaketten (81): kleine leuchtende Abzeichen in einer Reihe auf dem Rumpf.
+fn spawn_plaques(
+    commands: &mut Commands,
+    art: &mut Art,
+    meshes: &mut Assets<Mesh>,
+    mats: &mut Assets<StandardMaterial>,
+    ship: &Ship,
+    root: Entity,
+    colors: &[[f32; 3]],
+) {
+    if colors.is_empty() {
+        return;
+    }
+    // Der größte Rumpfteil trägt die Abzeichen.
+    let Some(hull) = ship
+        .parts
+        .iter()
+        .filter(|p| matches!(p.kind, PartKind::Hull | PartKind::Cockpit))
+        .max_by(|a, b| (a.half.x * a.half.y).total_cmp(&(b.half.x * b.half.y)))
+    else {
+        return;
+    };
+    let top = part_depth(&hull.kind) * 0.5 + 0.02;
+    let n = colors.len().min(8);
+    let step = (hull.half.x * 1.6 / n.max(1) as f32).min(0.34);
+    let frame = mats.add(art.panel_mat(srgb([0.75, 0.68, 0.45]), 0.85, 0.25));
+    let disc = art.bevel_box(meshes, Vec3::new(0.24, 0.24, 0.05));
+    let rim = art.bevel_box(meshes, Vec3::new(0.3, 0.3, 0.04));
+    for (k, c) in colors.iter().take(n).enumerate() {
+        let x = hull.pos.x + (k as f32 - (n as f32 - 1.0) * 0.5) * step;
+        let y = hull.pos.y - hull.half.y * 0.55;
+        let glow = mats.add(art.emissive_mat(srgb(*c), 4.0));
+        let at = Vec3::new(x, y, top);
+        let a = commands
+            .spawn((
+                Mesh3d(rim.clone()),
+                MeshMaterial3d(frame.clone()),
+                Transform::from_translation(at).with_rotation(Quat::from_rotation_z(0.785)),
+            ))
+            .id();
+        let b = commands
+            .spawn((
+                Mesh3d(disc.clone()),
+                MeshMaterial3d(glow),
+                Transform::from_translation(at + Vec3::Z * 0.03)
+                    .with_rotation(Quat::from_rotation_z(0.785)),
+            ))
+            .id();
+        commands.entity(root).add_children(&[a, b]);
+    }
+}
+
 /// Baut das 3D-Modell eines Schiffs aus seinen Teilen. Ursprung = Schiffsursprung.
 pub fn spawn_ship_model(
     commands: &mut Commands,
@@ -688,7 +740,11 @@ pub fn sync_ship(
 ) {
     let ship = &sim.0.ship;
     let (hull, accent, flame) = livery_colors(&sim.0);
-    let sig = format!("{}|{hull:?}{accent:?}{flame:?}", ship_signature(ship));
+    let plaques: Vec<[f32; 3]> = sim.0.ship_plaques().iter().map(|p| p.color).collect();
+    let sig = format!(
+        "{}|{hull:?}{accent:?}{flame:?}|{plaques:?}",
+        ship_signature(ship)
+    );
     let existing = ship_q.iter().next().map(|(e, s, _, _)| (e, s.sig.clone()));
     if existing.as_ref().map(|(_, s)| s != &sig).unwrap_or(true) {
         if let Some((e, _)) = existing {
@@ -712,6 +768,15 @@ pub fn sync_ship(
             },
         );
         commands.entity(e).insert(ShipVis { sig });
+        spawn_plaques(
+            &mut commands,
+            &mut art,
+            &mut meshes,
+            &mut mats,
+            ship,
+            e,
+            &plaques,
+        );
         return;
     }
     let alpha = fixed.overstep_fraction();

@@ -1337,6 +1337,7 @@ impl SimState {
             format!("Auftrag erfüllt: {title}  +{paid} Credits"),
             ToastKind::Good,
         );
+        self.journal_mission(&m.kind, &title, earned);
         // Die Welt reagiert (76): was sich durch den Auftrag eine Weile ändert.
         let effect = self.mission_effect(&m.kind, m.origin);
         if let Some(text) = &effect {

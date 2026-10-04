@@ -448,7 +448,10 @@ fn update_info(
         (
             format!(
                 "{} · Crew {} · {}",
-                s.data.ship(&s.crew.current_ship).name,
+                match s.ship_name() {
+                    Some(n) => format!("„{n}“"),
+                    None => s.data.ship(&s.crew.current_ship).name.clone(),
+                },
                 s.crew.size,
                 region_name(s)
             ),

@@ -468,6 +468,10 @@ impl SimState {
                 Command::SetStayInWreck(on) => self.story.stay_in_wreck = *on,
                 Command::MoveCargo { id, to } => self.move_cargo_cmd(*id, *to),
                 Command::Jettison { id } => self.jettison(*id),
+                Command::NameShip { name } => self.name_ship(name),
+                Command::AddNote { text } => self.add_note(text),
+                Command::AddMark { pos, text } => self.add_mark(*pos, text),
+                Command::RemoveMark { idx } => self.remove_mark(*idx),
                 Command::StartCourse { course } => self.arm_course(*course),
                 Command::AbortCourse => self.abort_course("auf Wunsch der Crew"),
                 Command::SetLoadout {
