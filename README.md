@@ -458,6 +458,10 @@ Eine offene 2D-Ebene von gut 5 km Durchmesser, dargestellt in 3D (2.5D) mit Para
   der **Nebelpiraten**; ein zweites Nest liegt am Schlund
 - **Gravitationsanomalie** im Südosten – wer zu nah kommt, wird hineingezogen
 - **Schlund** im Südwesten – ein Schwarzes Loch mit starkem Sog und Ereignishorizont
+- **Äußerer Ring** (Phase 19): **Südwacht** im Süden am Ascheriff (Meteore der Südschauer),
+  **Polarstation** im Dunst des Kältesees im Nordwesten, **Ostklippen** (Ionit) bei den
+  Klippenpiraten, **Westwall**, **Frostwolke** und **Nordsturm** im Norden, **Kieselfeld** als
+  Übungsfeld direkt bei Nova – weiter draußen ist es reicher, aber gefährlicher
 
 Schiffe: **Driftkutter** (Standard, 5 Triebwerke, Kanone, Kran, Bohrer), **Kolibri** (Scout,
 2–3 Triebwerke), **Hornisse** (Abfangjäger, 2 Kanonen), **Lastesel** (Frachter, 7 Triebwerke,

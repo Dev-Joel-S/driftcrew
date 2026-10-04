@@ -225,9 +225,8 @@ Der Rest wird in die bestehenden Phasen einsortiert bzw. bekommt eigene Phasen.
 
 Reihenfolge auf Wunsch: 14, 18, 16, 17, zuletzt 15.
 
-Stand nach Phase 13: Punkte 1–63 sowie 65, 71, 72, 74, 75 sind umgesetzt. Offen sind 64, 66
-(zwei Kräne an einer Last), 67–70, 73, 76–82. Reihenfolge wie vereinbart: Energieverwaltung
-(70) und Wiederholung (80) zuletzt.
+Stand nach Phase 18: alle Punkte 1–82 sind umgesetzt (Phase 13 hatte 1–63, 65, 71, 72, 74, 75;
+die Phasen 14–18 den Rest). Phase 19 setzt die Rückmeldungen aus dem ersten Spieltest um.
 
 ### Phase 14 – Fracht und Bergung (erledigt, siehe Protokoll)
 
@@ -297,6 +296,28 @@ Stand nach Phase 13: Punkte 1–63 sowie 65, 71, 72, 74, 75 sind umgesetzt. Offe
 ---
 
 ## Protokoll
+
+### Runde 4 – Phase 19, Teil 4: der äußere Ring (erledigt)
+
+- Rückmeldung: „Raum noch etwas leer – schwer, aber so, dass es Spaß macht.“ Eine Übersicht
+  aller Inhalte zeigte: der äußere Ring (ab ~1800 m vom Zentrum) war fast leer.
+- Jede Gegend bekommt Gefahr **und** Lohn:
+  - **Süden:** Außenposten **Südwacht** (Munition, Schildladung, Solarit/Ionit teuer), das
+    **Ascheriff** (viel Solarit) und die Meteore der **Südschauer**; Route **Sturmgasse** quer
+    durch den Sonnenwind-Korridor.
+  - **Osten:** **Ostklippen** (Ionit), bewacht von den **Klippenpiraten**, daneben der
+    **Oststurm** und ein Minenleger-Wrack.
+  - **Westen:** **Westwall** (Kobalt), ruhig, aber weit weg.
+  - **Nordwesten:** **Polarstation** im Dunst des **Kältesees** (Sicht/Scanner schwächer),
+    kauft Ionit und Schrott teuer; Route **Polarweg** am Schiffsfriedhof vorbei.
+  - **Norden:** **Nordsturm** um den Kreuzer Polaris und den Frachter Sirius.
+  - Fünf weitere Wracks, fünf Notruforte, fünf Messfelder, zwei Auftraggeberinnen (Ida Krum,
+    Dr. Juno Hale) und Funksprüche für die neuen Stationen.
+- Ausrüstung zu Ende gedacht: Schildladung bzw. Munition ohne Gerät und Upgrades für Geräte,
+  die die Crew nicht hat, sind gesperrt (mit Hinweis auf die Werft); Geleitschutz braucht eine
+  Kanone, Abschleppen und Sperrgut einen Kran.
+- Testanpassung: Rettungstest schiebt die abgeworfene Kiste weg (sonst sammelte das erneute
+  Längsseitsgehen sie je nach Zufallsrichtung wieder ein). 159 Tests grün.
 
 ### Runde 4 – Phase 19: Rückmeldungen aus dem ersten Test (erledigt)
 

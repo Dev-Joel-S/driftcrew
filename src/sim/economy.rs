@@ -247,6 +247,16 @@ impl SimState {
                 if !st.has(needed) {
                     return Err(format!("{} bietet das nicht an", st.name));
                 }
+                // Ohne Gerät nichts nachzuladen (Phase 19).
+                match item.effect {
+                    ServiceEffect::ShieldFull if !self.has_gear(super::data::Gear::Shield) => {
+                        return Err("Kein Schildgenerator an Bord – gibt es in der Werft".into());
+                    }
+                    ServiceEffect::Ammo(_) if !self.has_gear(super::data::Gear::Cannon) => {
+                        return Err("Keine Kanone an Bord – gibt es in der Werft".into());
+                    }
+                    _ => {}
+                }
                 if !ok {
                     return Err("Bereits voll".into());
                 }
@@ -279,6 +289,18 @@ impl SimState {
                 }
                 if self.crew.upgrades.contains(id) {
                     return Err("Bereits eingebaut".into());
+                }
+                // Verbesserungen für ein Gerät, das die Crew noch nicht hat, ergeben keinen Sinn.
+                let needs = match u.part {
+                    super::data::UpgradePart::Crane => Some(super::data::Gear::Crane),
+                    super::data::UpgradePart::Cannon => Some(super::data::Gear::Cannon),
+                    super::data::UpgradePart::Shield => Some(super::data::Gear::Shield),
+                    _ => None,
+                };
+                if let Some(g) = needs
+                    && !self.has_gear(g)
+                {
+                    return Err(format!("Erst die Ausrüstung kaufen: {}", g.label()));
                 }
                 if let Some(req) = &u.requires
                     && !self.crew.upgrades.contains(req)

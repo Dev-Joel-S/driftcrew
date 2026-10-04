@@ -489,8 +489,14 @@ fn rescue_needs_room_and_the_crew_decides_what_to_leave_behind() {
         _ => unreachable!(),
     };
     assert_eq!(aboard(&s), 0);
-    // Eigene Fracht zurücklassen: jetzt passt die Besatzung.
+    // Eigene Fracht zurücklassen: jetzt passt die Besatzung. (Die Kiste treibt weg, damit sie
+    // beim erneuten Längsseitsgehen nicht gleich wieder eingesammelt wird.)
     cmd(&mut s, Command::Jettison { id: 100 });
+    for b in &mut s.bodies {
+        if matches!(b.kind, BodyKind::Dropped { .. }) {
+            b.pos += Vec2::new(0.0, 80.0);
+        }
+    }
     alongside(&mut s);
     idle(&mut s, RESCUE_STEP * 2.0 + 0.5);
     assert_eq!(aboard(&s), 2);

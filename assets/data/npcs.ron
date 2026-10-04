@@ -120,4 +120,26 @@
             "Wer seine Düsen nicht hört, hört sie irgendwann gar nicht mehr.",
         ],
     ),
+    (
+        // Südwacht: Schürfposten am Ascheriff.
+        id: "ida", name: "Ida Krum", role: "Vorarbeiterin", at: "suedwacht",
+        gives: [Mining, Mining, Delivery, Bulky],
+        look: (skin: "#c98a5f", hair: "#3a2a1c", suit: "#c8901c", helmet: true),
+        lines: [
+            "Wer durch die Schauer kommt, kriegt hier den besten Preis für Solarit.",
+            "Schild aufladen? Machen wir. Umsonst ist hier draußen aber gar nichts.",
+            "Der Wind im Korridor drückt nach rechts. Haltet dagegen, nicht dazu.",
+        ],
+    ),
+    (
+        // Polarstation: Forschungsposten im Kältesee.
+        id: "hale", name: "Dr. Juno Hale", role: "Polarforscherin", at: "polar",
+        gives: [Survey, Survey, Delivery, Passengers],
+        look: (skin: "#f0d2bc", hair: "#e8e4dc", suit: "#7cc4ff"),
+        lines: [
+            "Im Dunst sieht der Scanner nur die Hälfte. Fliegt langsam und hört hin.",
+            "Ionit aus der Frostwolke? Bringt es her, ich zahle besser als alle anderen.",
+            "Der Polarweg ist länger – aber ihr kommt an.",
+        ],
+    ),
 ]

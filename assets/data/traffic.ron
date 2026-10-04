@@ -29,6 +29,8 @@
     nests: [
         (name: "Nebelpiraten",  center: (1380.0, -1060.0), radius: 200.0, count: 3),
         (name: "Schlundpiraten", center: (-1450.0, -760.0), radius: 200.0, count: 2),
+        // Bewachen die Ionit-Brocken der Ostklippen.
+        (name: "Klippenpiraten", center: (2350.0, -1250.0), radius: 180.0, count: 2),
     ],
     miners: [
         (name: "Schürfer K-1", field: "Kobaltschwarm", home: "kepler"),

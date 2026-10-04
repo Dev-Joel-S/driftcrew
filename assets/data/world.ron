@@ -220,6 +220,51 @@
                 "......L......",
             ],
         ),
+        (
+            // Südwacht: Schürfposten am Ascheriff, ganz im Süden. Der Weg führt durch den
+            // Sonnenwind-Korridor, ringsum fliegen Meteore – dafür zahlt man hier gut für
+            // Solarit und Ionit, und es gibt Munition und Schildladung.
+            id: "suedwacht",
+            name: "Südwacht",
+            kind: Outpost,
+            pos: (450.0, -2150.0),
+            cell: 4.0,
+            main_color: "#5a4a3a",
+            accent_color: "#ffb21f",
+            services: [Fuel, Repair, Ammo, Shield, Missions, Market],
+            prices: (ore: [(Solarit, 1.5), (Ionit, 1.35), (Ferrit, 0.9)], fuel: 1.25, service: 1.15, dock: 0.5),
+            known: false,
+            layout: [
+                "....X#L#X....",
+                "....#WXW#....",
+                "..^^^#W#^^^..",
+                "XX#########XX",
+                "...##W#W##...",
+                ".....L.L.....",
+            ],
+        ),
+        (
+            // Polarstation: Forschungsposten im kalten Nordwesten, im Dunst des Kältesees.
+            // Kauft Ionit und Schrott teuer, lädt Schilde – und kennt den Polarweg.
+            id: "polar",
+            name: "Polarstation",
+            kind: Outpost,
+            pos: (-1500.0, 2050.0),
+            cell: 4.0,
+            main_color: "#cfd8e0",
+            accent_color: "#7cc4ff",
+            services: [Fuel, Repair, Shield, Missions, Market],
+            prices: (ore: [(Ionit, 1.5), (Schrott, 1.35), (Kobalt, 1.15)], fuel: 1.3, service: 1.2, dock: 0.5),
+            known: false,
+            layout: [
+                ".....L.....",
+                "....#W#....",
+                "..^^^#^^^..",
+                "X#########X",
+                "..#WW#WW#..",
+                "...L...L...",
+            ],
+        ),
     ],
     planets: [
         (
@@ -278,6 +323,22 @@
             name: "Frostwolke", center: (-250.0, 2080.0), radius: 170.0, count: 45,
             min_radius: 1.4, max_radius: 5.5, ore: Ionit, ore_chance: 0.55, color: "#9ab8d8",
         ),
+        // Äußerer Ring: weiter draußen reicher, aber gefährlicher.
+        // Ascheriff im Süden bei der Südwacht: viel Solarit, ringsum Meteore.
+        (
+            name: "Ascheriff", center: (-150.0, -2200.0), radius: 160.0, count: 55,
+            min_radius: 1.4, max_radius: 6.0, ore: Solarit, ore_chance: 0.7, color: "#7a5a48",
+        ),
+        // Ostklippen am Ostrand: Ionit, bewacht von den Klippenpiraten.
+        (
+            name: "Ostklippen", center: (2250.0, -900.0), radius: 140.0, count: 45,
+            min_radius: 1.6, max_radius: 6.5, ore: Ionit, ore_chance: 0.65, color: "#6a5a7a",
+        ),
+        // Westwall: Kobalt, ruhig gelegen – aber weit von allem weg.
+        (
+            name: "Westwall", center: (-2250.0, 250.0), radius: 150.0, count: 45,
+            min_radius: 1.2, max_radius: 5.0, ore: Kobalt, ore_chance: 0.65, color: "#5a6a7a",
+        ),
         // Glimmerband im Nordosten zwischen Relais Ost und Azura.
         (
             name: "Glimmerband", center: (2050.0, 1750.0), radius: 140.0, count: 35,
@@ -287,6 +348,10 @@
     meteor_zones: [
         (name: "Glutstrom", center: (-380.0, -520.0), radius: 260.0, interval: 1.1, speed: (22.0, 38.0)),
         (name: "Sturzfeld", center: (1000.0, 300.0), radius: 200.0, interval: 1.6, speed: (18.0, 30.0)),
+        // Äußerer Ring: Stürme an den lohnenden Orten.
+        (name: "Südschauer", center: (150.0, -2000.0), radius: 220.0, interval: 2.0, speed: (16.0, 28.0)),
+        (name: "Oststurm",   center: (2050.0, -1700.0), radius: 190.0, interval: 1.4, speed: (20.0, 34.0)),
+        (name: "Nordsturm",  center: (650.0, 2250.0),  radius: 180.0, interval: 1.8, speed: (16.0, 26.0)),
     ],
     spinners: [
         (pos: (1180.0, -150.0), arm_length: 11.0, arm_width: 1.0, arms: 2, speed: 40.0, color: "#ffb21f"),
@@ -319,6 +384,11 @@
         // Phase 19: der hohe Norden bekommt eigene Farben.
         (name: "Polarlicht",   center: (-200.0, 2150.0), radius: 650.0, colors: ("#3fe0a0", "#7cc4ff")),
         (name: "Nordostrand",  center: (1900.0, 1950.0), radius: 520.0, colors: ("#d8ff6a", "#ffb21f")),
+        (name: "Südriff",      center: (250.0, -2150.0),  radius: 560.0, colors: ("#ffb21f", "#ff4a2a")),
+        (name: "Ostklippen",   center: (2250.0, -1100.0), radius: 520.0, colors: ("#a05cff", "#ff4fa3")),
+        (name: "Westwall",     center: (-2150.0, 250.0),  radius: 520.0, colors: ("#4fd8ff", "#2f6bff")),
+        // Kältesee: leichter Dunst, Sicht und Scanner etwas schwächer.
+        (name: "Kältesee",     center: (-1650.0, 2000.0), radius: 520.0, colors: ("#9ad8ff", "#e0f4ff"), effect: Some(Nebula(0.45))),
     ],
     backdrop: [
         (pos: (420.0, -380.0),   depth: 700.0, radius: 230.0, colors: ["#2a0f3d", "#7c4dff", "#ff4fa3", "#ffb21f"], rings: true),
@@ -343,11 +413,17 @@
         (name: "Tanker Orkan",        ship: "pelikan", pos: (-1950.0, 1150.0), angle: 210.0, scrap: 22.0, parts: 3),
         (name: "Kurier Lerche",       ship: "hornisse", pos: (2250.0, 1450.0), angle: 300.0, scrap: 10.0, parts: 2),
         (name: "Bergeschiff Möwe II", ship: "driftkutter", pos: (-2150.0, -250.0), angle: 80.0, scrap: 16.0, parts: 2),
+        (name: "Shuttle Fink",        ship: "kolibri", pos: (1100.0, -2250.0), angle: 15.0, scrap: 8.0, parts: 2),
+        (name: "Minenleger Kranich",  ship: "pelikan", pos: (2300.0, -1500.0), angle: 260.0, scrap: 22.0, parts: 3),
+        (name: "Eisbrecher Nordlicht", ship: "lastesel", pos: (-1950.0, 1750.0), angle: 140.0, scrap: 28.0, parts: 4),
+        (name: "Frachter Sirius",     ship: "lastesel", pos: (850.0, 2300.0), angle: 330.0, scrap: 26.0, parts: 3),
+        (name: "Wachboot Kestrel",    ship: "hornisse", pos: (-1100.0, -2150.0), angle: 200.0, scrap: 12.0, parts: 2),
     ],
     distress_sites: [
         (-220.0, 640.0), (880.0, 260.0), (-920.0, -260.0), (1620.0, -480.0),
         (420.0, -1080.0), (-1320.0, 940.0), (1300.0, 1300.0), (-600.0, 300.0),
         (-150.0, 1950.0), (1800.0, 1650.0), (-1900.0, 600.0),
+        (900.0, -2100.0), (2200.0, -1250.0), (-1300.0, -2050.0), (-2100.0, 1450.0), (900.0, 2300.0),
     ],
     // Versteckte Routen (79): erst nach Entdeckung auf der Karte und im Logbuch. Entdeckt
     // werden sie, wenn ein Scanner-Ring einen Wegpunkt erfasst, beim Andocken an `known_at`
@@ -381,6 +457,18 @@
             points: [(-1150.0, 520.0), (-1100.0, 900.0), (-1060.0, 1250.0), (-1150.0, 1430.0)],
             hint: "Von der Werft Orion in den Schiffsfriedhof: eine Gasse, die die Bergungscrews freigeräumt halten. Weniger Schrott als quer durchs Feld.",
             known_at: Some("werft"),
+        ),
+        (
+            id: "route_sturmgasse", name: "Sturmgasse", kind: Shortcut,
+            points: [(60.0, -150.0), (-60.0, -900.0), (-150.0, -1550.0), (250.0, -2000.0), (420.0, -2080.0)],
+            hint: "Nova → Südwacht mitten durch den Sonnenwind-Korridor. Der Wind schiebt seitlich, am Ende warten die Südschauer – wer gegenhält, ist in der halben Zeit unten.",
+            known_at: Some("suedwacht"),
+        ),
+        (
+            id: "route_polarweg", name: "Polarweg", kind: Detour,
+            points: [(-1150.0, 520.0), (-1650.0, 1000.0), (-1800.0, 1550.0), (-1520.0, 1980.0)],
+            hint: "Von der Werft Orion zur Polarstation im Bogen westlich am Schiffsfriedhof vorbei. Kaum Schrott, nur der Dunst des Kältesees.",
+            known_at: Some("polar"),
         ),
     ],
 )

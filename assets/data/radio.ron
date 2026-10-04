@@ -20,6 +20,16 @@
     ],
     places: [
         (
+            at: "suedwacht", speaker: "Südwacht",
+            approach: ["Südwacht: Schauerwarnung für euren Kurs. Kommt trotzdem, wir haben Kaffee."],
+            docked: ["Südwacht: Angedockt. Schüttelt den Staub ab, {ship}."],
+        ),
+        (
+            at: "polar", speaker: "Polarstation",
+            approach: ["Polarstation: Sicht unter zwei Kilometer, Dunst im Anflug. Langsam, bitte."],
+            docked: ["Polarstation: Willkommen im Kalten. Die Messgeräte freuen sich über Besuch."],
+        ),
+        (
             at: "nebelhafen", speaker: "Nebelhafen",
             approach: ["Nebelhafen: Hier draußen fragt keiner nach Frachtpapieren."],
             docked: ["Nebelhafen: Drin. Ihr habt nichts gesehen, wir haben euch nicht gesehen."],

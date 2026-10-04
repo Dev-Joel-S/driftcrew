@@ -1202,6 +1202,13 @@ impl SimState {
                     );
                     return;
                 }
+                if !self.has_gear(super::data::Gear::Cannon) {
+                    self.toast(
+                        "Geleitschutz braucht eine Kanone – in der Werft kaufen oder im Wrack finden",
+                        ToastKind::Warn,
+                    );
+                    return;
+                }
                 *npc = Some(self.spawn_convoy(name, m.id, *from, *to));
             }
             MissionKind::Smuggle {
