@@ -4,7 +4,7 @@
 //! Gamepad (Steuerkreuz, nie als Slot belegbar): ↓ Bremsen (zweimal schnell = Schub aus),
 //! ← Links drehen, → Rechts drehen, ↑ Werkzeug bereit.
 //! Der Zuruf erscheint in der Farbe des Crewmitglieds über dem Schiff; ein kurzer Ton ist
-//! optional (Pausemenü).
+//! optional (Einstellungen).
 
 use bevy::prelude::*;
 
@@ -19,22 +19,10 @@ pub struct CalloutPlugin;
 
 impl Plugin for CalloutPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CalloutSound>()
-            .init_resource::<PadTaps>()
-            .add_systems(
-                Update,
-                (callout_input, draw_callouts).run_if(in_state(AppState::Playing)),
-            );
-    }
-}
-
-/// Ton bei Zurufen (an/aus im Pausemenü).
-#[derive(Resource)]
-pub struct CalloutSound(pub bool);
-
-impl Default for CalloutSound {
-    fn default() -> Self {
-        CalloutSound(true)
+        app.init_resource::<PadTaps>().add_systems(
+            Update,
+            (callout_input, draw_callouts).run_if(in_state(AppState::Playing)),
+        );
     }
 }
 

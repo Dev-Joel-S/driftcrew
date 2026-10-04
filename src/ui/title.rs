@@ -29,7 +29,7 @@ impl Plugin for TitlePlugin {
 struct TitleRoot;
 
 #[derive(Component)]
-struct HelpPanel;
+pub struct HelpPanel;
 
 #[derive(Resource, Default)]
 pub struct HelpOpen(pub bool);
@@ -39,6 +39,7 @@ enum TitleAction {
     Continue,
     NewGame,
     Help,
+    Settings,
     Quit,
 }
 
@@ -59,10 +60,14 @@ fn items(has_save: bool, sim: &SimState) -> Vec<Item<TitleAction>> {
         Item::new("Neues Spiel", TitleAction::NewGame).detail(if has_save {
             "Überschreibt den Spielstand der Crew"
         } else {
-            "Eine neue Crew, ein Driftkutter, 300 Credits"
+            "Eine neue Crew, ein Driftkutter, 300 Credits Spielgeld als Startkasse"
         }),
     );
     v.push(Item::new("Steuerung & Spielprinzip", TitleAction::Help));
+    v.push(
+        Item::new("Einstellungen", TitleAction::Settings)
+            .detail("Lautstärke, Musik, Vollbild, Ton testen"),
+    );
     v.push(Item::new("Beenden", TitleAction::Quit));
     v
 }
@@ -213,7 +218,7 @@ fn despawn_title(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn title_input(
+pub fn title_input(
     mut commands: Commands,
     input: Res<MenuInput>,
     buttons: Query<(&Interaction, &ItemButton), Changed<Interaction>>,
@@ -228,7 +233,11 @@ fn title_input(
     mut help_open: ResMut<HelpOpen>,
     help: Query<Entity, With<HelpPanel>>,
     mut exit: MessageWriter<AppExit>,
+    mut settings_menu: ResMut<super::settings::SettingsMenu>,
 ) {
+    if settings_menu.open {
+        return;
+    }
     if help_open.0 {
         if input.escape || input.confirm || input.start || input.back {
             help_open.0 = false;
@@ -274,6 +283,7 @@ fn title_input(
             help_open.0 = true;
             spawn_help(&mut commands);
         }
+        TitleAction::Settings => settings_menu.show(),
         TitleAction::Quit => {
             exit.write(AppExit::Success);
         }

@@ -404,7 +404,10 @@ entscheidet, **Gleichstand bedeutet Nein**. Allein gespielt wird direkt gekauft.
 | Mausrad | – | Zoom |
 | `^` | Stick drücken | Ping |
 | F5 / F6 / F7 / F8 / F9 | Steuerkreuz ↓ / ↓↓ / ← / → / ↑ | Zuruf: Bremsen / Schub aus / Links drehen / Rechts drehen / Werkzeug bereit |
-| F11 | – | Vollbild |
+| F11 | – | Vollbild (wie in den Einstellungen) |
+
+**Einstellungen** (Titel oder Pause): Gesamt-, Effekt- und Musiklautstärke, Vollbild, Ton bei
+Zurufen, Bildschirmwackeln und „Ton testen“. Gespeichert in `settings.ron` neben dem Spielstand.
 
 ### Zusammenarbeit, Fracht und Andenken (Phasen 14–18)
 

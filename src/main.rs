@@ -10,6 +10,7 @@ mod demo;
 mod game;
 mod input;
 mod render;
+mod settings;
 mod sim;
 mod ui;
 
@@ -59,6 +60,7 @@ fn main() {
             }),
     )
     .add_plugins((
+        settings::SettingsPlugin,
         game::GamePlugin,
         input::InputPlugin,
         render::RenderPlugin,

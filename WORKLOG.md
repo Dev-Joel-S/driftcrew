@@ -298,6 +298,22 @@ Stand nach Phase 13: Punkte 1–63 sowie 65, 71, 72, 74, 75 sind umgesetzt. Offe
 
 ## Protokoll
 
+### Nachtrag: Einstellungen, Musik, Menüklänge (nach Rückmeldung aus dem Test)
+
+- Rückmeldung: „300 Credits beim Start?“, „Einstellungen fehlen“, „keine Sounds“. Ursache für
+  den fehlenden Ton: Titel und Lobby hatten gar keinen Klang – Effekte gab es nur im Flug.
+- **Einstellungen** (`src/settings.rs`, `src/ui/settings.rs`, aus Titel und Pause): Gesamt-,
+  Effekt- und Musiklautstärke, Vollbild (auch F11), Ton bei Zurufen, Bildschirmwackeln, „Ton
+  testen“. Gespeichert in `settings.ron` neben dem Spielstand, gelten sofort.
+- **Musik** (`src/audio/music.rs`, beim Start synthetisiert): Titel/Lobby ein ruhiges Stück
+  (76 BPM, Am–F–C–Em, Flächen, Bass, Arpeggio mit Echo, 25 s Schleife), im Flug eine leise
+  Klangfläche mit vereinzelten Glockentönen (48 s). Nahtlose Schleifen (Test prüft Übergang).
+- Leise Klicks beim Bedienen der Menüs; Effekte und Triebwerksgeräusch folgen der Lautstärke.
+- Pausemenü gekürzt (Notizen gehen über das Tagebuch im Logbuch). Titeltext: „300 Credits
+  Spielgeld als Startkasse“.
+- NixOS: `packaging/nixos/shell.nix` mit den neuen X11-Paketnamen (keine Warnung mehr).
+- Tests: 152 grün.
+
 ### Runde 3 – Phase 15: Zusammenarbeit am Schiff (erledigt)
 
 - **69 Übersteuern** (`src/sim/power.rs`): Doppeltipp (Tipp ≤ 0,25 s, Pause ≤ 0,3 s) und

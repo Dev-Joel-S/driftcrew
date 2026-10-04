@@ -12,6 +12,7 @@ pub mod pause;
 pub mod radio;
 pub mod replay;
 pub mod report;
+pub mod settings;
 pub mod station;
 pub mod text_entry;
 pub mod title;
@@ -83,7 +84,8 @@ impl Plugin for UiPlugin {
                 replay::ReplayUiPlugin,
                 text_entry::TextEntryPlugin,
                 callout::CalloutPlugin,
-            ));
+            ))
+            .add_plugins(settings::SettingsUiPlugin);
     }
 }
 

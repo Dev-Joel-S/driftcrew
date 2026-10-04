@@ -41,13 +41,12 @@ enum PauseAct {
     Logbook,
     CargoPlan,
     NameShip,
-    Note,
-    CalloutSound,
+    Settings,
     SaveTitle,
     Quit,
 }
 
-fn items(sim: &SimState, sound: bool) -> Vec<Item<PauseAct>> {
+fn items(sim: &SimState) -> Vec<Item<PauseAct>> {
     let mut v = vec![Item::new("Weiter", PauseAct::Resume)];
     if let Some(r) = &sim.course {
         let name = &sim.data.courses.courses[r.course].name;
@@ -60,7 +59,7 @@ fn items(sim: &SimState, sound: bool) -> Vec<Item<PauseAct>> {
         Item::new("Slots neu verteilen", PauseAct::Redistribute)
             .detail("Jemand kommt dazu oder fällt aus"),
         Item::new("Logbuch", PauseAct::Logbook).detail(format!(
-            "Kapitel, Artefakte ({}/{}), Funde ({}/{})",
+            "Kapitel, Artefakte ({}/{}), Funde ({}/{}) · Tagebuch mit eigenen Notizen",
             sim.crew.artifacts.len(),
             sim.data.story.artifacts.len(),
             sim.story.logs.len(),
@@ -78,17 +77,8 @@ fn items(sim: &SimState, sound: bool) -> Vec<Item<PauseAct>> {
             ),
             None => "Noch namenlos – gebt ihm einen Namen".to_string(),
         }),
-        Item::new("Notiz ins Logbuch", PauseAct::Note).detail(match sim.journal.entries.len() {
-            1 => "Tagebuch: 1 Eintrag".to_string(),
-            n => format!("Tagebuch: {n} Einträge"),
-        }),
-        Item::new(
-            format!(
-                "Ton bei Zurufen (F5–F9): {}",
-                if sound { "an" } else { "aus" }
-            ),
-            PauseAct::CalloutSound,
-        ),
+        Item::new("Einstellungen", PauseAct::Settings)
+            .detail("Lautstärke, Musik, Vollbild, Zuruf-Ton, Wackeln, Ton testen"),
         Item::new("Steuerung & Spielprinzip", PauseAct::Help),
         Item::new("Speichern & zum Titel", PauseAct::SaveTitle),
         Item::new("Spiel beenden", PauseAct::Quit).detail("Der Spielstand wird gespeichert"),
@@ -96,7 +86,7 @@ fn items(sim: &SimState, sound: bool) -> Vec<Item<PauseAct>> {
     v
 }
 
-fn spawn_pause(commands: &mut Commands, sim: &SimState, sound: bool) {
+fn spawn_pause(commands: &mut Commands, sim: &SimState) {
     commands
         .spawn((
             Node {
@@ -119,7 +109,7 @@ fn spawn_pause(commands: &mut Commands, sim: &SimState, sound: bool) {
                     height: Val::Px(8.0),
                     ..default()
                 });
-                spawn_items(p, MENU_PAUSE, &items(sim, sound));
+                spawn_items(p, MENU_PAUSE, &items(sim));
             });
         });
 }
@@ -150,14 +140,14 @@ pub fn pause_input(
     help: Query<Entity, With<PauseHelp>>,
     mut exit: MessageWriter<AppExit>,
     mut pending: ResMut<PendingCommands>,
-    (mut book, mut plan, mut entry, mut sound): (
+    (mut book, mut plan, mut entry, mut settings_menu): (
         ResMut<super::logbook::Logbook>,
         ResMut<super::cargo::CargoPlan>,
         ResMut<super::text_entry::TextEntry>,
-        ResMut<super::callout::CalloutSound>,
+        ResMut<super::settings::SettingsMenu>,
     ),
 ) {
-    if book.open || plan.open || entry.open {
+    if book.open || plan.open || entry.open || settings_menu.open {
         return;
     }
     if !help.is_empty() {
@@ -180,7 +170,7 @@ pub fn pause_input(
         if !map.0 && (input.escape || start_pauses) {
             paused.0 = true;
             focus.0[MENU_PAUSE] = 0;
-            spawn_pause(&mut commands, &sim.0, sound.0);
+            spawn_pause(&mut commands, &sim.0);
         }
         return;
     }
@@ -188,7 +178,7 @@ pub fn pause_input(
         close(&mut commands, &mut paused);
         return;
     }
-    let its = items(&sim.0, sound.0);
+    let its = items(&sim.0);
     let mut f = focus.0[MENU_PAUSE];
     let mut act = if navigate(&mut f, its.len(), &input) {
         Some(f)
@@ -248,19 +238,10 @@ pub fn pause_input(
             book.open = true;
             book.opened = true;
         }
-        PauseAct::CalloutSound => {
-            sound.0 = !sound.0;
-            for e in &roots {
-                commands.entity(e).despawn();
-            }
-            spawn_pause(&mut commands, &sim.0, sound.0);
-        }
+        PauseAct::Settings => settings_menu.show(),
         PauseAct::NameShip => {
             let name = sim.0.ship_name().unwrap_or_default().to_string();
             entry.start(super::text_entry::Purpose::ShipName, name, &mut paused);
-        }
-        PauseAct::Note => {
-            entry.start(super::text_entry::Purpose::Note, String::new(), &mut paused);
         }
         PauseAct::CargoPlan => {
             // Im Flug läuft die Welt weiter, angedockt bleibt sie angehalten.

@@ -202,17 +202,14 @@ impl Plugin for GamePlugin {
     }
 }
 
-fn toggle_fullscreen(keys: Res<ButtonInput<KeyCode>>, mut windows: Query<&mut Window>) {
-    if !keys.just_pressed(KeyCode::F11) {
-        return;
-    }
-    for mut w in &mut windows {
-        w.mode = match w.mode {
-            bevy::window::WindowMode::Windowed => bevy::window::WindowMode::BorderlessFullscreen(
-                bevy::window::MonitorSelection::Current,
-            ),
-            _ => bevy::window::WindowMode::Windowed,
-        };
+/// F11: Vollbild umschalten (wird wie im Einstellungsmenü gespeichert).
+fn toggle_fullscreen(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut settings: ResMut<crate::settings::Settings>,
+) {
+    if keys.just_pressed(KeyCode::F11) {
+        settings.fullscreen = !settings.fullscreen;
+        crate::settings::store(&settings);
     }
 }
 

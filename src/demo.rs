@@ -85,6 +85,7 @@ struct Ctx<'a, 'w, 's> {
     mode: &'a mut LobbyMode,
     pending: &'a mut PendingCommands,
     logbook: &'a mut crate::ui::logbook::Logbook,
+    settings: &'a mut crate::ui::settings::SettingsMenu,
     pad: Option<Entity>,
 }
 
@@ -1625,7 +1626,13 @@ fn ui_scene() -> Vec<(f32, Act)> {
         (14.6, |c| shot(c, "flug_hud")),
         (14.8, |c| c.menu.escape = true),
         (15.6, |c| shot(c, "pause")),
-        (16.5, |_| {}),
+        // Einstellungen öffnen, zur Musik, einmal leiser.
+        (16.2, |c| c.settings.show()),
+        (16.6, |c| c.menu.down = true),
+        (16.8, |c| c.menu.down = true),
+        (17.1, |c| c.menu.left = true),
+        (18.2, |c| shot(c, "einstellungen")),
+        (19.0, |_| {}),
     ]
 }
 
@@ -1642,7 +1649,10 @@ fn demo_script(
     mut next: ResMut<NextState<AppState>>,
     mut mode: ResMut<LobbyMode>,
     mut pending: ResMut<PendingCommands>,
-    mut logbook: ResMut<crate::ui::logbook::Logbook>,
+    (mut logbook, mut settings_menu): (
+        ResMut<crate::ui::logbook::Logbook>,
+        ResMut<crate::ui::settings::SettingsMenu>,
+    ),
     pads: Query<Entity, With<Gamepad>>,
     mut exit: MessageWriter<AppExit>,
 ) {
@@ -1687,6 +1697,7 @@ fn demo_script(
             mode: &mut mode,
             pending: &mut pending,
             logbook: &mut logbook,
+            settings: &mut settings_menu,
             pad,
         };
         f(&mut ctx);

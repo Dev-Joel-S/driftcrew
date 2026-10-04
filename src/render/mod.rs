@@ -358,6 +358,7 @@ fn camera_follow(
     state: Res<State<AppState>>,
     scroll: Res<AccumulatedMouseScroll>,
     map: Res<crate::game::MapOpen>,
+    settings: Res<crate::settings::Settings>,
     mut rig: ResMut<CameraRig>,
     mut cam: Query<&mut Transform, With<GameCamera>>,
 ) {
@@ -418,7 +419,11 @@ fn camera_follow(
     }
     rig.pos = p;
     rig.shake = (rig.shake - dt * 2.5).max(0.0);
-    let sh = rig.shake * rig.shake;
+    let sh = if settings.shake {
+        rig.shake * rig.shake
+    } else {
+        0.0
+    };
     let jitter = Vec3::new((rig.t * 53.0).sin(), (rig.t * 61.0).cos(), 0.0) * sh * 0.9;
     *t = Transform::from_translation(p + jitter).looking_to(Vec3::NEG_Z, Vec3::Y);
 }

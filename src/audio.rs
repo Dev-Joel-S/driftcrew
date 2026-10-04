@@ -1,4 +1,5 @@
-//! Klang: alle Geräusche werden beim Start synthetisiert (keine fremden Dateien).
+//! Klang: alle Geräusche und die Musik werden beim Start synthetisiert (keine fremden
+//! Dateien). Lautstärken kommen aus den Einstellungen.
 
 use std::f32::consts::TAU;
 use std::sync::Arc;
@@ -6,21 +7,36 @@ use std::sync::Arc;
 use bevy::audio::{AudioSinkPlayback, PlaybackMode, Volume};
 use bevy::prelude::*;
 
-use crate::game::{AppState, Paused, Sim, SimMsg};
+use crate::game::{AppState, MapOpen, Paused, Sim, SimMsg};
+use crate::input::MenuInput;
+use crate::settings::Settings;
 use crate::sim::SimEvent;
 use crate::sim::rng::Rng;
 
+mod music;
+
 const RATE: u32 = 44_100;
+
+/// Effekt-Lautstärke aus den Einstellungen (jeden Frame nachgeführt, gilt für alle Effekte).
+static SFX_VOLUME: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3f4c_cccd);
+
+fn sfx_volume() -> f32 {
+    f32::from_bits(SFX_VOLUME.load(std::sync::atomic::Ordering::Relaxed))
+}
 
 pub struct SoundPlugin;
 
 impl Plugin for SoundPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_sounds)
+        app.init_resource::<SoundTest>()
+            .add_systems(Startup, setup_sounds)
             .add_systems(
                 Update,
                 (play_event_sounds, update_loops).run_if(in_state(AppState::Playing)),
             )
+            .add_systems(Update, (update_music, play_test))
+            // Vor den Menüs, die ihre Eingabe verbrauchen.
+            .add_systems(PreUpdate, menu_sounds.after(crate::input::read_menu_input))
             .add_systems(OnExit(AppState::Playing), mute_loops);
     }
 }
@@ -39,6 +55,24 @@ pub struct Sounds {
     click: Handle<AudioSource>,
 }
 
+/// „Ton testen“ in den Einstellungen.
+#[derive(Resource, Default)]
+pub struct SoundTest(pub bool);
+
+/// Musikstücke: 0 = Titel und Lobby, 1 = Klangfläche im Flug.
+#[derive(Resource)]
+struct Music {
+    tracks: [Handle<AudioSource>; 2],
+}
+
+#[derive(Component)]
+struct MusicPlayer {
+    track: usize,
+}
+
+/// Musik im Flug leiser als im Menü (sie liegt unter den Effekten).
+const TRACK_GAIN: [f32; 2] = [0.55, 0.35];
+
 #[derive(Component)]
 struct ThrustLoop;
 
@@ -46,6 +80,10 @@ struct ThrustLoop;
 struct DrillLoop;
 
 fn wav(samples: &[f32]) -> AudioSource {
+    wav_rate(samples, RATE)
+}
+
+fn wav_rate(samples: &[f32], rate: u32) -> AudioSource {
     let mut b: Vec<u8> = Vec::with_capacity(44 + samples.len() * 2);
     let data_len = (samples.len() * 2) as u32;
     b.extend_from_slice(b"RIFF");
@@ -54,8 +92,8 @@ fn wav(samples: &[f32]) -> AudioSource {
     b.extend_from_slice(&16u32.to_le_bytes());
     b.extend_from_slice(&1u16.to_le_bytes());
     b.extend_from_slice(&1u16.to_le_bytes());
-    b.extend_from_slice(&RATE.to_le_bytes());
-    b.extend_from_slice(&(RATE * 2).to_le_bytes());
+    b.extend_from_slice(&rate.to_le_bytes());
+    b.extend_from_slice(&(rate * 2).to_le_bytes());
     b.extend_from_slice(&2u16.to_le_bytes());
     b.extend_from_slice(&16u16.to_le_bytes());
     b.extend_from_slice(b"data");
@@ -220,6 +258,12 @@ fn synth_alarm() -> Vec<f32> {
 
 fn setup_sounds(mut commands: Commands, mut sources: ResMut<Assets<AudioSource>>) {
     let mut rng = Rng::new(31337);
+    commands.insert_resource(Music {
+        tracks: [
+            sources.add(wav_rate(&music::menu_track(), music::RATE)),
+            sources.add(wav_rate(&music::flight_track(), music::RATE)),
+        ],
+    });
     let thrust = sources.add(wav(&synth_thrust(&mut rng)));
     let drill = sources.add(wav(&synth_drill(&mut rng)));
     let s = Sounds {
@@ -266,6 +310,8 @@ fn setup_sounds(mut commands: Commands, mut sources: ResMut<Assets<AudioSource>>
 }
 
 fn one_shot(commands: &mut Commands, h: &Handle<AudioSource>, vol: f32) {
+    // Effekt-Lautstärke aus den Einstellungen (wird vor dem Aufruf eingerechnet).
+    let vol = vol * sfx_volume();
     if vol <= 0.01 {
         return;
     }
@@ -283,7 +329,7 @@ fn play_event_sounds(
     mut events: MessageReader<SimMsg>,
     sounds: Option<Res<Sounds>>,
     sim: Res<Sim>,
-    callout_sound: Res<crate::ui::callout::CalloutSound>,
+    settings: Res<Settings>,
 ) {
     let Some(s) = sounds else { return };
     let me = sim.0.ship.pos;
@@ -312,7 +358,9 @@ fn play_event_sounds(
             }
             SimEvent::Docked { .. } => one_shot(&mut commands, &s.dock, 0.5),
             SimEvent::Ping { .. } => one_shot(&mut commands, &s.blip, 0.6),
-            SimEvent::Callout { .. } if callout_sound.0 => one_shot(&mut commands, &s.blip, 0.45),
+            SimEvent::Callout { .. } if settings.callout_sound => {
+                one_shot(&mut commands, &s.blip, 0.45)
+            }
             SimEvent::Purchased { .. }
             | SimEvent::MissionCompleted { .. }
             | SimEvent::Sold { .. } => one_shot(&mut commands, &s.coin, 0.5),
@@ -348,7 +396,7 @@ fn update_loops(
     let tv = if paused.0 || ship.destroyed {
         0.0
     } else {
-        (level * 0.22).min(0.8)
+        (level * 0.22).min(0.8) * sfx_volume()
     };
     for mut s in &mut thrust {
         s.set_volume(Volume::Linear(tv));
@@ -356,15 +404,93 @@ fn update_loops(
     let drilling = ship.tools.iter().any(|t| t.drill.is_some());
     for mut s in &mut drill {
         s.set_volume(Volume::Linear(if drilling && !paused.0 {
-            0.3
+            0.3 * sfx_volume()
         } else {
             0.0
         }));
     }
 }
 
-fn mute_loops(mut q: Query<&mut AudioSink>) {
+fn mute_loops(mut q: Query<&mut AudioSink, Or<(With<ThrustLoop>, With<DrillLoop>)>>) {
     for mut s in &mut q {
         s.set_volume(Volume::Linear(0.0));
+    }
+}
+
+/// Musik: Titel/Lobby-Stück oder Klangfläche im Flug, Lautstärke aus den Einstellungen.
+fn update_music(
+    mut commands: Commands,
+    state: Res<State<AppState>>,
+    settings: Res<Settings>,
+    music: Option<Res<Music>>,
+    mut players: Query<(Entity, &MusicPlayer, Option<&mut AudioSink>)>,
+) {
+    SFX_VOLUME.store(
+        settings.sfx_volume().to_bits(),
+        std::sync::atomic::Ordering::Relaxed,
+    );
+    let Some(music) = music else { return };
+    let want = match state.get() {
+        AppState::Title | AppState::Lobby => 0,
+        AppState::Playing => 1,
+    };
+    let vol = settings.music_volume() * TRACK_GAIN[want];
+    let mut have = false;
+    for (e, p, sink) in &mut players {
+        if p.track != want {
+            commands.entity(e).despawn();
+            continue;
+        }
+        have = true;
+        if let Some(mut sink) = sink {
+            sink.set_volume(Volume::Linear(vol));
+        }
+    }
+    if !have {
+        commands.spawn((
+            AudioPlayer::new(music.tracks[want].clone()),
+            PlaybackSettings {
+                mode: PlaybackMode::Loop,
+                volume: Volume::Linear(vol),
+                ..PlaybackSettings::LOOP
+            },
+            MusicPlayer { track: want },
+        ));
+    }
+}
+
+/// „Ton testen“: ein kurzer, deutlicher Klang.
+fn play_test(mut commands: Commands, mut test: ResMut<SoundTest>, sounds: Option<Res<Sounds>>) {
+    if !test.0 {
+        return;
+    }
+    test.0 = false;
+    if let Some(s) = sounds {
+        one_shot(&mut commands, &s.coin, 0.7);
+    }
+}
+
+/// Leise Klicks beim Bedienen von Menüs (Titel, Lobby, Pause, Station, Karte).
+fn menu_sounds(
+    mut commands: Commands,
+    input: Res<MenuInput>,
+    state: Res<State<AppState>>,
+    paused: Res<Paused>,
+    map: Res<MapOpen>,
+    sim: Res<Sim>,
+    sounds: Option<Res<Sounds>>,
+) {
+    let Some(s) = sounds else { return };
+    let menu = match state.get() {
+        AppState::Title | AppState::Lobby => true,
+        AppState::Playing => paused.0 || map.0 || sim.0.ship.docked.is_some(),
+    };
+    if !menu {
+        return;
+    }
+    if input.confirm || input.enter {
+        one_shot(&mut commands, &s.blip, 0.35);
+    } else if input.up || input.down || input.left || input.right || input.tab {
+        one_shot(&mut commands, &s.click, 0.5);
     }
 }
