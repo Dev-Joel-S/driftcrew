@@ -583,6 +583,7 @@ fn two_cranes_grab_one_object_at_two_points() {
             slots: 1 << slot,
             aims: aims.clone(),
             commands: Vec::new(),
+            brake: false,
         });
         let mut texts = Vec::new();
         for _ in 0..120 {
@@ -590,6 +591,7 @@ fn two_cranes_grab_one_object_at_two_points() {
                 slots: 0,
                 aims: aims.clone(),
                 commands: Vec::new(),
+                brake: false,
             });
             texts.extend(toasts(s));
             if matches!(s.ship.tools[ti].crane, CraneState::Attached { .. }) {

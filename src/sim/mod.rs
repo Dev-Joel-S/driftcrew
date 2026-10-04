@@ -83,6 +83,8 @@ pub struct TickInput {
     /// Zielwinkel (Welt, Bogenmaß) pro Slot, nur für Werkzeuge relevant.
     pub aims: Vec<f32>,
     pub commands: Vec<Command>,
+    /// Bremsassistent gehalten (feste Taste, gehört allen).
+    pub brake: bool,
 }
 
 impl TickInput {
@@ -154,6 +156,8 @@ pub enum Command {
     RemoveMark {
         idx: usize,
     },
+    /// Flugassistenz an/aus (aus den Einstellungen).
+    SetFlightAssist(bool),
     /// Zuruf (73): kurzes Signal eines Crewmitglieds an alle.
     Callout {
         player: u8,
@@ -666,6 +670,9 @@ pub struct SimState {
     pub power_draw: f32,
     pub energy_warned: bool,
     pub callouts: Vec<Callout>,
+    /// Flugassistenz an (Standard) und ob der Bremsassistent gerade bremst.
+    pub flight_assist: bool,
+    pub braking: bool,
 }
 
 impl SimState {
@@ -792,6 +799,8 @@ impl SimState {
             power_draw: 0.0,
             energy_warned: false,
             callouts: Vec::new(),
+            flight_assist: true,
+            braking: false,
         };
         s.load_projects(save);
         s.load_records(save);
@@ -946,6 +955,7 @@ impl SimState {
                 slots: 0,
                 aims: input.aims.clone(),
                 commands: Vec::new(),
+                brake: input.brake,
             };
             self.apply_input(&idle);
         } else {
@@ -1209,6 +1219,7 @@ mod tests {
             slots,
             aims: vec![1.0; MAX_SLOTS],
             commands: vec![],
+            brake: false,
         }
     }
 
@@ -1232,6 +1243,7 @@ mod tests {
             slots: 0b11,
             aims: vec![0.0; MAX_SLOTS],
             commands: vec![],
+            brake: false,
         };
         for _ in 0..90 {
             s.step(&inp);
@@ -1253,6 +1265,7 @@ mod tests {
             slots: 0b1,
             aims: vec![0.0; MAX_SLOTS],
             commands: vec![],
+            brake: false,
         };
         for _ in 0..30 {
             s.step(&left_only);
@@ -1264,6 +1277,8 @@ mod tests {
     #[test]
     fn idle_ship_keeps_drifting() {
         let mut s = new_sim();
+        // Ohne Flugassistenz: keine Reibung, das Schiff treibt ewig weiter.
+        s.flight_assist = false;
         s.ship.docked = None;
         s.ship.pos = Vec2::new(0.0, 300.0);
         s.ship.vel = Vec2::new(3.0, 0.0);
@@ -1278,5 +1293,52 @@ mod tests {
             v0,
             s.ship.vel
         );
+    }
+
+    #[test]
+    fn flight_assist_rolls_out_and_stops_spinning() {
+        let mut s = new_sim();
+        assert!(s.flight_assist, "Standard: an");
+        s.ship.docked = None;
+        s.ship.pos = Vec2::new(0.0, 300.0);
+        s.ship.vel = Vec2::new(3.0, 0.0);
+        s.ship.ang_vel = 1.5;
+        for _ in 0..120 {
+            s.step(&TickInput::default());
+        }
+        let v = s.ship.vel.length();
+        assert!(v < 2.0 && v > 0.5, "rollt sanft aus: {v}");
+        assert!(
+            s.ship.ang_vel.abs() < 0.1,
+            "Stabilisator: {}",
+            s.ship.ang_vel
+        );
+    }
+
+    #[test]
+    fn brake_assist_stops_the_ship_without_any_slot() {
+        let mut s = new_sim();
+        s.flight_assist = false;
+        s.ship.docked = None;
+        s.ship.pos = Vec2::new(0.0, 300.0);
+        s.ship.vel = Vec2::new(12.0, 5.0);
+        s.ship.ang_vel = 2.0;
+        let fuel = s.ship.fuel;
+        let brake = TickInput {
+            brake: true,
+            ..Default::default()
+        };
+        for _ in 0..180 {
+            s.step(&brake);
+        }
+        assert!(s.ship.vel.length() < 0.05, "steht: {:?}", s.ship.vel);
+        assert!(s.ship.ang_vel.abs() < 0.05);
+        assert!(s.ship.fuel < fuel, "kostet Treibstoff");
+        assert!(s.ship.thrusters.iter().all(|t| !t.firing));
+        // Angedockt: die Bremse dockt nicht ab.
+        let mut d = new_sim();
+        assert!(d.ship.docked.is_some());
+        d.step(&brake);
+        assert!(d.ship.docked.is_some());
     }
 }

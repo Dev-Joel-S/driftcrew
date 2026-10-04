@@ -80,16 +80,39 @@ impl SimState {
         let mut force = Vec2::ZERO;
         let mut torque = 0.0;
         let mut burned = 0.0;
+        // Flugassistenz: weniger Schub, kräftigere Drehung (abschaltbar).
+        let fl = &self.data.world.flight;
+        let (assist_thrust, assist_turn) = if self.flight_assist {
+            (fl.assist_thrust, fl.assist_turn)
+        } else {
+            (1.0, 1.0)
+        };
         for t in &self.ship.thrusters {
             if !t.firing {
                 continue;
             }
-            let od = self.thrust_factor(t);
+            let od = self.thrust_factor(t) * assist_thrust;
             let f = rot(t.dir, self.ship.angle) * t.effective_thrust() * reserve * od;
             let at = self.ship.to_world(t.pos);
             force += f;
-            torque += cross(at - self.ship.pos, f);
+            torque += cross(at - self.ship.pos, f) * assist_turn;
             burned += t.thrust * od * self.ship.fuel_burn * DT;
+        }
+        // Bremsassistent: bremst Fahrt und Drehung, ohne dass ein Slot zündet.
+        self.braking = false;
+        if input.brake && !voting && self.ship.docked.is_none() {
+            let fl = &self.data.world.flight;
+            let (acc, spin, fuel) = (fl.brake_accel, fl.brake_spin, fl.brake_fuel);
+            let v = self.ship.vel.length();
+            if v > 0.02 || self.ship.ang_vel.abs() > 0.02 {
+                let dv = (acc * reserve * DT).min(v);
+                if v > 0.0 {
+                    self.ship.vel -= self.ship.vel / v * dv;
+                }
+                self.ship.ang_vel *= 1.0 - (spin * DT).min(0.5);
+                burned += fuel * DT;
+                self.braking = true;
+            }
         }
         if self.ship.docked.is_none() {
             self.ship.vel += force / self.ship.mass * DT;

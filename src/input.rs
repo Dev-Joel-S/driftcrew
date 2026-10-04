@@ -514,10 +514,16 @@ pub fn build_tick_input(
             slots |= 1 << b.slot;
         }
     }
+    // Bremsassistent: ↓ auf der Tastatur oder Steuerkreuz ↓ an irgendeinem Gamepad.
+    let brake = keys.pressed(KeyCode::ArrowDown)
+        || pads
+            .iter()
+            .any(|(_, g, _)| g.pressed(GamepadButton::DPadDown));
     TickInput {
         slots,
         aims: aims.0.clone(),
         commands: Vec::new(),
+        brake,
     }
 }
 

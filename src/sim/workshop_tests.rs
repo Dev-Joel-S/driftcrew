@@ -166,6 +166,7 @@ fn engine_module_adds_a_fixed_thruster_with_its_own_slot() {
             slots: 1 << slot,
             aims: vec![0.0; MAX_SLOTS],
             commands: vec![],
+            brake: false,
         });
     }
     assert!(s.ship.ang_vel.abs() > 0.05);

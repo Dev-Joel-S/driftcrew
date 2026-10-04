@@ -158,7 +158,8 @@ impl SimState {
         if self.effect_near(super::data::EffectKind::Cleared, me) {
             density *= 0.15;
         }
-        let want = (density * 70.0) as usize;
+        // Etwa ein Stück auf 4000 m² bei voller Dichte – genug Gefahr, aber zum Ausweichen.
+        let want = (density * 22.0) as usize;
         let have = self
             .bodies
             .iter()

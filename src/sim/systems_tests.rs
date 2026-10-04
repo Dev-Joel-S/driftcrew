@@ -35,6 +35,7 @@ fn press(slots: u32) -> TickInput {
         slots,
         aims: vec![0.0; MAX_SLOTS],
         commands: vec![],
+        brake: false,
     }
 }
 

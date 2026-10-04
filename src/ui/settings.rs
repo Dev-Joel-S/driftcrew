@@ -42,6 +42,7 @@ struct SettingsRoot;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Row {
+    Assist,
     Master,
     Sfx,
     Music,
@@ -52,7 +53,8 @@ enum Row {
     Back,
 }
 
-const ROWS: [Row; 8] = [
+const ROWS: [Row; 9] = [
+    Row::Assist,
     Row::Master,
     Row::Sfx,
     Row::Music,
@@ -79,6 +81,11 @@ fn bar(v: f32) -> String {
 
 fn label(r: Row, s: &Settings) -> (String, String, &'static str) {
     match r {
+        Row::Assist => (
+            "Flugassistenz & Stabilisator".into(),
+            onoff(s.flight_assist).into(),
+            "an: sanfter Schub, Schiff rollt aus, Drehungen werden abgefangen · aus: reibungsfreie Physik",
+        ),
         Row::Master => ("Gesamtlautstärke".into(), bar(s.master), "←→ ändern"),
         Row::Sfx => (
             "Effekte".into(),
@@ -158,6 +165,7 @@ fn settings_input(
             Row::Master => slide(&mut s.master),
             Row::Sfx => slide(&mut s.sfx),
             Row::Music => slide(&mut s.music),
+            Row::Assist if activate || step != 0.0 => s.flight_assist = !s.flight_assist,
             Row::Fullscreen if activate || step != 0.0 => s.fullscreen = !s.fullscreen,
             Row::Callout if activate || step != 0.0 => s.callout_sound = !s.callout_sound,
             Row::Shake if activate || step != 0.0 => s.shake = !s.shake,

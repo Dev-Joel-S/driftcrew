@@ -706,6 +706,11 @@ fn update_bars(
         } else {
             format!("\nHitze: {}", heat.join(" · "))
         };
+        let heat = if sim.0.braking {
+            format!("{heat}\nBREMSE")
+        } else {
+            heat
+        };
         let delicate = if delicate.is_empty() {
             String::new()
         } else {

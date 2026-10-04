@@ -27,6 +27,7 @@ fn input(slots: u32) -> TickInput {
         slots,
         aims: vec![0.0; MAX_SLOTS],
         commands: vec![],
+        brake: false,
     }
 }
 
@@ -224,6 +225,7 @@ fn spare_part_on_the_crane_fixes_a_failed_thruster() {
             slots: if on { 1 << cslot } else { 0 },
             aims: aims.clone(),
             commands: vec![],
+            brake: false,
         })
     };
     // Ohne Ersatzteil: der Kran fährt ganz normal aus.
@@ -307,6 +309,7 @@ fn steady_hand_drills_more() {
                 slots: 1 << dslot,
                 aims,
                 commands: vec![],
+                brake: false,
             });
         }
         s.ship.ore_amount(planet.ore)

@@ -143,6 +143,7 @@ fn completed_mission_has_a_report_with_awards() {
             slots,
             aims: vec![0.0; MAX_SLOTS],
             commands: vec![],
+            brake: false,
         });
     }
     let MissionKind::Delivery { to, .. } = m.kind else {
@@ -211,6 +212,7 @@ fn wreck_gives_scrap_and_tears_parts() {
             slots: 1 << slot,
             aims: vec![aim; MAX_SLOTS],
             commands: vec![],
+            brake: false,
         });
     }
     assert!(s.ship.ore_amount(Ore::Schrott) > 0.3, "Schrott gebohrt");
@@ -475,6 +477,7 @@ fn scanner_finds_wrecks_and_charts_sell() {
         slots: 1 << slot,
         aims: vec![0.0; MAX_SLOTS],
         commands: vec![],
+        brake: false,
     });
     for _ in 0..120 {
         s.step(&TickInput::default());
@@ -499,6 +502,7 @@ fn scanner_finds_wrecks_and_charts_sell() {
         slots: 1 << slot,
         aims: vec![0.0; MAX_SLOTS],
         commands: vec![],
+        brake: false,
     });
     for _ in 0..120 {
         s.step(&TickInput::default());
@@ -605,14 +609,16 @@ fn passengers_pay_by_comfort_and_bonuses_apply() {
     });
     cmd(&mut s, Command::AcceptMission { id });
     assert_eq!(s.active.len(), 1);
-    // Vollgas: mehr als 10 m/s² → die Zufriedenheit sinkt.
+    // Vollgas: mehr als 10 m/s² → die Zufriedenheit sinkt (ohne Flugassistenz, die dämpft).
     free_at(&mut s, Vec2::new(0.0, 500.0));
+    s.flight_assist = false;
     let all = (1u32 << s.ship.thrusters.len()) - 1;
     for _ in 0..180 {
         s.step(&TickInput {
             slots: all,
             aims: vec![0.0; MAX_SLOTS],
             commands: vec![],
+            brake: false,
         });
     }
     let comfort = match s.active[0].kind {
@@ -787,6 +793,7 @@ fn rod_grabbed_at_the_end_swings() {
             slots: all,
             aims: vec![0.0; MAX_SLOTS],
             commands: vec![],
+            brake: false,
         });
     }
     let b = s.bodies.iter().find(|b| b.id == id).unwrap();
@@ -900,6 +907,7 @@ fn precision_drilling_frees_a_vein_only_when_held_on_target() {
             slots: 1 << slot,
             aims: vec![aim; MAX_SLOTS],
             commands: vec![],
+            brake: false,
         });
         cores = s
             .bodies

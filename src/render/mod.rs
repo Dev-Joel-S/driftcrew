@@ -46,7 +46,6 @@ impl Plugin for RenderPlugin {
                     world_vis::spawn_world,
                     course_vis::spawn_course_vis,
                     world_vis::spawn_background,
-                    world_vis::spawn_dust,
                     npc_vis::spawn_traffic_props,
                     story_vis::spawn_monuments,
                 ),
@@ -56,7 +55,6 @@ impl Plugin for RenderPlugin {
                 (
                     camera_follow,
                     world_vis::update_stars,
-                    world_vis::update_dust,
                     world_vis::update_dynamic_world,
                     ship_vis::sync_ship,
                     npc_vis::sync_npcs,

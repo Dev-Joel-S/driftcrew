@@ -169,7 +169,17 @@ impl SimState {
     pub(crate) fn integrate(&mut self) {
         let s = &mut self.ship;
         if s.docked.is_none() && !s.destroyed {
-            s.ang_vel *= 1.0 - (s.ang_damp * DT).min(0.5);
+            let (lin, ang) = if self.flight_assist {
+                let fl = &self.data.world.flight;
+                // Stabilisator: ohne Schub werden Drehungen schnell abgefangen.
+                let idle = !s.thrusters.iter().any(|t| t.firing);
+                let stab = if idle { fl.stabilizer } else { 0.0 };
+                (fl.assist_linear_damping, fl.assist_angular_damping + stab)
+            } else {
+                (0.0, 0.0)
+            };
+            s.vel *= 1.0 - (lin * DT).min(0.5);
+            s.ang_vel *= 1.0 - ((s.ang_damp + ang) * DT).min(0.5);
             s.pos += s.vel * DT;
             s.angle += s.ang_vel * DT;
         }

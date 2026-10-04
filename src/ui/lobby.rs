@@ -2,13 +2,14 @@
 //! Nicht belegte Triebwerke verschwinden, die belegten werden symmetrisch neu angeordnet –
 //! das sieht man live am Schiff.
 
-use bevy::input::gamepad::{Gamepad, GamepadButton};
+use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
 
 use super::{ACCENT, BAD, BG_FOCUS, BORDER, GOOD, MUTED, Signature, TEAL, TEXT, chip, panel, text};
 use crate::game::{AppState, GameCamera, LobbyMode, Sim};
 use crate::input::{
-    ActiveBindings, Binding, Btn, ClaimTarget, Crew, Device, MenuInput, fresh_claimable,
+    ActiveBindings, Binding, Btn, ClaimTarget, Crew, Device, MenuInput, btn_pressed,
+    fresh_claimable,
 };
 use crate::render::slot_color;
 use crate::sim::data::ShipDef;
@@ -101,7 +102,12 @@ pub struct LobbyState {
     pub cursor: usize,
     pub backup: Option<Crew>,
     pub message: Option<(String, f32)>,
+    /// Gehaltene Taste eines belegten Slots und wie lange schon (Halten = Slot abgeben).
+    pub hold: Option<(Btn, f32)>,
 }
+
+/// So lange die eigene Taste halten, um den Slot abzugeben.
+pub const HOLD_RELEASE: f32 = 1.2;
 
 #[derive(Component)]
 struct LobbyRoot;
@@ -245,18 +251,29 @@ fn lobby_input(
             changed = true;
         }
     }
-    // Select am Gamepad löst dessen letzte Belegung.
-    for (e, g, _) in &pads {
-        if g.just_pressed(GamepadButton::Select)
-            && let Some(pos) = crew
-                .bindings
-                .iter()
-                .rposition(|b| b.btn.device() == Device::Pad(e))
-        {
-            let b = crew.bindings.remove(pos);
-            state.cursor = ts.iter().position(|t| *t == b.target).unwrap_or(0);
-            changed = true;
-        }
+    // Eigene Taste gedrückt halten = Slot abgeben (geht mit jedem Gerät, auch einem Joy-Con).
+    let held = crew
+        .bindings
+        .iter()
+        .map(|b| b.btn)
+        .find(|btn| btn_pressed(btn, &keys, &mouse, &pads));
+    state.hold = match (held, state.hold) {
+        (Some(btn), Some((h, t))) if h == btn => Some((btn, t + time.delta_secs())),
+        (Some(btn), _) => Some((btn, 0.0)),
+        (None, _) => None,
+    };
+    if let Some((btn, t)) = state.hold
+        && t >= HOLD_RELEASE
+        && let Some(pos) = crew.bindings.iter().position(|b| b.btn == btn)
+    {
+        let b = crew.bindings.remove(pos);
+        state.cursor = ts.iter().position(|t| *t == b.target).unwrap_or(0);
+        state.message = Some((
+            format!("Slot abgegeben: {}", target_name(&def, b.target)),
+            2.5,
+        ));
+        state.hold = None;
+        changed = true;
     }
 
     for btn in fresh_claimable(&keys, &mouse, &pads) {
@@ -281,7 +298,8 @@ fn lobby_input(
         active.0 = crew.resolve(&def);
     }
 
-    if input.enter || input.start {
+    // Losfliegen: Enter, Start (+) oder Select (−) – auch ein einzelner Joy-Con hat eins davon.
+    if input.enter || input.start || input.select {
         let thrusters = crew.thruster_claims().len() as u8;
         if thrusters < def.min_thrusters {
             state.message = Some((
@@ -365,9 +383,10 @@ fn draw_lobby(
         .as_ref()
         .filter(|(_, t)| *t > 0.0)
         .map(|(m, _)| m.clone());
+    let hold = state.hold.map(|(b, t)| (b, (t / HOLD_RELEASE * 5.0) as u8));
     let key = format!(
-        "{:?}|{}|{:?}|{:?}|{:?}",
-        crew.bindings, state.cursor, msg, active.0, *mode
+        "{:?}|{}|{:?}|{:?}|{:?}|{:?}",
+        crew.bindings, state.cursor, msg, active.0, *mode, hold
     );
     let s = super::sig_of(&key);
     if sig.0 == s {
@@ -445,6 +464,18 @@ fn draw_lobby(
                         children![text(target_name(&def, *t), 16.0, TEXT)],
                     ));
                     match bound {
+                        Some(b) if hold.is_some_and(|(h, n)| h == b.btn && n > 0) => {
+                            let n = hold.map_or(0, |(_, n)| n.min(5)) as usize;
+                            row.spawn(text(
+                                format!(
+                                    "weiter halten = abgeben {}{}",
+                                    "■".repeat(n),
+                                    "□".repeat(5 - n)
+                                ),
+                                15.0,
+                                ACCENT,
+                            ));
+                        }
                         Some(b) => {
                             row.spawn(text(binding_text(&crew, b), 15.0, GOOD));
                         }
@@ -496,14 +527,39 @@ fn draw_lobby(
                 height: Val::Px(8.0),
                 ..default()
             });
-            for line in [
-                "Beliebige Taste / Gamepad-Taste = markierten Slot übernehmen",
-                "Tab · ↑↓ · Klick: Slot wählen   ·   Rücktaste / Select: letzte lösen",
-                "Werkzeuge zielen mit Maus (Tastatur) oder Stick (Gamepad)",
-                "Enter / Start: Los geht's   ·   Esc: zurück",
+            for (head, line) in [
+                (
+                    "Nehmen",
+                    "beliebige Taste drücken – sie steuert dann den markierten Slot",
+                ),
+                ("Abgeben", "die eigene Taste gut 1 Sekunde gedrückt halten"),
+                ("Wählen", "↑↓ · Tab · Steuerkreuz · Stick · Klick"),
+                (
+                    "Los",
+                    "Enter · Start (+) · Select (−) – geht auch mit nur einem Joy-Con",
+                ),
+                ("Zurück", "Esc"),
             ] {
-                p.spawn(text(line, 13.0, MUTED));
+                p.spawn(Node {
+                    column_gap: Val::Px(10.0),
+                    ..default()
+                })
+                .with_children(|l| {
+                    l.spawn((
+                        Node {
+                            width: Val::Px(70.0),
+                            ..default()
+                        },
+                        children![text(head, 13.0, ACCENT)],
+                    ));
+                    l.spawn(text(line, 13.0, MUTED));
+                });
             }
+            p.spawn(text(
+                "Werkzeuge zielen mit der Maus (Tastatur) bzw. dem Stick des Geräts",
+                12.0,
+                MUTED,
+            ));
         });
     });
 }

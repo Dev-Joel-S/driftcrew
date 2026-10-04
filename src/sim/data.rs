@@ -710,6 +710,45 @@ pub struct WorldDef {
     /// Versteckte Routen (79): sichere Umwege und riskante Abkürzungen.
     #[serde(default)]
     pub routes: Vec<RouteDef>,
+    /// Flugassistenz und Bremsassistent des Crew-Schiffs.
+    #[serde(default)]
+    pub flight: FlightDef,
+}
+
+/// Flugassistenz (abschaltbar): weniger Schub pro Tastendruck, sanftes Ausrollen, kräftigere
+/// und besser abgefangene Drehung. Bremsassistent (feste Taste für alle): bremst Fahrt und
+/// Drehung, kostet Treibstoff.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct FlightDef {
+    pub assist_thrust: f32,
+    /// Dämpfung der Fahrt pro Sekunde (Anteil).
+    pub assist_linear_damping: f32,
+    /// Zusätzliche Dämpfung der Drehung pro Sekunde, und der Stabilisator obendrauf, solange
+    /// kein Triebwerk feuert (fängt Drehungen in etwa einer Sekunde ab).
+    pub assist_angular_damping: f32,
+    pub stabilizer: f32,
+    /// Verstärkung des Drehmoments aus versetztem Schub.
+    pub assist_turn: f32,
+    /// Bremsassistent: Verzögerung (m/s²), Drehdämpfung pro Sekunde, Treibstoff pro Sekunde.
+    pub brake_accel: f32,
+    pub brake_spin: f32,
+    pub brake_fuel: f32,
+}
+
+impl Default for FlightDef {
+    fn default() -> Self {
+        FlightDef {
+            assist_thrust: 0.6,
+            assist_linear_damping: 0.22,
+            assist_angular_damping: 1.0,
+            stabilizer: 2.2,
+            assist_turn: 1.8,
+            brake_accel: 7.0,
+            brake_spin: 4.0,
+            brake_fuel: 1.0,
+        }
+    }
 }
 
 /// Eine Route durch die Welt, die erst entdeckt werden muss (Scanner, Gerüchte an einer Station,

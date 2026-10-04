@@ -23,6 +23,7 @@ fn idle() -> TickInput {
         slots: 0,
         aims: vec![0.0; MAX_SLOTS],
         commands: vec![],
+        brake: false,
     }
 }
 

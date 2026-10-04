@@ -147,6 +147,8 @@ mod tests {
         ];
         let ap = Autopilot::default();
         let mut wp = 0;
+        // Der Autopilot ist für die reibungsfreie Physik ausgelegt (Vorführszenen).
+        s.flight_assist = false;
         let mut max_damage = 0.0f32;
         for tick in 0..60 * 240 {
             let (target, tol) = waypoints[wp.min(waypoints.len() - 1)];
@@ -164,6 +166,7 @@ mod tests {
                 slots,
                 aims: vec![0.0; crate::sim::MAX_SLOTS],
                 commands: vec![],
+                brake: false,
             });
             max_damage = max_damage.max(s.ship.max_hull - s.ship.hull);
             if std::env::var("AP_TRACE").is_ok() && tick % 30 == 0 {

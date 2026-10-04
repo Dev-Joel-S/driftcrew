@@ -15,6 +15,8 @@ pub struct Settings {
     pub fullscreen: bool,
     pub callout_sound: bool,
     pub shake: bool,
+    /// Flugassistenz mit Stabilisator (aus = reibungsfreie Physik wie früher).
+    pub flight_assist: bool,
 }
 
 impl Default for Settings {
@@ -26,6 +28,7 @@ impl Default for Settings {
             fullscreen: false,
             callout_sound: true,
             shake: true,
+            flight_assist: true,
         }
     }
 }
@@ -66,8 +69,13 @@ pub struct SettingsPlugin;
 impl Plugin for SettingsPlugin {
     fn build(&self, app: &mut App) {
         // Im Vorführmodus immer die Grundeinstellungen (reproduzierbare Screenshots).
+        // Die Vorführszenen fliegen mit dem Autopiloten, der ist auf die reibungsfreie Physik
+        // ausgelegt.
         let s = if std::env::var("DRIFTCREW_DEMO").is_ok() {
-            Settings::default()
+            Settings {
+                flight_assist: false,
+                ..Settings::default()
+            }
         } else {
             load()
         };

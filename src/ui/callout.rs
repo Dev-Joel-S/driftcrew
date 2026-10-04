@@ -1,8 +1,8 @@
 //! Zurufe (Punkt 73): kurze Signale an die ganze Crew, ohne Pflichtrollen.
 //!
 //! Tastatur: F5 Bremsen · F6 Schub aus · F7 Links drehen · F8 Rechts drehen · F9 Werkzeug bereit.
-//! Gamepad (Steuerkreuz, nie als Slot belegbar): ↓ Bremsen (zweimal schnell = Schub aus),
-//! ← Links drehen, → Rechts drehen, ↑ Werkzeug bereit.
+//! Gamepad (Steuerkreuz, nie als Slot belegbar): ← Links drehen, → Rechts drehen,
+//! ↑ Werkzeug bereit. ↓ ist der Bremsassistent (siehe `input.rs`).
 //! Der Zuruf erscheint in der Farbe des Crewmitglieds über dem Schiff; ein kurzer Ton ist
 //! optional (Einstellungen).
 
@@ -19,16 +19,12 @@ pub struct CalloutPlugin;
 
 impl Plugin for CalloutPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<PadTaps>().add_systems(
+        app.add_systems(
             Update,
             (callout_input, draw_callouts).run_if(in_state(AppState::Playing)),
         );
     }
 }
-
-/// Wann ein Pad zuletzt ↓ gedrückt hat (für „zweimal schnell = Schub aus“).
-#[derive(Resource, Default)]
-struct PadTaps(Vec<(Entity, f32)>);
 
 pub const KEY_CALLS: [(KeyCode, Call); 5] = [
     (KeyCode::F5, Call::Brake),
@@ -42,7 +38,6 @@ pub const KEY_CALLS: [(KeyCode, Call); 5] = [
 fn callout_input(
     keys: Res<ButtonInput<KeyCode>>,
     pads: Query<(Entity, &Gamepad)>,
-    time: Res<Time>,
     crew: Res<Crew>,
     sim: Res<Sim>,
     paused: Res<Paused>,
@@ -50,7 +45,6 @@ fn callout_input(
     plan: Res<CargoPlan>,
     book: Res<Logbook>,
     entry: Res<TextEntry>,
-    mut taps: ResMut<PadTaps>,
     mut pending: ResMut<PendingCommands>,
 ) {
     // Nur im Flug ohne offenes Menü (dort gehört das Steuerkreuz dem Menü).
@@ -68,22 +62,12 @@ fn callout_input(
             }
         }
     }
-    let now = time.elapsed_secs();
     for (e, g) in &pads {
         let Some(p) = player_of(Device::Pad(e)) else {
             continue;
         };
         let mut call = None;
-        if g.just_pressed(GamepadButton::DPadDown) {
-            let last = taps.0.iter().find(|(x, _)| *x == e).map(|(_, t)| *t);
-            call = Some(if last.is_some_and(|t| now - t < 0.35) {
-                Call::ThrustOff
-            } else {
-                Call::Brake
-            });
-            taps.0.retain(|(x, _)| *x != e);
-            taps.0.push((e, now));
-        } else if g.just_pressed(GamepadButton::DPadLeft) {
+        if g.just_pressed(GamepadButton::DPadLeft) {
             call = Some(Call::TurnLeft);
         } else if g.just_pressed(GamepadButton::DPadRight) {
             call = Some(Call::TurnRight);

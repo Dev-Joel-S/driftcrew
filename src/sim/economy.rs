@@ -472,6 +472,7 @@ impl SimState {
                 Command::AddNote { text } => self.add_note(text),
                 Command::AddMark { pos, text } => self.add_mark(*pos, text),
                 Command::RemoveMark { idx } => self.remove_mark(*idx),
+                Command::SetFlightAssist(on) => self.flight_assist = *on,
                 Command::Callout { player, call } => {
                     // Ein Zuruf pro Crewmitglied; ein neuer ersetzt den alten.
                     self.callouts.retain(|c| c.player != *player);

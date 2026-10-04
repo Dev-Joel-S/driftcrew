@@ -197,8 +197,28 @@ impl Plugin for GamePlugin {
             )
             .add_systems(Update, react_to_events.run_if(in_state(AppState::Playing)))
             .add_systems(Update, toggle_fullscreen)
+            .add_systems(
+                Update,
+                sync_flight_assist.run_if(in_state(AppState::Playing)),
+            )
             .add_systems(OnEnter(AppState::Playing), first_hints)
             .add_systems(Last, save_on_exit);
+    }
+}
+
+/// Flugassistenz aus den Einstellungen als Befehl in die Simulation (deterministisch).
+fn sync_flight_assist(
+    sim: Res<Sim>,
+    settings: Res<crate::settings::Settings>,
+    mut pending: ResMut<PendingCommands>,
+    replay: Res<Replay>,
+) {
+    let want = settings.flight_assist;
+    if replay.play.is_none()
+        && sim.0.flight_assist != want
+        && !pending.0.contains(&Command::SetFlightAssist(want))
+    {
+        pending.0.push(Command::SetFlightAssist(want));
     }
 }
 
