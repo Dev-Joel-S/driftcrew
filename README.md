@@ -131,10 +131,23 @@ Spielers, mit Beschriftung, was dort ist („Wrack“, „Kepler-Außenposten“
 | In der Lobby | Wirkung |
 |---|---|
 | beliebige Taste | markierten Slot übernehmen |
-| Tab / ↑ ↓ / Klick | anderen Slot markieren |
-| Rücktaste (Gamepad: Select) | letzte eigene Belegung lösen |
-| Enter / Start | Spiel starten |
-| Esc | zurück |
+| Tab / ↑ ↓ / Stick / Klick | anderen Slot markieren |
+| eigene Taste ~1 s halten | Slot abgeben |
+| Rücktaste | letzte Tastatur-Belegung lösen |
+| Stick drücken (Joy-Con) | Joy-Con quer ↔ hochkant |
+| Enter / Start (Joy-Con − / +) | Spiel starten |
+| Esc / Select (Joy-Con Foto / Home) | zurück |
+
+Der letzte Slot **„Bremse / rückwärts“** ist freiwillig: Wer ihn belegt, bremst mit dieser Taste
+wie mit ↓ – gedacht für Geräte ohne Steuerkreuz (einzelner Joy-Con).
+
+**Joy-Cons:** Jeder einzelne Joy-Con ist ein eigenes Crewmitglied und wird wie ein kleines
+Gamepad behandelt – quer (Standard; SL/SR oben, Stick links) oder hochkant, pro Joy-Con in der
+Lobby mit Stick-Druck umschaltbar. Tasten zählen nach ihrer Lage: unten bestätigt, rechts geht
+zurück, − / + wirkt wie Start, Foto / Home wie Select. Beschriftet sind Slots mit dem Aufdruck
+(←, ↓, SL, A …). Unter Linux liest das Spiel einzelne Joy-Cons direkt über die Kernelcodes
+(hid-nintendo), weil die übliche Zuordnungstabelle dort falsche Tasten liefert
+(`src/pads.rs`). Gekoppelte Paare (joycon „Combined“) laufen als normales Gamepad.
 
 ### Fliegen
 
@@ -403,8 +416,8 @@ entscheidet, **Gleichstand bedeutet Nein**. Allein gespielt wird direkt gekauft.
 | Enter | Start | Bestätigen |
 | Mausrad | – | Zoom |
 | `^` | Stick drücken | Ping |
-| F5 / F6 / F7 / F8 / F9 | Steuerkreuz ↓ / ↓↓ / ← / → / ↑ | Zuruf: Bremsen / Schub aus / Links drehen / Rechts drehen / Werkzeug bereit |
-| ↓ (halten) | Steuerkreuz ↓ (halten) | Bremsen; steht das Schiff, weiter halten = langsam rückwärts (Landen) |
+| F5 / F6 / F7 / F8 / F9 | – / – / Steuerkreuz ← / → / ↑ | Zuruf: Bremsen / Schub aus / Links drehen / Rechts drehen / Werkzeug bereit |
+| ↓ (halten) | Steuerkreuz ↓ (halten) oder belegte Bremstaste | Bremsen; steht das Schiff, weiter halten = langsam rückwärts (Landen). Steuerdüsen zeigen, wohin gebremst wird |
 | F11 | – | Vollbild (wie in den Einstellungen) |
 
 **Flugassistenz** (Standard an): sanfterer Schub, das Schiff rollt aus, ein Stabilisator fängt

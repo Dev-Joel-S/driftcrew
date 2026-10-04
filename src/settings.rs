@@ -17,6 +17,8 @@ pub struct Settings {
     pub shake: bool,
     /// Flugassistenz mit Stabilisator (aus = reibungsfreie Physik wie früher).
     pub flight_assist: bool,
+    /// Wie einzelne Joy-Cons gehalten werden (in der Lobby pro Joy-Con umschaltbar).
+    pub joycon_grip: crate::pads::Grip,
 }
 
 impl Default for Settings {
@@ -29,6 +31,7 @@ impl Default for Settings {
             callout_sound: true,
             shake: true,
             flight_assist: true,
+            joycon_grip: crate::pads::Grip::Sideways,
         }
     }
 }

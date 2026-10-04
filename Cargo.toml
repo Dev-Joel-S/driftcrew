@@ -9,6 +9,8 @@ description = "Koop-Weltraumspiel: jede Taste ist ein Triebwerk, der Rest ist Ph
 bevy = { version = "0.19.1", features = ["wav"] }
 serde = { version = "1", features = ["derive"] }
 ron = "0.12"
+# Gamepads direkt (eigene Joy-Con-Anbindung, siehe src/pads.rs); dieselbe Version wie in bevy.
+gilrs = "0.11"
 
 [profile.dev]
 opt-level = 1

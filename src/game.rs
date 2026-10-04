@@ -286,6 +286,7 @@ fn fixed_tick(
     input.commands = std::mem::take(&mut pending.0);
     if let Some(s) = scripted {
         input.slots |= s.0;
+        input.brake |= s.1;
     }
     replay.rec.before_step(&sim.0);
     sim.0.step(&input);

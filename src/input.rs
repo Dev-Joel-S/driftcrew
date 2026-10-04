@@ -43,7 +43,8 @@ impl Btn {
             Btn::Mouse(MouseButton::Back) => "Maus 4".into(),
             Btn::Mouse(MouseButton::Forward) => "Maus 5".into(),
             Btn::Mouse(b) => format!("{b:?}"),
-            Btn::Pad(_, b) => pad_label(*b),
+            // Joy-Cons: so beschriftet wie auf dem Gerät (↓, SL, A …).
+            Btn::Pad(e, b) => crate::pads::button_label(*e, *b).unwrap_or_else(|| pad_label(*b)),
         }
     }
 }
@@ -145,7 +146,12 @@ pub enum ClaimTarget {
     Thruster(usize),
     /// Index in der Werkzeugliste des Schiffs.
     Tool(usize),
+    /// Bremse/Rückwärtsgang auf eine eigene Taste – für Geräte ohne Steuerkreuz (Joy-Con).
+    Brake,
 }
+
+/// „Slot“ der belegten Bremstaste: kein Simulations-Slot, sondern `TickInput::brake`.
+pub const BRAKE_SLOT: u8 = u8::MAX;
 
 #[derive(Clone, Debug)]
 pub struct Player {
@@ -244,6 +250,13 @@ impl Crew {
                 let slot = match b.target {
                     ClaimTarget::Thruster(i) => claimed_thrusters.iter().position(|x| *x == i)?,
                     ClaimTarget::Tool(i) => n + tools.iter().position(|x| *x == i)?,
+                    ClaimTarget::Brake => {
+                        return Some(ActiveBinding {
+                            btn: b.btn,
+                            slot: BRAKE_SLOT,
+                            player: b.player,
+                        });
+                    }
                 };
                 Some(ActiveBinding {
                     btn: b.btn,
@@ -453,7 +466,18 @@ pub fn read_menu_input(
     sim: Option<Res<crate::game::Sim>>,
     mut sticks: Local<StickNav>,
 ) {
-    let bound = |e: Entity, b: GamepadButton| bindings.0.iter().any(|x| x.btn == Btn::Pad(e, b));
+    // Belegte Gesichtstasten gelten nur dort nicht als Bestätigen/Zurück, wo sie gerade Slots
+    // steuern (im Flug und angedockt – dort legt Schub ab). In Pause, Karte und allen anderen
+    // Menüs bestätigen sie wie gewohnt – sonst käme man mit einem Joy-Con nicht mehr zurück.
+    let slots_live = match state.as_deref().map(|s| *s.get()) {
+        Some(AppState::Playing) => {
+            !paused.as_deref().is_some_and(|p| p.0) && !map.as_deref().is_some_and(|m| m.0)
+        }
+        _ => false,
+    };
+    let bound = |e: Entity, b: GamepadButton| {
+        slots_live && bindings.0.iter().any(|x| x.btn == Btn::Pad(e, b))
+    };
     let mut m = MenuInput {
         up: keys.just_pressed(KeyCode::ArrowUp),
         down: keys.just_pressed(KeyCode::ArrowDown),
@@ -553,7 +577,7 @@ fn latch_slots(
     mut latch: ResMut<InputLatch>,
 ) {
     for b in &bindings.0 {
-        if btn_just_pressed(&b.btn, &keys, &mouse, &pads) {
+        if b.slot != BRAKE_SLOT && btn_just_pressed(&b.btn, &keys, &mouse, &pads) {
             latch.0 |= 1 << b.slot;
         }
     }
@@ -570,16 +594,21 @@ pub fn build_tick_input(
 ) -> TickInput {
     let mut slots = latch.0;
     latch.0 = 0;
-    for b in &bindings.0 {
-        if btn_pressed(&b.btn, keys, mouse, pads) {
-            slots |= 1 << b.slot;
-        }
-    }
-    // Bremsassistent: ↓ auf der Tastatur oder Steuerkreuz ↓ an irgendeinem Gamepad.
-    let brake = keys.pressed(KeyCode::ArrowDown)
+    // Bremsassistent: ↓ auf der Tastatur, Steuerkreuz ↓ an irgendeinem Gamepad oder die in
+    // der Lobby belegte Bremstaste.
+    let mut brake = keys.pressed(KeyCode::ArrowDown)
         || pads
             .iter()
             .any(|(_, g, _)| g.pressed(GamepadButton::DPadDown));
+    for b in &bindings.0 {
+        if btn_pressed(&b.btn, keys, mouse, pads) {
+            if b.slot == BRAKE_SLOT {
+                brake = true;
+            } else {
+                slots |= 1 << b.slot;
+            }
+        }
+    }
     TickInput {
         slots,
         aims: aims.0.clone(),
@@ -726,6 +755,58 @@ mod tests {
         assert_eq!(device_badge(Device::Pad(pad(3)), "Joy-Con (L)"), "JC-L");
         assert_eq!(device_badge(Device::Pad(pad(3)), "Joy-Con (R)"), "JC-R");
         assert_eq!(device_badge(Device::Pad(pad(3)), "Xbox Controller"), "◉");
+    }
+}
+
+#[cfg(test)]
+mod brake_tests {
+    use super::*;
+
+    #[test]
+    fn claimed_brake_is_no_sim_slot() {
+        let data = crate::sim::data::GameData::embedded().unwrap();
+        let save = crate::sim::data::CrewSave::new_game(&data);
+        let def = data.ship(&save.current_ship).clone();
+        let pad = Entity::from_raw_u32(5).unwrap();
+        let crew = Crew {
+            players: vec![Player {
+                device: Device::Pad(pad),
+                label: "Joy-Con (L)".into(),
+            }],
+            bindings: vec![
+                Binding {
+                    btn: Btn::Pad(pad, GamepadButton::LeftTrigger),
+                    player: 0,
+                    target: ClaimTarget::Thruster(0),
+                },
+                Binding {
+                    btn: Btn::Pad(pad, GamepadButton::RightTrigger),
+                    player: 0,
+                    target: ClaimTarget::Thruster(1),
+                },
+                Binding {
+                    btn: Btn::Pad(pad, GamepadButton::South),
+                    player: 0,
+                    target: ClaimTarget::Brake,
+                },
+            ],
+        };
+        let lo = crew.loadout();
+        assert_eq!(lo.thrusters, 2);
+        assert!(lo.tools.is_empty(), "die Bremse ist kein Werkzeug");
+        let active = crew.resolve(&def);
+        assert_eq!(active.len(), 3);
+        let brake = active
+            .iter()
+            .find(|b| b.btn == Btn::Pad(pad, GamepadButton::South))
+            .unwrap();
+        assert_eq!(brake.slot, BRAKE_SLOT);
+        assert!(
+            active
+                .iter()
+                .filter(|b| b.slot != BRAKE_SLOT)
+                .all(|b| (b.slot as usize) < MAX_SLOTS)
+        );
     }
 }
 

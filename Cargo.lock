@@ -2367,6 +2367,7 @@ name = "driftcrew"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "gilrs",
  "ron",
  "serde",
 ]

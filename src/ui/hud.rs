@@ -788,6 +788,8 @@ fn update_slots(
                     thruster_label(i, ship.thrusters.len())
                 } else if let Some(t) = ship.tools.iter().find(|t| t.slot == b.slot) {
                     t.kind.label().to_string()
+                } else if b.slot == crate::input::BRAKE_SLOT {
+                    "Bremse".into()
                 } else {
                     "?".into()
                 };
@@ -904,9 +906,11 @@ fn update_slots(
             }
         });
     }
+    let braking = sim.0.braking || sim.0.reversing;
     let on = |slot: u8| {
         ship.thrusters.iter().any(|t| t.slot == slot && t.firing)
             || ship.tools.iter().any(|t| t.slot == slot && t.pressed)
+            || (slot == crate::input::BRAKE_SLOT && braking)
     };
     // Ruhezustand: nur Rahmen in Slotfarbe. Gedrückt: ganz in Slotfarbe gefüllt.
     // Übersteuert: orange bis rot nach Hitze; Notabschaltung: dunkelrot.

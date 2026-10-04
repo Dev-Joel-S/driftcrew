@@ -215,6 +215,9 @@ pub const SLOT_COLORS: [[f32; 3]; 12] = [
 ];
 
 pub fn slot_color(slot: u8) -> Color {
+    if slot == crate::input::BRAKE_SLOT {
+        return srgb([1.0, 0.36, 0.3]);
+    }
     srgb(SLOT_COLORS[slot as usize % SLOT_COLORS.len()])
 }
 

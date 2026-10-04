@@ -9,6 +9,7 @@ mod audio;
 mod demo;
 mod game;
 mod input;
+mod pads;
 mod render;
 mod settings;
 mod sim;
@@ -57,10 +58,13 @@ fn main() {
             .set(bevy::log::LogPlugin {
                 filter: "wgpu=error,naga=warn,bevy_render=warn,bevy_app=warn,gilrs=warn".into(),
                 ..default()
-            }),
+            })
+            // Gamepads binden wir selbst an (einzelne Joy-Cons, siehe pads.rs).
+            .disable::<bevy::gilrs::GilrsPlugin>(),
     )
     .add_plugins((
         settings::SettingsPlugin,
+        pads::PadsPlugin,
         game::GamePlugin,
         input::InputPlugin,
         render::RenderPlugin,

@@ -331,6 +331,46 @@ fn react_to_sim_events(
 
 /// Dauerhafte Emitter: Triebwerksabgas, Bohrstaub, Meteoritenschweife.
 #[allow(clippy::too_many_arguments)]
+/// Wo die Steuerdüsen beim Bremsen bzw. Rückwärtsfliegen ausstoßen: (Weltpunkt, Ausstoßrichtung).
+/// Der Ausstoß zeigt immer entgegen der Kraft, die das Schiff gerade bekommt.
+pub fn retro_jets(sim: &crate::sim::SimState) -> Vec<(Vec2, Vec2)> {
+    let ship = &sim.ship;
+    if ship.destroyed || ship.docked.is_some() || !(sim.braking || sim.reversing) {
+        return Vec::new();
+    }
+    let fwd = rot(Vec2::Y, ship.angle);
+    let side = rot(Vec2::X, ship.angle);
+    let r = ship.bound_radius();
+    if sim.reversing {
+        // Rückwärts: zwei Düsen an der Nase blasen nach vorn, das Schiff fährt heck voran.
+        let Some(n) = ship
+            .parts
+            .iter()
+            .max_by(|a, b| (a.pos.y + a.half.y).total_cmp(&(b.pos.y + b.half.y)))
+        else {
+            return Vec::new();
+        };
+        let y = n.pos.y + n.half.y;
+        let dx = n.half.x * 0.55;
+        return vec![
+            (ship.to_world(Vec2::new(n.pos.x - dx, y)), fwd),
+            (ship.to_world(Vec2::new(n.pos.x + dx, y)), fwd),
+        ];
+    }
+    if ship.vel.length() > 0.3 {
+        // Bremsen: Düsen auf der Seite in Flugrichtung blasen der Bewegung entgegen.
+        let d = ship.vel.normalize();
+        let at = ship.pos + d * r * 0.75;
+        return vec![(at + d.perp() * 0.6, d), (at - d.perp() * 0.6, d)];
+    }
+    // Nur noch Drehung abfangen: vorn und hinten seitlich gegeneinander.
+    let s = if ship.ang_vel > 0.0 { 1.0 } else { -1.0 };
+    vec![
+        (ship.pos + fwd * r * 0.6, -side * s),
+        (ship.pos - fwd * r * 0.6, side * s),
+    ]
+}
+
 fn emit_continuous(
     mut commands: Commands,
     time: Res<Time>,
@@ -390,6 +430,29 @@ fn emit_continuous(
                         rng.0.range(0.8, 1.6),
                         (0.4, 1.6),
                         1.0,
+                    );
+                }
+            }
+            // Bremsen und Rückwärtsgang: kleine Steuerdüsen, damit man sieht, was das Schiff tut.
+            for (at, dir) in retro_jets(&sim.0) {
+                // Heller Kern an der Düse und eine längere, kühlere Fahne.
+                for (speed, size, life, glow) in [
+                    ((6.0, 10.0), (0.9, 0.2), (0.1, 0.18), 6.0),
+                    ((10.0, 17.0), (0.75, 0.1), (0.3, 0.5), 3.0),
+                ] {
+                    let spread = rng.0.range(-0.22, 0.22);
+                    let v = ship.vel + rot(dir, spread) * rng.0.range(speed.0, speed.1);
+                    spawn_particle(
+                        &mut commands,
+                        &mut art,
+                        &mut mats,
+                        (at + dir * 0.3).extend(rng.0.range(0.6, 1.0)),
+                        v.extend(0.0),
+                        Color::srgb(0.72, 0.86, 1.0),
+                        glow,
+                        rng.0.range(life.0, life.1),
+                        size,
+                        2.2,
                     );
                 }
             }
@@ -537,6 +600,55 @@ fn update_shield(
         if let Some(mut mat) = mats.get_mut(&m.0) {
             mat.base_color =
                 Color::LinearRgba(LinearRgba::rgb(0.3 * a * 3.0, 0.9 * a * 3.0, 1.0 * a * 3.0));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::sim::data::{CrewSave, GameData};
+    use crate::sim::ship::Loadout;
+    use crate::sim::{SimState, TickInput};
+
+    #[test]
+    fn retro_jets_show_braking_and_reversing() {
+        let data = Arc::new(GameData::embedded().unwrap());
+        let save = CrewSave::new_game(&data);
+        let def = data.ship(&save.current_ship).clone();
+        let mut s = SimState::new(data, &save, Loadout::full(&def), 1);
+        s.flight_assist = false;
+        s.ship.docked = None;
+        s.ship.pos = Vec2::new(-900.0, -900.0);
+        s.ship.prev_pos = s.ship.pos;
+        s.ship.angle = 0.0;
+        s.ship.vel = Vec2::new(4.0, 0.0);
+        assert!(retro_jets(&s).is_empty(), "ohne Bremse keine Düsen");
+        let brake = TickInput {
+            brake: true,
+            ..Default::default()
+        };
+        s.step(&brake);
+        let jets = retro_jets(&s);
+        assert!(s.braking && !jets.is_empty());
+        for (at, dir) in &jets {
+            assert!(dir.dot(Vec2::X) > 0.9, "bläst in Flugrichtung: {dir}");
+            assert!(at.x > s.ship.pos.x, "auf der Seite in Flugrichtung");
+        }
+        // Weiter halten: steht – dann rückwärts, die Düsen sitzen an der Nase.
+        for _ in 0..600 {
+            s.step(&brake);
+            if s.reversing {
+                break;
+            }
+        }
+        assert!(s.reversing);
+        let fwd = rot(Vec2::Y, s.ship.angle);
+        for (at, dir) in retro_jets(&s) {
+            assert!(dir.dot(fwd) > 0.99, "Ausstoß nach vorn");
+            assert!((at - s.ship.pos).dot(fwd) > 0.5, "an der Nase");
         }
     }
 }

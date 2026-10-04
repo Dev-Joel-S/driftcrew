@@ -31,6 +31,10 @@ struct TitleRoot;
 #[derive(Component)]
 pub struct HelpPanel;
 
+/// Der scrollbare Inhalt der Hilfe.
+#[derive(Component)]
+pub struct HelpScroll;
+
 #[derive(Resource, Default)]
 pub struct HelpOpen(pub bool);
 
@@ -82,6 +86,8 @@ pub const HELP_TEXT: &[&str] = &[
     "In der Lobby drückt jede Person eine beliebige Taste (oder Gamepad-Taste) und",
     "übernimmt damit den markierten Slot: Triebwerk, Kanone, Kran oder Bohrer.",
     "Tastatur+Maus und jedes Gamepad (auch einzelne Joy-Cons) sind eigene Crewmitglieder.",
+    "Joy-Con quer oder hochkant: in der Lobby Stick drücken. Ohne Steuerkreuz die Bremse",
+    "in der Lobby auf eine eigene Taste legen (Slot „Bremse / rückwärts“).",
     "Werkzeuge zielen mit der Maus bzw. dem Stick des Geräts, das sie belegt hat.",
     "",
     "ANDOCKEN",
@@ -107,7 +113,7 @@ pub const HELP_TEXT: &[&str] = &[
     "",
     "ZURUFE (keine Pflichtrollen)",
     "F5 Bremsen · F6 Schub aus · F7 Links drehen · F8 Rechts drehen · F9 Werkzeug bereit",
-    "Gamepad-Steuerkreuz: ↓ Bremsen (2× = Schub aus) · ← / → drehen · ↑ Werkzeug bereit",
+    "Gamepad-Steuerkreuz: ← / → drehen · ↑ Werkzeug bereit (↓ ist die Bremse)",
     "",
     "KASSE & ABSTIMMUNG",
     "Credits gehören der Crew. Käufe werden abgestimmt: eigene Slot-Taste = Ja/Nein.",
@@ -116,6 +122,7 @@ pub const HELP_TEXT: &[&str] = &[
     "TASTEN (fest)",
     "Esc / Start: Pause   ·   Tab / Select: Karte   ·   Pfeile / Steuerkreuz: Menüs",
     "Enter / Start: Bestätigen   ·   Mausrad: Zoom   ·   ^ / Stick drücken: Ping",
+    "Joy-Con: − / + wirkt wie Start, Foto / Home wie Select, unten bestätigt, rechts zurück.",
     "Später dazukommen: einfach mitten im Flug eine Taste drücken – nächster freier Slot.",
 ];
 
@@ -197,7 +204,17 @@ fn spawn_help(commands: &mut Commands) {
             GlobalZIndex(40),
         ))
         .with_children(|p| {
-            p.spawn(panel(Val::Percent(100.0))).with_children(|p| {
+            // Länger als ein kleiner Bildschirm: ↑↓ bzw. Stick blättern.
+            let mut node = super::panel_node(Val::Percent(100.0));
+            node.overflow = Overflow::scroll_y();
+            p.spawn((
+                node,
+                BackgroundColor(super::BG),
+                BorderColor::all(super::BORDER),
+                ScrollPosition::default(),
+                HelpScroll,
+            ))
+            .with_children(|p| {
                 for line in HELP_TEXT {
                     let is_head = !line.is_empty() && line.chars().all(|c| !c.is_lowercase());
                     p.spawn(text(
@@ -206,7 +223,11 @@ fn spawn_help(commands: &mut Commands) {
                         if is_head { ACCENT } else { TEXT },
                     ));
                 }
-                p.spawn(text("Esc / Enter: schließen", 13.0, MUTED));
+                p.spawn(text(
+                    "↑↓ / Stick: blättern · Esc / Enter: schließen",
+                    13.0,
+                    MUTED,
+                ));
             });
         });
 }
@@ -240,11 +261,20 @@ pub fn title_input(
     help: Query<Entity, With<HelpPanel>>,
     mut exit: MessageWriter<AppExit>,
     mut settings_menu: ResMut<super::settings::SettingsMenu>,
+    mut help_scroll: Query<&mut ScrollPosition, With<HelpScroll>>,
 ) {
     if settings_menu.open {
         return;
     }
     if help_open.0 {
+        for mut sp in &mut help_scroll {
+            if input.down {
+                sp.y += 90.0;
+            }
+            if input.up {
+                sp.y = (sp.y - 90.0).max(0.0);
+            }
+        }
         if input.escape || input.confirm || input.start || input.back {
             help_open.0 = false;
             for e in &help {

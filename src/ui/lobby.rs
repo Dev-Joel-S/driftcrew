@@ -196,6 +196,8 @@ pub fn targets(def: &ShipDef, gear: &Option<Vec<crate::sim::data::Gear>>) -> Vec
             .filter(|(_, (_, _, k))| crate::sim::gear::tool_owned(gear, *k))
             .map(|(i, _)| ClaimTarget::Tool(i)),
     );
+    // Freiwillig: ↓ und Steuerkreuz ↓ bremsen immer, ein einzelner Joy-Con hat aber keins.
+    v.push(ClaimTarget::Brake);
     v
 }
 
@@ -218,6 +220,7 @@ pub fn target_name(def: &ShipDef, t: ClaimTarget) -> String {
             .nth(i)
             .map(|(_, _, k)| k.label().to_string())
             .unwrap_or_else(|| "Werkzeug".into()),
+        ClaimTarget::Brake => "Bremse / rückwärts".into(),
     }
 }
 
@@ -286,6 +289,10 @@ fn lobby_input(
     mut sim: ResMut<Sim>,
     mut active: ResMut<ActiveBindings>,
     mut next: ResMut<NextState<AppState>>,
+    (mut joycons, mut settings): (
+        ResMut<crate::pads::JoyCons>,
+        ResMut<crate::settings::Settings>,
+    ),
 ) {
     let def = sim.0.current_def();
     let ts = targets(&def, &sim.0.crew.gear);
@@ -345,6 +352,34 @@ fn lobby_input(
         changed = true;
     }
 
+    // Joy-Con: Stick drücken schaltet zwischen quer und hochkant um. Belegte Tasten bleiben
+    // dieselben Tasten am Gerät.
+    for (e, g, _) in &pads {
+        let Some(info) = joycons.get(e) else { continue };
+        if !g.just_pressed(bevy::input::gamepad::GamepadButton::LeftThumb) {
+            continue;
+        }
+        let grip = info.grip.toggled();
+        for b in &mut crew.bindings {
+            if let Btn::Pad(pe, vb) = b.btn
+                && pe == e
+                && let Some(p) = crate::pads::phys_of(info.side, info.grip, vb)
+                && let Some(nb) = crate::pads::virt(info.side, grip, p)
+            {
+                b.btn = Btn::Pad(e, nb);
+            }
+        }
+        joycons.set_grip(e, grip);
+        settings.joycon_grip = grip;
+        crate::settings::store(&settings);
+        let side = match info.side {
+            crate::pads::Side::Left => "links",
+            crate::pads::Side::Right => "rechts",
+        };
+        state.message = Some((format!("Joy-Con {side}: jetzt {}", grip.label()), 2.5));
+        changed = true;
+    }
+
     for btn in fresh_claimable(&keys, &mouse, &pads) {
         if crew.bindings.iter().any(|b| b.btn == btn) {
             continue; // schon belegt – feuert nur in der Vorschau
@@ -367,8 +402,8 @@ fn lobby_input(
         active.0 = crew.resolve(&def);
     }
 
-    // Losfliegen: Enter, Start (+) oder Select (−) – auch ein einzelner Joy-Con hat eins davon.
-    if input.enter || input.start || input.select {
+    // Losfliegen: Enter oder Start (Joy-Con: − bzw. +).
+    if input.enter || input.start {
         let thrusters = crew.thruster_claims().len() as u8;
         if thrusters < def.min_thrusters {
             state.message = Some((
@@ -384,7 +419,8 @@ fn lobby_input(
             next.set(AppState::Playing);
         }
     }
-    if input.escape {
+    // Zurück: Esc oder Select (Joy-Con: Foto bzw. Home).
+    if input.escape || input.select {
         match *mode {
             LobbyMode::Initial => next.set(AppState::Title),
             LobbyMode::Redistribute => {
@@ -441,6 +477,8 @@ fn draw_lobby(
     mode: Res<LobbyMode>,
     active: Res<ActiveBindings>,
     mut root: Query<(Entity, &mut Signature), With<LobbyRoot>>,
+    joycons: Res<crate::pads::JoyCons>,
+    connected: Query<Entity, With<Gamepad>>,
 ) {
     let Ok((root, mut sig)) = root.single_mut() else {
         return;
@@ -453,9 +491,17 @@ fn draw_lobby(
         .filter(|(_, t)| *t > 0.0)
         .map(|(m, _)| m.clone());
     let hold = state.hold.map(|(b, t)| (b, (t / HOLD_RELEASE * 5.0) as u8));
+    // Verbundene einzelne Joy-Cons mit Griff (links zuerst).
+    let mut jcs: Vec<crate::pads::JoyConInfo> = joycons
+        .0
+        .iter()
+        .filter(|i| connected.contains(i.pad))
+        .copied()
+        .collect();
+    jcs.sort_by_key(|i| (i.side == crate::pads::Side::Right, i.pad));
     let key = format!(
-        "{:?}|{}|{:?}|{:?}|{:?}|{:?}",
-        crew.bindings, state.cursor, msg, active.0, *mode, hold
+        "{:?}|{}|{:?}|{:?}|{:?}|{:?}|{:?}",
+        crew.bindings, state.cursor, msg, active.0, *mode, hold, jcs
     );
     let s = super::sig_of(&key);
     if sig.0 == s {
@@ -510,7 +556,7 @@ fn draw_lobby(
                     Node {
                         align_items: AlignItems::Center,
                         column_gap: Val::Px(12.0),
-                        padding: UiRect::axes(Val::Px(10.0), Val::Px(7.0)),
+                        padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)),
                         border: UiRect::all(Val::Px(1.0)),
                         border_radius: BorderRadius::all(Val::Px(8.0)),
                         ..default()
@@ -604,6 +650,25 @@ fn draw_lobby(
             for pl in players {
                 p.spawn(text(pl, 15.0, TEAL));
             }
+            for jc in &jcs {
+                let side = match jc.side {
+                    crate::pads::Side::Left => "links",
+                    crate::pads::Side::Right => "rechts",
+                };
+                let tip = match jc.grip {
+                    crate::pads::Grip::Sideways => "SL/SR oben, Stick links",
+                    crate::pads::Grip::Upright => "wie eine Controller-Hälfte",
+                };
+                p.spawn(text(
+                    format!(
+                        "Joy-Con {side}: {} ({tip}) – Stick drücken: {}",
+                        jc.grip.label(),
+                        jc.grip.toggled().label()
+                    ),
+                    13.0,
+                    MUTED,
+                ));
+            }
             if let Some(m) = &msg {
                 p.spawn(text(m.clone(), 16.0, BAD));
             }
@@ -620,9 +685,8 @@ fn draw_lobby(
                 ("Wählen", "↑↓ · Tab · Steuerkreuz · Stick · Klick"),
                 (
                     "Los",
-                    "Enter · Start (+) · Select (−) – geht auch mit nur einem Joy-Con",
+                    "Enter · Start (Joy-Con − / +) · zurück: Esc · Select (Foto / Home)",
                 ),
-                ("Zurück", "Esc"),
             ] {
                 p.spawn(Node {
                     column_gap: Val::Px(10.0),

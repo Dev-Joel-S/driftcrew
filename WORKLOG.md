@@ -297,6 +297,45 @@ die Phasen 14–18 den Rest). Phase 19 setzt die Rückmeldungen aus dem ersten S
 
 ## Protokoll
 
+### Runde 4 – Phase 19, Teil 6: Joy-Cons, belegbare Bremse, Bremsdüsen (erledigt)
+
+- Rückmeldung: „Probleme mit dem Controller: man kommt nicht zurück, braucht mindestens zwei
+  Joy-Cons und dann hochkant. Am linken Joy-Con wird ← als Esc erkannt und so weiter. Man
+  sollte wählen können, quer oder hochkant. Rückwärts fliegen sieht man nicht.“
+- **Ursache der falschen Tasten:** gilrs legt über einzelne Joy-Cons eine Zuordnung aus der
+  SDL-Datenbank, deren Tastennummern nicht zu dem passen, was der Linux-Treiber hid-nintendo
+  meldet. Der linke Joy-Con meldet 11 Tasten; Nummer 9 ist dort ←, die Tabelle hält sie für
+  Start → ← öffnete die Pause, andere Tasten kamen gar nicht an. Gekoppelte Paare
+  („Combined Joy-Cons“ über joycond) haben eine eigene, passende Zuordnung – daher „geht nur
+  mit zweien hochkant“.
+- **Neu `src/pads.rs`:** eigene gilrs-Anbindung statt bevys `GilrsPlugin` (dort abgeschaltet).
+  Einzelne Joy-Cons werden unter Linux über die evdev-Codes gelesen (unabhängig von der
+  Tabelle), auf anderen Systemen über die SDL-Zuordnung für quer gehaltene Joy-Cons. Jeder
+  einzelne Joy-Con wird zu einem kleinen Standard-Gamepad: vier Gesichtstasten nach Lage
+  (unten = Bestätigen, rechts = Zurück), SL/SR als Schultertasten, −/+ = Start,
+  Foto/Home = Select, Stick = linker Stick. Der **Griff (quer/hochkant)** dreht Tasten und
+  Stick entsprechend; umschalten pro Joy-Con in der Lobby mit **Stick drücken**, die Wahl
+  wird als Standard in `settings.ron` gemerkt. Belegte Slots bleiben dabei auf derselben
+  physischen Taste. Tastenbeschriftung zeigt den Aufdruck (←, ↓, SL, A …). Andere Gamepads
+  laufen unverändert durch.
+- **Zurück kommen:** Lobby: Select (Joy-Con Foto/Home) = zurück, Start (−/+) = los. Belegte
+  Gesichtstasten zählen in Pause, Karte und allen Menüs außerhalb des Flugs wieder als
+  Bestätigen/Zurück (vorher sperrte eine als Slot belegte Taste das Menü). Im Flug und
+  angedockt bleiben sie Slots (Schub legt ab).
+- **Bremse als Slot:** Ein einzelner Joy-Con hat kein Steuerkreuz. In der Lobby gibt es
+  deshalb zusätzlich den freiwilligen Slot **„Bremse / rückwärts“** (`ClaimTarget::Brake`,
+  `BRAKE_SLOT`) – irgendeine Taste drauf, sie wirkt wie ↓. ↓ und Steuerkreuz ↓ bleiben für alle.
+  In der Slot-Leiste leuchtet sie beim Bremsen.
+- **Bremsdüsen sichtbar:** `render::fx::retro_jets` – beim Bremsen stoßen zwei Steuerdüsen auf
+  der Seite in Flugrichtung aus, beim Rückwärtsfliegen zwei an der Nase, bei reiner
+  Drehdämpfung vorn und hinten seitlich. Vorführszene `ui` zeigt beides (Bilder 09/10).
+- Lobby passt wieder auf 720p (Zeilen kompakter, Hilfe zusammengefasst).
+- Tests: Zuordnung je Seite und Griff (jede Taste genau einmal, Umkehrung, Menütasten immer
+  da), evdev-Codes (← ist nie Start), Stickdrehung, Erkennung einzelner Joy-Cons, Bremse als
+  Slot ohne Simulations-Slot, Bremsdüsen-Richtung. 168 Tests grün, Clippy sauber.
+- Nicht testbar hier: echte Joy-Cons. Unter Windows hängt das Verhalten an der SDL-Zuordnung
+  (quer); die Umrechnung auf hochkant ist dort ungeprüft.
+
 ### Runde 4 – Phase 19, Teil 5: Rückwärtsgang (erledigt)
 
 - Rückmeldung: „Es gibt keinen Rückwärtsgang – Landen ohne Schwerkraft ist (anders als bei

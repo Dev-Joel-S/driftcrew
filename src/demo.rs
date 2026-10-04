@@ -49,9 +49,9 @@ pub struct Demo {
     pub shots: usize,
 }
 
-/// Vom Skript gedrückte Slots (wird in der Simulationsschleife dazugenommen).
+/// Vom Skript gedrückte Slots und Bremse (wird in der Simulationsschleife dazugenommen).
 #[derive(Resource, Default)]
-pub struct ScriptedSlots(pub u32);
+pub struct ScriptedSlots(pub u32, pub bool);
 
 pub struct DemoPlugin(pub DemoConfig);
 
@@ -1632,7 +1632,13 @@ fn ui_scene() -> Vec<(f32, Act)> {
         (16.8, |c| c.menu.down = true),
         (17.1, |c| c.menu.left = true),
         (18.2, |c| shot(c, "einstellungen")),
-        (19.0, |_| {}),
+        // Einstellungen und Pause zu, dann Bremse halten: erst bremsen, dann rückwärts.
+        (18.6, |c| c.menu.escape = true),
+        (19.0, |c| c.menu.escape = true),
+        (19.4, |c| c.slots.1 = true),
+        (19.65, |c| shot(c, "bremsen")),
+        (22.5, |c| shot(c, "rueckwaerts")),
+        (23.2, |_| {}),
     ]
 }
 
