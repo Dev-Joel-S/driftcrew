@@ -6,6 +6,7 @@ use super::{ACCENT, BAD, BG, BORDER, GOOD, MUTED, Signature, TEAL, TEXT, WARN, f
 use crate::game::{AppState, GameCamera, MapOpen, Paused, Sim};
 use crate::input::{ActiveBindings, Crew};
 use crate::render::{slot_color, srgb};
+use crate::sim::data::CargoTrait;
 use crate::sim::data::StationKind;
 use crate::sim::{SimState, thruster_label};
 
@@ -656,11 +657,36 @@ fn update_bars(
         } else {
             String::new()
         };
+        // Heikle Fracht an Bord: Zustand bzw. Belastung im Blick behalten (68).
+        let delicate: Vec<String> = s
+            .cargo
+            .iter()
+            .filter_map(|c| match c.traits {
+                CargoTrait::Fragile => {
+                    Some(format!("{} {:.0} %", c.traits.short(), c.cond * 100.0))
+                }
+                CargoTrait::Unstable => Some(format!(
+                    "{} – Belastung {:.0} %",
+                    c.traits.short(),
+                    c.stress * 100.0
+                )),
+                CargoTrait::Tank if c.slosh.length() > 0.2 => {
+                    Some(format!("{} schwappt", c.traits.short()))
+                }
+                _ => None,
+            })
+            .collect();
+        let delicate = if delicate.is_empty() {
+            String::new()
+        } else {
+            format!("  ·  Fracht: {}", delicate.join(", "))
+        };
         let v = format!(
-            "{:.1} m/s  ·  {:.1} t Masse{}",
+            "{:.1} m/s  ·  {:.1} t Masse{}{}",
             s.vel.length(),
             s.mass,
-            ammo
+            ammo,
+            delicate
         );
         if t.0 != v {
             t.0 = v;
@@ -1037,6 +1063,7 @@ pub fn npc_color(n: &crate::sim::npc::Npc) -> Color {
         Role::Convoy { .. } => Color::srgb(1.0, 0.95, 0.4),
         Role::Miner { .. } => Color::srgb(0.85, 0.75, 0.5),
         Role::Trader { .. } => Color::srgb(0.6, 0.8, 1.0),
+        Role::Stranded { .. } => Color::srgb(1.0, 0.35, 0.55),
     }
 }
 

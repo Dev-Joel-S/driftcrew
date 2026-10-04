@@ -3,7 +3,7 @@
 use bevy::math::Vec2;
 
 use super::geom::{Aabb, Contact, circle_circle, cross, cross_sv, poly_circle, poly_poly};
-use super::ship::{CargoKind, Ship};
+use super::ship::{CargoItem, CargoKind, Ship};
 use super::world::{Shape, Surface, World};
 use super::{BodyKind, DT, SimEvent, SimState, ToastKind};
 
@@ -516,41 +516,53 @@ impl SimState {
     /// Kleines Objekt in den Frachtraum. Gibt true zurück, wenn es geklappt hat.
     pub(crate) fn try_stow(&mut self, bi: usize) -> bool {
         let b = self.bodies[bi].clone();
-        let (kind, mass, label) = match &b.kind {
+        let none = super::data::CargoTrait::None;
+        let (item, label) = match &b.kind {
             BodyKind::OreChunk { ore, amount } => (
-                CargoKind::Ore(*ore),
-                *amount,
+                CargoItem::new(CargoKind::Ore(*ore), *amount, none),
                 format!("{:.1} t {}", amount, ore.label()),
             ),
             BodyKind::Capsule { mission } => (
-                CargoKind::Capsule { mission: *mission },
-                0.8,
+                CargoItem::new(CargoKind::Capsule { mission: *mission }, 0.8, none),
                 "Rettungskapsel".to_string(),
             ),
             BodyKind::Salvage { name, value } => (
-                CargoKind::Salvage {
-                    name: name.clone(),
-                    value: *value,
-                },
-                b.mass,
+                CargoItem::new(
+                    CargoKind::Salvage {
+                        name: name.clone(),
+                        value: *value,
+                    },
+                    b.mass,
+                    none,
+                ),
                 format!("Bauteil: {name}"),
             ),
             BodyKind::Artifact { id } => (
-                CargoKind::Artifact { id: id.clone() },
-                b.mass,
+                CargoItem::new(CargoKind::Artifact { id: id.clone() }, b.mass, none),
                 format!("Artefakt: {}", self.artifact_name(id)),
             ),
+            // Abgeworfenes kommt mit Zustand und Eigenschaften zurück.
+            BodyKind::Dropped { item } => (item.clone(), self.cargo_label(&item.kind)),
             _ => return false,
         };
-        let free = self.ship.cargo_capacity() - self.ship.cargo_mass();
-        if free < mass - 1e-3 {
+        // Erz lässt sich auf Module verteilen, alles andere braucht ein Modul mit genug Platz.
+        let fits = if matches!(item.kind, CargoKind::Ore(_)) {
+            self.ship.cargo_capacity() - self.ship.cargo_mass()
+        } else {
+            (0..self.ship.pods.len())
+                .map(|i| self.ship.pod_free(i))
+                .fold(0.0, f32::max)
+        };
+        if fits < item.mass - 1e-3 {
             if self.border_warn <= 0.0 {
                 self.border_warn = 2.0;
                 self.toast("Frachtraum voll", ToastKind::Warn);
             }
             return false;
         }
-        self.ship.store(kind, mass);
+        if self.ship.store_item(item) <= 0.0 {
+            return false;
+        }
         self.bodies[bi].alive = false;
         // Kran lösen, falls er daran hing.
         for t in &mut self.ship.tools {

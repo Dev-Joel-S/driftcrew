@@ -225,6 +225,11 @@ impl SimState {
             {
                 b.vel *= 1.0 - 0.05 * DT;
             }
+            // Abgeworfene Fracht kommt zur Ruhe, damit man sie später wiederfindet.
+            if let BodyKind::Dropped { .. } = b.kind {
+                b.vel *= 1.0 - 0.25 * DT;
+                b.ang_vel *= 1.0 - 0.1 * DT;
+            }
             // Artefakte kommen von selbst zur Ruhe.
             if let BodyKind::Artifact { .. } = b.kind {
                 b.vel *= 1.0 - 0.3 * DT;

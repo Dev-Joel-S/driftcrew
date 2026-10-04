@@ -8,6 +8,9 @@
 //! Die Simulation weiß nicht, wer gedrückt hat – nur welcher Slot.
 
 pub mod autopilot;
+pub mod cargo;
+#[cfg(test)]
+mod cargo_tests;
 pub mod course;
 #[cfg(test)]
 mod course_tests;
@@ -119,6 +122,14 @@ pub enum Command {
     AbortCourse,
     /// 61f: Artefakte an Bord bleiben bei Zerstörung im Wrack (true) oder kehren zurück.
     SetStayInWreck(bool),
+    /// Ladeplan (64, 67): Frachtstück in ein anderes Modul umladen bzw. abwerfen.
+    MoveCargo {
+        id: u32,
+        to: usize,
+    },
+    Jettison {
+        id: u32,
+    },
     /// Slots neu verteilt (z. B. Hot-Join mitten im Flug): Schiff umbauen.
     SetLoadout {
         thrusters: u8,
@@ -272,6 +283,10 @@ pub enum SimEvent {
     ChapterDone {
         chapter: usize,
     },
+    /// Fracht abgeworfen (treibt jetzt in der Welt).
+    Jettisoned {
+        pos: Vec2,
+    },
 }
 
 /// Markierung eines Crewmitglieds (Ping), verblasst nach [`PING_SECONDS`].
@@ -338,6 +353,10 @@ pub enum BodyKind {
     /// Artefakt der Vorgänger (Geschichte): einmalig, schwer für seine Größe.
     Artifact {
         id: String,
+    },
+    /// Abgeworfenes oder gefundenes Frachtstück (mit Eigenschaften und Zustand).
+    Dropped {
+        item: ship::CargoItem,
     },
 }
 
@@ -421,6 +440,7 @@ impl Body {
                 | BodyKind::Capsule { .. }
                 | BodyKind::Salvage { .. }
                 | BodyKind::Artifact { .. }
+                | BodyKind::Dropped { .. }
         )
     }
 }
@@ -472,6 +492,8 @@ pub struct Crew {
     pub artifacts: Vec<String>,
     /// Angebaute Module pro Schiff: (Schiff, [(Bauplatz, Modul)]).
     pub builds: Vec<(String, Vec<(String, String)>)>,
+    /// Gerettete Besatzungen, die sich noch melden werden.
+    pub rescued: Vec<data::RescuedSave>,
 }
 
 impl Crew {
@@ -559,6 +581,11 @@ pub struct SimState {
     pub customs: Option<npc::CustomsScan>,
     /// Geschichte: Kapitel, Logbuch, Fundorte der Artefakte.
     pub story: story::Story,
+    /// Fracht: Geschwindigkeit im letzten Flug-Tick (für Stöße und Schwappen), Fortschritt
+    /// beim Hinüberholen Geretteter, Pause zwischen Frachtwarnungen.
+    pub cargo_vel: Option<Vec2>,
+    pub rescue_timer: f32,
+    pub cargo_warn: f32,
 }
 
 impl SimState {
@@ -604,6 +631,7 @@ impl SimState {
             storage_parts: 0,
             artifacts: Vec::new(),
             builds: save.builds.clone(),
+            rescued: Vec::new(),
         };
         let stats = economy::stats_for(&data, &crew.upgrades);
         let build: Vec<(String, String)> = crew
@@ -672,12 +700,16 @@ impl SimState {
             nest_cooldown: Vec::new(),
             customs: None,
             story: story::Story::default(),
+            cargo_vel: None,
+            rescue_timer: 0.0,
+            cargo_warn: 0.0,
         };
         s.load_projects(save);
         s.load_records(save);
         s.load_finance(save);
         s.load_workshop(save);
         s.load_story(save);
+        s.load_cargo_state(save);
         s.populate_fields();
         s.populate_wrecks();
         s.refresh_offers();
@@ -730,7 +762,7 @@ impl SimState {
         }
         // Fracht übernehmen, soweit Platz ist.
         for item in old.cargo {
-            ship.store(item.kind, item.mass);
+            ship.store_item(item);
         }
         self.ship = ship;
         self.loadout = loadout;
@@ -776,10 +808,13 @@ impl SimState {
             artifacts: Vec::new(),
             builds: Vec::new(),
             story: Default::default(),
+            dropped: Vec::new(),
+            rescued: Vec::new(),
         };
         self.save_finance(&mut save);
         self.save_workshop(&mut save);
         self.save_story(&mut save);
+        self.save_cargo_state(&mut save);
         save
     }
 
@@ -835,6 +870,7 @@ impl SimState {
         // Vor dem Tracking: dort wird die Geschwindigkeit des letzten Ticks überschrieben,
         // die das Präzisionsandocken als Aufsetzgeschwindigkeit braucht.
         self.update_course();
+        self.update_cargo();
         self.update_tracking();
         self.update_precision();
         self.update_regen();
@@ -884,6 +920,7 @@ impl SimState {
                 BodyKind::Debris => "Trümmer".into(),
                 BodyKind::Bulky { name, .. } => name.clone(),
                 BodyKind::Artifact { .. } => "Fremdes Objekt".into(),
+                BodyKind::Dropped { item } => self.cargo_label(&item.kind),
             };
         }
         if let Some(st) = self

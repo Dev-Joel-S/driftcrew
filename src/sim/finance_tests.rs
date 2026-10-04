@@ -53,6 +53,7 @@ fn delivery(s: &mut SimState, to: usize, reward: u32) -> u32 {
             to,
             cargo: "Test".into(),
             mass: 1.0,
+            traits: Default::default(),
         },
         reward,
         origin: Some(Owner::Station(0)),

@@ -2,7 +2,7 @@
 
 use bevy::math::Vec2;
 
-use super::data::{MissionType, Ore, Service, ToolKind, v};
+use super::data::{CargoTrait, MissionType, Ore, Service, ToolKind, v};
 use super::rng::hash32;
 use super::ship::{CargoKind, CraneState};
 use super::stats::{CrewStats, MissionReport};
@@ -29,6 +29,8 @@ pub enum MissionKind {
         to: usize,
         cargo: String,
         mass: f32,
+        /// Flugeigenschaften der Fracht (vor der Annahme sichtbar).
+        traits: CargoTrait,
     },
     /// Schwerlast: zu schwer für den Frachtraum, wird als Kiste am Kran geschleppt.
     Haul {
@@ -99,6 +101,18 @@ pub enum MissionKind {
         cargo: String,
         mass: f32,
     },
+    /// Rettung (78): ein havariertes Schiff treibt am Notrufort. Längsseits gehen holt die
+    /// Besatzung Person für Person an Bord – jede braucht Platz im Frachtraum.
+    Rescue {
+        site: Vec2,
+        to: usize,
+        ship: String,
+        captain: String,
+        crew: u32,
+        aboard: u32,
+        /// Das havarierte NPC-Schiff (ab Annahme).
+        npc: Option<u32>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -148,6 +162,7 @@ impl Mission {
             MissionKind::Survey { .. } => MissionType::Survey,
             MissionKind::Escort { .. } => MissionType::Escort,
             MissionKind::Smuggle { .. } => MissionType::Smuggle,
+            MissionKind::Rescue { .. } => MissionType::Rescue,
         }
     }
 
@@ -189,16 +204,43 @@ impl Mission {
                 format!("Geleitschutz: {name} → {}", st(*to))
             }
             MissionKind::Smuggle { cargo, to, .. } => format!("Schmuggel: {cargo} → {}", st(*to)),
+            MissionKind::Rescue { ship, crew, to, .. } => {
+                format!("Notruf: {ship} – {crew} Personen retten → {}", st(*to))
+            }
         }
     }
 
     pub fn detail(&self, s: &SimState) -> String {
         match &self.kind {
-            MissionKind::Delivery { from, mass, .. } => {
-                format!(
-                    "{mass:.1} t Fracht, Abholung an {}",
-                    s.world.owner_name(*from)
-                )
+            MissionKind::Delivery {
+                from, mass, traits, ..
+            } => {
+                let aboard = s.ship.cargo.iter().find(
+                    |c| matches!(c.kind, CargoKind::Container { mission, .. } if mission == self.id),
+                );
+                match (aboard, traits) {
+                    (Some(c), CargoTrait::Fragile) => format!(
+                        "{mass:.1} t empfindlich – Zustand {:.0} %, Stöße vermeiden",
+                        c.cond * 100.0
+                    ),
+                    (Some(c), CargoTrait::Unstable) => format!(
+                        "{mass:.1} t instabil – Belastung {:.0} %, sanft beschleunigen",
+                        c.stress * 100.0
+                    ),
+                    (Some(_), CargoTrait::Tank) => {
+                        format!("{mass:.1} t Tank – die Ladung schwappt nach, früh gegensteuern")
+                    }
+                    (Some(_), CargoTrait::None) => format!("{mass:.1} t Fracht an Bord"),
+                    (None, CargoTrait::None) => format!(
+                        "{mass:.1} t Fracht, Abholung an {}",
+                        s.world.owner_name(*from)
+                    ),
+                    (None, t) => format!(
+                        "{mass:.1} t {}, Abholung an {}",
+                        t.label(),
+                        s.world.owner_name(*from)
+                    ),
+                }
             }
             MissionKind::Passengers {
                 from,
@@ -322,6 +364,22 @@ impl Mission {
                     .count();
                 format!("Abgeliefert {delivered}/{total}, an Bord {aboard}")
             }
+            MissionKind::Rescue {
+                crew, aboard, to, ..
+            } => {
+                if aboard >= crew {
+                    format!(
+                        "Alle {crew} an Bord – zur Station {}",
+                        s.world.stations[*to].name
+                    )
+                } else {
+                    format!(
+                        "An Bord {aboard}/{crew} – längsseits gehen (unter {:.0} m, kaum Fahrt), je Person {:.1} t Platz",
+                        super::cargo::RESCUE_GAP,
+                        super::cargo::PERSON_MASS
+                    )
+                }
+            }
         }
     }
 
@@ -377,6 +435,22 @@ impl Mission {
                 }
             }
             MissionKind::Smuggle { to, .. } => Some(station(*to)),
+            MissionKind::Rescue {
+                site,
+                to,
+                crew,
+                aboard,
+                npc,
+                ..
+            } => {
+                if aboard >= crew {
+                    Some(station(*to))
+                } else {
+                    npc.and_then(|id| s.npcs.iter().find(|n| n.id == id && n.alive))
+                        .map(|n| n.ship.pos)
+                        .or(Some(*site))
+                }
+            }
             MissionKind::Haul { from, to, body, .. } => {
                 let attached = s.ship.tools.iter().any(
                     |t| matches!(t.crane, CraneState::Attached { body: b, .. } if Some(b) == *body),
@@ -555,7 +629,10 @@ impl SimState {
             MissionType::Survey => !self.data.courses.survey_sites.is_empty(),
             MissionType::Escort => !self.escort_targets(si).is_empty(),
             MissionType::Smuggle => n_st > 1 && !md.smuggle.cargo.is_empty(),
-            MissionType::Shipment | MissionType::Tow | MissionType::Capsules => false,
+            MissionType::Shipment
+            | MissionType::Tow
+            | MissionType::Capsules
+            | MissionType::Rescue => false,
         });
         if types.is_empty() {
             types.push(if n_st > 1 {
@@ -705,6 +782,7 @@ impl SimState {
                         to,
                         cargo: t.name.clone(),
                         mass: t.mass,
+                        traits: t.traits,
                     }
                 };
                 (kind, t.reward as f32 + dist * md.reward_per_distance)
@@ -769,6 +847,9 @@ impl SimState {
             MissionKind::Tow { site, to, .. } => (*site - st(*to)).length() / 6.0 + 150.0,
             MissionKind::Bulky { site, to, .. } => (*site - st(*to)).length() / 6.0 + 180.0,
             MissionKind::Capsules { site, to, .. } => (*site - st(*to)).length() / 10.0 + 240.0,
+            MissionKind::Rescue { site, to, crew, .. } => {
+                (*site - st(*to)).length() / 9.0 + 120.0 + *crew as f32 * 10.0
+            }
             // Der Frachter fliegt höchstens 16 m/s, dazu Abflug, Anflug und Gefecht.
             MissionKind::Escort { from, to, .. } => (st(*from) - st(*to)).length() / 9.0 + 120.0,
             MissionKind::Smuggle { from, to, .. } => (st(*from) - st(*to)).length() / 10.0 + 90.0,
@@ -814,6 +895,7 @@ impl SimState {
             to,
             cargo: format!("{}-Ladung", ore.label()),
             mass,
+            traits: CargoTrait::None,
         };
         let par = self.par_time(&kind);
         Mission {
@@ -848,7 +930,25 @@ impl SimState {
                     .total_cmp(&(self.world.stations[*b].pos - site).length())
             })
             .unwrap_or(0);
-        let (kind, reward) = if self.rng.chance(0.5) {
+        let roll = self.rng.range(0.0, 1.0);
+        let rd = &md.rescue;
+        let (kind, reward) = if roll < 0.3 && !rd.ships.is_empty() && !rd.captains.is_empty() {
+            let ship = rd.ships[self.rng.index(rd.ships.len())].clone();
+            let captain = rd.captains[self.rng.index(rd.captains.len())].clone();
+            let crew = self.rng.range_u32(rd.crew.0, rd.crew.1);
+            (
+                MissionKind::Rescue {
+                    site,
+                    to,
+                    ship,
+                    captain,
+                    crew,
+                    aboard: 0,
+                    npc: None,
+                },
+                120.0 + crew as f32 * rd.reward_per_person,
+            )
+        } else if roll < 0.65 {
             let name = md.derelict_names[self.rng.index(md.derelict_names.len())].clone();
             (
                 MissionKind::Tow {
@@ -899,7 +999,11 @@ impl SimState {
         let mut m = self.offers[idx].clone();
         match &mut m.kind {
             MissionKind::Delivery {
-                from, cargo, mass, ..
+                from,
+                cargo,
+                mass,
+                traits,
+                ..
             } => {
                 if self.docked_owner() != Some(*from) {
                     let name = self.world.owner_name(*from).to_string();
@@ -909,12 +1013,13 @@ impl SimState {
                     );
                     return;
                 }
-                let stored = self.ship.store(
+                let stored = self.ship.store_with(
                     CargoKind::Container {
                         mission: m.id,
                         name: cargo.clone(),
                     },
                     *mass,
+                    *traits,
                 );
                 if stored <= 0.0 {
                     self.toast(
@@ -1105,8 +1210,21 @@ impl SimState {
                     return;
                 }
             }
+            MissionKind::Rescue {
+                site, ship, npc, ..
+            } => {
+                *npc = Some(self.spawn_stranded(ship, m.id, *site));
+            }
             MissionKind::Mining { .. } | MissionKind::Survey { .. } => {}
         }
+        // Am Einsatzort einer Bergung treibt vielleicht noch etwas Wertvolles (77).
+        let bonus_site = match &m.kind {
+            MissionKind::Tow { site, .. }
+            | MissionKind::Capsules { site, .. }
+            | MissionKind::Bulky { site, .. }
+            | MissionKind::Rescue { site, .. } => Some(*site),
+            _ => None,
+        };
         self.offers.remove(idx);
         let title = m.title(self);
         m.start = Some(Box::new(self.stats.clone()));
@@ -1114,6 +1232,9 @@ impl SimState {
         self.active.push(m);
         self.events.push(SimEvent::MissionAccepted { id });
         self.toast(format!("Auftrag angenommen: {title}"), ToastKind::Info);
+        if let Some(site) = bonus_site {
+            self.maybe_spawn_bonus(site);
+        }
         self.refresh_offers();
     }
 
@@ -1129,8 +1250,12 @@ impl SimState {
     fn cleanup_mission(&mut self, m: &Mission) {
         let mid = m.id;
         self.ship.remove_cargo(|k| {
-            matches!(k, CargoKind::Container { mission, .. } | CargoKind::Capsule { mission } if *mission == mid)
+            matches!(k, CargoKind::Container { mission, .. } | CargoKind::Capsule { mission } | CargoKind::Survivor { mission } if *mission == mid)
         });
+        // Das havarierte Schiff wird abgeschleppt (bzw. von anderen geborgen).
+        if let MissionKind::Rescue { npc: Some(id), .. } = m.kind {
+            self.remove_npc(id);
+        }
         for b in &mut self.bodies {
             match &b.kind {
                 BodyKind::Capsule { mission }
@@ -1169,7 +1294,15 @@ impl SimState {
             MissionKind::Passengers { comfort, .. } => Some(comfort),
             _ => None,
         };
-        let base = match comfort {
+        // Empfindliche Fracht zahlt nach Zustand (ebenfalls mindestens 30 %).
+        let cond = match &m.kind {
+            MissionKind::Delivery {
+                traits: CargoTrait::Fragile,
+                ..
+            } => Some(self.delivery_condition(m.id)),
+            _ => None,
+        };
+        let base = match comfort.or(cond) {
             Some(c) => round5(m.reward as f32 * (0.3 + 0.7 * c)),
             None => m.reward,
         };
@@ -1210,13 +1343,17 @@ impl SimState {
             (Some(Owner::Station(si)), _) => Some(si),
             (_, MissionKind::Delivery { to, .. })
             | (_, MissionKind::Tow { to, .. })
-            | (_, MissionKind::Capsules { to, .. }) => Some(*to),
+            | (_, MissionKind::Capsules { to, .. })
+            | (_, MissionKind::Rescue { to, .. }) => Some(*to),
             _ => None,
         };
         let reputation = rep_station.map(|si| {
             let gain = if matches!(
                 m.kind,
-                MissionKind::Haul { .. } | MissionKind::Tow { .. } | MissionKind::Bulky { .. }
+                MissionKind::Haul { .. }
+                    | MissionKind::Tow { .. }
+                    | MissionKind::Bulky { .. }
+                    | MissionKind::Rescue { .. }
             ) {
                 2
             } else {
@@ -1248,6 +1385,7 @@ impl SimState {
             bonus_gentle,
             max_strain: m.max_strain,
             comfort,
+            cond,
             par: m.par,
             reputation,
             stats,
@@ -1444,6 +1582,20 @@ impl SimState {
                         );
                     }
                     now >= *total
+                }
+                MissionKind::Rescue {
+                    to,
+                    crew,
+                    aboard,
+                    ship,
+                    captain,
+                    ..
+                } if *to == si && aboard >= crew => {
+                    let mid = m.id;
+                    self.ship
+                        .remove_cargo(|k| *k == CargoKind::Survivor { mission: mid });
+                    self.remember_rescue(ship, captain);
+                    true
                 }
                 _ => false,
             };

@@ -62,6 +62,9 @@ pub enum Role {
     },
     /// Rivalen-Crew: jagt Notrufe, die noch niemand angenommen hat.
     Rival { home: usize, goal: Option<Vec2> },
+    /// Havariertes Schiff eines Rettungsauftrags: treibt antriebslos, bis die Crew längsseits
+    /// geht und die Besatzung übernimmt.
+    Stranded { mission: u32 },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -148,6 +151,7 @@ impl Npc {
             Role::Miner { .. } => "Schürfroboter",
             Role::Convoy { .. } => "Konvoi",
             Role::Rival { .. } => "Rivalen",
+            Role::Stranded { .. } => "Havariert",
         }
     }
 
@@ -405,6 +409,43 @@ impl SimState {
         id
     }
 
+    /// Havariertes Schiff eines Rettungsauftrags am Notrufort.
+    pub(crate) fn spawn_stranded(&mut self, name: &str, mission: u32, site: Vec2) -> u32 {
+        let def = self.data.traffic.stranded_ship.clone();
+        let id = self.next_id();
+        let mut ship = build_ship(&self.data, &def);
+        let a = self.rng.range(0.0, std::f32::consts::TAU);
+        place(&mut ship, site, a);
+        ship.ang_vel = self.rng.range(-0.12, 0.12);
+        ship.hull = ship.max_hull * 0.35;
+        self.npcs.push(Npc {
+            id,
+            name: name.to_string(),
+            def,
+            role: Role::Stranded { mission },
+            ship,
+            nav: Nav::Hold { target: site },
+            colors: ([0.5, 0.48, 0.44], [0.9, 0.3, 0.2]),
+            hostile: false,
+            fire_cd: 0.0,
+            alive: true,
+            respawn: -1.0,
+            prey: None,
+            drilling: None,
+            stuck: 0.0,
+        });
+        id
+    }
+
+    /// NPC verschwindet (Auftrag erledigt oder abgebrochen). Nur markiert – entfernt wird am
+    /// Ende von `update_npcs`, damit laufende Schleifen über die Liste gültig bleiben.
+    pub(crate) fn remove_npc(&mut self, id: u32) {
+        if let Some(n) = self.npcs.iter_mut().find(|n| n.id == id) {
+            n.alive = false;
+            n.respawn = -1.0;
+        }
+    }
+
     /// Ist die Crew bereit für den Geleitschutz (abgedockt und in der Nähe)?
     fn crew_escorting(&self, at: Vec2) -> bool {
         self.ship.docked.is_none() && !self.ship.destroyed && (self.ship.pos - at).length() < 200.0
@@ -648,6 +689,10 @@ impl SimState {
         npc.drilling = None;
         if npc.hostile {
             return self.think_drone(npc, ap);
+        }
+        if let Role::Stranded { .. } = npc.role {
+            // Kein Antrieb mehr – es treibt und dreht sich langsam.
+            return 0;
         }
         if let Role::Miner { .. } = npc.role
             && matches!(npc.nav, Nav::Hold { .. })
@@ -970,7 +1015,7 @@ impl SimState {
             Role::Rival { goal, .. } => {
                 *goal = None;
             }
-            Role::Drone { .. } => {}
+            Role::Drone { .. } | Role::Stranded { .. } => {}
         }
         if matches!(npc.role, Role::Merchant { .. })
             && self.ship.docked.map(|p| self.world.pads[p].owner) == Some(owner)
@@ -1344,7 +1389,7 @@ impl SimState {
             }
             Role::Convoy { to, .. } => *to,
             Role::Rival { home, .. } | Role::Miner { home, .. } => *home,
-            Role::Drone { .. } => return,
+            Role::Drone { .. } | Role::Stranded { .. } => return,
         };
         match self.free_dock_for(station, npc.id) {
             Some(dock) => {
@@ -1410,11 +1455,14 @@ impl SimState {
             }
         }
         npc.respawn = match npc.role {
-            Role::Drone { .. } | Role::Convoy { .. } => -1.0,
+            Role::Drone { .. } | Role::Convoy { .. } | Role::Stranded { .. } => -1.0,
             _ => 90.0,
         };
         if let Role::Convoy { mission, .. } = npc.role {
             self.fail_mission(mission, "Konvoi zerstört");
+        }
+        if let Role::Stranded { mission } = npc.role {
+            self.fail_mission(mission, "das havarierte Schiff ist zerstört");
         }
         if npc.hostile {
             self.events.push(SimEvent::DroneDown { pos });

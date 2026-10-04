@@ -164,6 +164,9 @@ fn draw_report(
             if let Some(c) = r.comfort {
                 parts.push(format!("Passagiere {:.0} % zufrieden", c * 100.0));
             }
+            if let Some(c) = r.cond {
+                parts.push(format!("Fracht in {:.0} % Zustand angekommen", c * 100.0));
+            }
             let par = format!("{}:{:02}", r.par as u32 / 60, r.par as u32 % 60);
             if r.bonus_time > 0 {
                 parts.push(format!("Zeitbonus +{} (unter {par})", r.bonus_time));

@@ -947,6 +947,41 @@ pub struct CargoTemplate {
     /// Zu schwer für den Frachtraum: wird als Kiste am Kran geschleppt.
     #[serde(default)]
     pub towed: bool,
+    /// Flugeigenschaften der Fracht (Tank, empfindlich, instabil).
+    #[serde(default)]
+    pub traits: CargoTrait,
+}
+
+/// Flugeigenschaften eines Frachtstücks (Punkt 68).
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum CargoTrait {
+    #[default]
+    None,
+    /// Flüssigkeit: schwappt bei Manövern verzögert nach.
+    Tank,
+    /// Empfindlich: harte Stöße kosten Zustand (und damit Lohn).
+    Fragile,
+    /// Instabil: harte Beschleunigung baut Belastung auf, zu viel lässt es verpuffen.
+    Unstable,
+}
+
+impl CargoTrait {
+    pub fn label(self) -> &'static str {
+        match self {
+            CargoTrait::None => "",
+            CargoTrait::Tank => "Tank – schwappt bei Manövern nach",
+            CargoTrait::Fragile => "Empfindlich – harte Stöße kosten Lohn",
+            CargoTrait::Unstable => "Instabil – nicht hart beschleunigen",
+        }
+    }
+    pub fn short(self) -> &'static str {
+        match self {
+            CargoTrait::None => "",
+            CargoTrait::Tank => "Tank",
+            CargoTrait::Fragile => "empfindlich",
+            CargoTrait::Unstable => "instabil",
+        }
+    }
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -989,6 +1024,11 @@ pub struct MissionsDef {
     pub escort: EscortDef,
     #[serde(default)]
     pub smuggle: SmuggleDef,
+    /// Rettung havarierter Schiffe (78) und freiwillige Zusatzfunde (77).
+    #[serde(default)]
+    pub rescue: RescueDef,
+    #[serde(default)]
+    pub bonus: BonusDef,
     pub distress_offers: u32,
     pub delivery_cargo: Vec<CargoTemplate>,
     pub reward_per_distance: f32,
@@ -1033,6 +1073,62 @@ impl Default for EscortDef {
         EscortDef {
             reward: 320.0,
             names: vec!["Frachter".into()],
+        }
+    }
+}
+
+/// Rettung: havariertes NPC-Schiff mit Besatzung, die an Bord muss (jede Person braucht Platz).
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct RescueDef {
+    pub ships: Vec<String>,
+    pub captains: Vec<String>,
+    pub crew: (u32, u32),
+    pub reward_per_person: f32,
+    /// Dank, wenn sich die Geretteten später melden ({ship}, {captain}).
+    pub thanks: Vec<String>,
+    /// Sekunden bis zur Meldung, Geschenk (Credits, Bauteile).
+    pub thanks_after: f32,
+    pub gift_credits: u32,
+    pub gift_parts: u32,
+}
+
+impl Default for RescueDef {
+    fn default() -> Self {
+        RescueDef {
+            ships: vec!["Kutter Ilse".into()],
+            captains: vec!["Kapitänin Ilse Brandt".into()],
+            crew: (2, 4),
+            reward_per_person: 90.0,
+            thanks: vec![
+                "Hier {captain} von der {ship}. Ohne euch wären wir noch da draußen.".into(),
+            ],
+            thanks_after: 240.0,
+            gift_credits: 150,
+            gift_parts: 2,
+        }
+    }
+}
+
+/// Freiwilliger Zusatzfund am Einsatzort: wertvoll, schwer, manchmal instabil.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct BonusDef {
+    pub chance: f32,
+    pub names: Vec<String>,
+    pub mass: P,
+    pub value: (u32, u32),
+    pub unstable_chance: f32,
+}
+
+impl Default for BonusDef {
+    fn default() -> Self {
+        BonusDef {
+            chance: 0.5,
+            names: vec!["Energiezelle".into()],
+            mass: (2.0, 4.0),
+            value: (260, 480),
+            unstable_chance: 0.4,
         }
     }
 }
@@ -1227,6 +1323,8 @@ pub struct TrafficDef {
     /// Konvoi-Aufträge: Schiff des Frachters, Zahl der Piraten im Hinterhalt.
     pub convoy_ship: String,
     pub ambush: u32,
+    /// Rettungsaufträge: Schiff, das havariert am Notrufort treibt.
+    pub stranded_ship: String,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -1475,6 +1573,8 @@ pub enum MissionType {
     Escort,
     /// Schmuggel: Ware an den Zollbojen vorbei zum Ziel bringen.
     Smuggle,
+    /// Notruf: Besatzung eines havarierten Schiffs an Bord holen (jede Person braucht Platz).
+    Rescue,
 }
 
 /// Sperriges Bergungsobjekt: Länge (halbe), Dicke, Masse.
@@ -1582,6 +1682,35 @@ pub struct CrewSave {
     /// aktuelles Kapitel, gefundene Logbuch-Einträge, geweckte Monumente, Option für 61f.
     #[serde(default)]
     pub story: StorySave,
+    /// Abgeworfene Fracht, die noch in der Welt treibt (Erz, Bauteile).
+    #[serde(default)]
+    pub dropped: Vec<DroppedSave>,
+    /// Gerettete Besatzungen, die sich noch melden werden.
+    #[serde(default)]
+    pub rescued: Vec<RescuedSave>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct DroppedSave {
+    pub kind: crate::sim::ship::CargoKind,
+    pub mass: f32,
+    #[serde(default)]
+    pub traits: CargoTrait,
+    #[serde(default = "one")]
+    pub cond: f32,
+    pub pos: P,
+}
+
+fn one() -> f32 {
+    1.0
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct RescuedSave {
+    pub ship: String,
+    pub captain: String,
+    /// Sekunden Spielzeit, bis sie sich melden.
+    pub wait: f32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -1676,6 +1805,8 @@ impl CrewSave {
             artifacts: Vec::new(),
             builds: Vec::new(),
             story: StorySave::default(),
+            dropped: Vec::new(),
+            rescued: Vec::new(),
         }
     }
 

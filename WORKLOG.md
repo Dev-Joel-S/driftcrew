@@ -221,6 +221,51 @@ Der Rest wird in die bestehenden Phasen einsortiert bzw. bekommt eigene Phasen.
 | 81 | Schiffsname und Plaketten | Phase 17 (Persönlichkeit) |
 | 82 | Crew-Logbuch mit Erlebnissen und Notizen | Phase 17, zusammen mit dem Logbuch aus Phase 13 |
 
+## Plan: Rest des Backlogs (Phasen 14–18)
+
+Stand nach Phase 13: Punkte 1–63 sowie 65, 71, 72, 74, 75 sind umgesetzt. Offen sind 64, 66
+(zwei Kräne an einer Last), 67–70, 73, 76–82. Reihenfolge wie vereinbart: Energieverwaltung
+(70) und Wiederholung (80) zuletzt.
+
+### Phase 14 – Fracht und Bergung (erledigt, siehe Protokoll)
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 64 | Fracht ausbalancieren | Jedes Frachtstück hat eine feste Kennung und sitzt in einem Frachtmodul (Befestigungspunkt). Neues Fenster **Ladeplan** (Pausemenü, läuft im Flug weiter): Stück wählen, Zielmodul wählen, umladen. Angedockt sofort, im Flug dauert es (Masse sitzt derweil mittig) und rastet dann ein. Schwerpunkt und Trägheit rechnen sich wie bisher aus den Positionen – keine künstlichen Kräfte |
+| 66 | Zwei Kräne, eine Last | Greifer packen Kisten, Wracks und sperrige Teile dort, wo sie auftreffen; zwei Seile an verschiedenen Punkten drehen und stabilisieren die Last. Die Belastung jedes Seils ist schon sichtbar (Phase 8b) |
+| 67 | Notabwurf und Wiederaufnahme | Im Ladeplan „Abwerfen“: das Stück treibt als Körper in der Welt, lässt sich wieder einsammeln; Erz, Bauteile und Artefakte bleiben im Spielstand (Ort und Masse) |
+| 68 | Fracht mit Flugeigenschaften | Lieferfracht kann ein **Tank** sein (verzögert schwappende Last), **empfindlich** (harte Stöße kosten Zustand und damit Lohn) oder **instabil** (Überlastung durch harte Beschleunigung baut sich auf, zu viel = Verpuffung). Steht vor der Annahme im Auftrag, unterwegs im HUD |
+| 77 | Freiwillige Zusatzbergung | Bei Notrufen und Bergungen liegt manchmal ein wertvoller, schwerer (teils instabiler) Zusatzfund in der Nähe – mitnehmen ist freiwillig, der Auftrag bleibt ohne ihn erfüllbar |
+| 78 | Rettung mit Platzentscheidung | Neuer Notruf „havariertes Schiff“: ein manövrierunfähiges NPC-Schiff mit Besatzung. Langsam längsseits gehen holt sie an Bord – jede Person braucht Platz im Frachtraum; reicht er nicht, muss eigene Fracht abgeworfen werden. Gerettete melden sich später mit Dank und einem Geschenk |
+
+### Phase 15 – Zusammenarbeit am Schiff
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 69 | Triebwerks-Übersteuerung | Eigene Eingabe pro Gerät (Doppeltipp und Halten auf der Slot-Taste), +60 % Schub, Hitze pro Triebwerk mit Warnstufen, bei Überhitzung Zwangspause |
+| 73 | Manöveransagen | Feste Taste je Gerät öffnet einen kurzen Ansagekreis („Bremsen“, „Schub aus“, „Links drehen“, „Rechts drehen“, „Werkzeug bereit“); erscheint in Spielerfarbe über dem Schiff, optionaler Ton; läuft als Befehl durch die Simulation |
+| 70 | Gemeinsame Energiereserve | Zusatzenergie für Schildaufladung, Werkzeug-Boost und Übersteuerung; Grundfunktionen gehen immer, nur die Extras konkurrieren |
+
+### Phase 16 – Die Welt reagiert
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 76 | Lokale Folgen | Erledigte Aufträge wirken eine Weile: geräumte Trümmerzone ist dünner, belieferte Station hat Rabatt/Munition, reparierter Sender verbessert Radar in der Region. Anzeige bei Abschluss und auf der Karte |
+| 79 | Verborgene Wege | Sichere Schneisen durch Trümmerfelder und Anomalierand, Hinweise per Scanner/Logbuch, danach auf der Karte |
+
+### Phase 17 – Persönlichkeit
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 81 | Schiffsname und Plaketten | Crew benennt das Schiff (Werft), Plaketten für besondere Bergungen, Monumente, Wiederaufbau – sichtbar am Rumpf und im Logbuch |
+| 82 | Crew-Logbuch | Erlebnisse (erstes Andocken, knappste Rettung, größte Bergung, besuchte Sektoren) automatisch; eigene Notizen und Kartenmarkierungen |
+
+### Phase 18 – Unfall-Wiederholung
+
+| Nr. | Punkt | Umsetzung |
+|---|---|---|
+| 80 | Kurze Wiederholung | Ringpuffer aus Zustandsschnappschuss + Eingaben der letzten Sekunden (deterministische Simulation); nach Zerstörung „Wiederholung ansehen“ mit eingeblendeten Slot-Eingaben, überspringbar |
+
 ## Entscheidungen
 
 - **Runde 3, Rückfragen (beantwortet):**
@@ -250,6 +295,40 @@ Der Rest wird in die bestehenden Phasen einsortiert bzw. bekommt eigene Phasen.
 ---
 
 ## Protokoll
+
+### Runde 3 – Phase 14: Fracht und Bergung (erledigt)
+
+- **64 Ladeplan** (`src/sim/cargo.rs`, `src/ui/cargo.rs`): jedes Frachtstück hat eine feste
+  Kennung und sitzt in einem Frachtmodul. Pausemenü → „Ladeplan“: ↑↓ Stück, ←→ Zielmodul, Enter
+  umladen. Angedockt sofort (Simulation bleibt angehalten), im Flug mit Laufzeit 0,8 s + 0,6 s/t
+  (Simulation läuft weiter, die Masse sitzt derweil zwischen den Modulen). Schwerpunkt und
+  Trägheit rechnen sich wie immer aus den Positionen; Draufsicht mit Schwerpunktpunkt. Keine
+  künstliche Zugkraft (Test: Rumpf und Geschwindigkeit bleiben unverändert).
+- **66 Zwei Kräne**: schwere Lasten (Kiste, Wrack, havariertes Schiff) werden am Auftreffpunkt
+  gegriffen statt in der Mitte – zwei Kräne halten so an zwei Punkten und drehen/stabilisieren
+  gemeinsam; Hinweis beim zweiten Kran. Seilbelastung war schon sichtbar (Phase 8b).
+- **67 Abwurf**: ⌫ (Pad: Select) zweimal im Ladeplan. Das Stück treibt als `BodyKind::Dropped`
+  mit Eigenschaften und Zustand, kommt zur Ruhe, ist per Kran/Berührung wieder einsammelbar und
+  wird gespeichert (`CrewSave.dropped`, Erz und Bauteile; Artefakte kehren als Artefakt zurück).
+  Gerettete lassen sich nicht abwerfen.
+- **68 Flugeigenschaften** (`CargoTrait` in missions.ron): Tank = gedämpfte Feder im Modul, aufs
+  Schiff wirkt nur −m·x'' (gleichmäßiger Schub fühlt sich starr an, Bremsen schwappt nach);
+  empfindlich = Stöße über 40 m/s² kosten Zustand, Lohn 30 % + 70 % × Zustand, Auswertung zeigt
+  ihn; instabil = über 13 m/s² baut Belastung auf, bei 100 % verpufft es (18 Schaden, Auftrag
+  gescheitert). Eigenschaft steht vor der Annahme im Angebot, unterwegs im HUD.
+- **77 Zusatzfund**: bei Abschlepp-, Kapsel-, Sperrgut- und Rettungsaufträgen liegt mit 50 %
+  35–70 m vom Einsatzort ein wertvolles Bauteil (manchmal instabil). Freiwillig, der Auftrag geht
+  ohne.
+- **78 Rettung** (neuer Notruf, 30 % der Notrufe): havariertes NPC-Schiff (`Role::Stranded`)
+  treibt antriebslos. Längsseits (Lücke < 5 m, < 1,5 m/s) kommt alle 1,2 s eine Person an Bord,
+  je 0,4 t Platz. Kein Platz → Hinweis, eigene Fracht umladen/abwerfen. Abliefern an der
+  Zielstation; nach 4 Minuten meldet sich die Kapitänin per Funk mit Credits und Bauteilen fürs
+  Crew-Lager. Schiff zerstört → Gerettete fliegen in der Kapsel mit, Auftrag gescheitert.
+- Nebenbei behoben: Erz, das nicht ganz in ein Modul passte, ging beim Einsammeln teilweise
+  verloren (wird jetzt auf die Module verteilt); Bauteile verschwanden, wenn zwar insgesamt, aber
+  in keinem einzelnen Modul Platz war.
+- Tests: `src/sim/cargo_tests.rs` (12), gesamt 137 grün, clippy sauber. Screenshots folgen mit
+  der nächsten Vorführszene.
 
 ### Runde 3 – Phase 13: Geschichte, Artefakte, Monumente, Logbuch (erledigt)
 

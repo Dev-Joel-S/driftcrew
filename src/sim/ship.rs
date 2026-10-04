@@ -2,7 +2,7 @@
 
 use bevy::math::Vec2;
 
-use super::data::{Ore, PartKind, PartShape, ShipDef, ToolKind, UpgradePart, v};
+use super::data::{CargoTrait, Ore, PartKind, PartShape, ShipDef, ToolKind, UpgradePart, v};
 use super::geom::{Poly, rot};
 
 /// Was die Lobby belegt hat: Anzahl Triebwerke und welche Werkzeuge (Index in `tool_parts`).
@@ -220,7 +220,7 @@ pub struct CargoPod {
     pub capacity: f32,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum CargoKind {
     Ore(Ore),
     Container {
@@ -239,13 +239,47 @@ pub enum CargoKind {
     Artifact {
         id: String,
     },
+    /// Gerettete Besatzung eines havarierten Schiffs (Rettungsauftrag).
+    Survivor {
+        mission: u32,
+    },
 }
 
+/// Ein Frachtstück in einem Frachtmodul (Befestigungspunkt).
 #[derive(Clone, Debug, PartialEq)]
 pub struct CargoItem {
+    /// Feste Kennung (für Umladen und Abwerfen).
+    pub id: u32,
     pub kind: CargoKind,
     pub mass: f32,
     pub pod: usize,
+    /// Flugeigenschaften: Tank, empfindlich, instabil.
+    pub traits: CargoTrait,
+    /// Zustand 0..1 (empfindliche Fracht) und Belastung 0..1 (instabile Fracht).
+    pub cond: f32,
+    pub stress: f32,
+    /// Flüssigkeit: Auslenkung und Geschwindigkeit (lokal, Meter).
+    pub slosh: Vec2,
+    pub slosh_v: Vec2,
+    /// Umladen im Flug: Zielmodul und verbleibende Sekunden (die Masse sitzt derweil mittig).
+    pub moving: Option<(usize, f32)>,
+}
+
+impl CargoItem {
+    pub fn new(kind: CargoKind, mass: f32, traits: CargoTrait) -> CargoItem {
+        CargoItem {
+            id: 0,
+            kind,
+            mass,
+            pod: 0,
+            traits,
+            cond: 1.0,
+            stress: 0.0,
+            slosh: Vec2::ZERO,
+            slosh_v: Vec2::ZERO,
+            moving: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -256,6 +290,8 @@ pub struct Ship {
     pub tools: Vec<Tool>,
     pub pods: Vec<CargoPod>,
     pub cargo: Vec<CargoItem>,
+    /// Nächste freie Kennung für ein Frachtstück.
+    pub next_cargo: u32,
     pub slot_count: u8,
 
     // Massen-Eigenschaften (lokal relativ zum Schiffsursprung).
@@ -435,6 +471,7 @@ impl Ship {
             tools,
             pods,
             cargo: Vec::new(),
+            next_cargo: 1,
             slot_count: slot,
             mass: 1.0,
             com: Vec2::ZERO,
@@ -487,9 +524,8 @@ impl Ship {
             mc += p.pos * p.mass;
         }
         for c in &self.cargo {
-            let pod = &self.pods[c.pod.min(self.pods.len().saturating_sub(1))];
             m += c.mass;
-            mc += pod.pos * c.mass;
+            mc += self.cargo_pos(c) * c.mass;
         }
         let com = if m > 0.0 { mc / m } else { Vec2::ZERO };
         let mut inertia = 0.0;
@@ -502,7 +538,7 @@ impl Ship {
             let pod = &self.pods[c.pod.min(self.pods.len().saturating_sub(1))];
             let size = pod.half * 2.0;
             inertia += c.mass * (size.x * size.x + size.y * size.y) / 12.0
-                + c.mass * (pod.pos - com).length_squared();
+                + c.mass * (self.cargo_pos(c) - com).length_squared();
         }
         self.mass = m.max(0.1);
         self.inertia = inertia.max(0.1);
@@ -569,6 +605,112 @@ impl Ship {
             .sum()
     }
 
+    /// Wo ein Frachtstück sitzt (lokal): in seinem Modul oder – beim Umladen – dazwischen.
+    pub fn cargo_pos(&self, c: &CargoItem) -> Vec2 {
+        if self.pods.is_empty() {
+            return Vec2::ZERO;
+        }
+        let last = self.pods.len() - 1;
+        let from = self.pods[c.pod.min(last)].pos;
+        match c.moving {
+            Some((to, _)) => (from + self.pods[to.min(last)].pos) * 0.5,
+            None => from,
+        }
+    }
+
+    /// Platz in einem Modul, wenn auch das schon dorthin Unterwegs-Seiende ankommt.
+    pub fn pod_free(&self, pod: usize) -> f32 {
+        let incoming: f32 = self
+            .cargo
+            .iter()
+            .filter(|c| c.pod != pod && c.moving.is_some_and(|(to, _)| to == pod))
+            .map(|c| c.mass)
+            .sum();
+        self.pods.get(pod).map_or(0.0, |p| p.capacity) - self.pod_load(pod) - incoming
+    }
+
+    /// Lesbarer Name eines Frachtmoduls nach seiner Lage („links“, „hinten rechts“ …).
+    pub fn pod_label(&self, i: usize) -> String {
+        let name = |p: Vec2| {
+            let side = if p.x < -0.3 {
+                "links"
+            } else if p.x > 0.3 {
+                "rechts"
+            } else {
+                "Mitte"
+            };
+            let fore = if p.y > 0.6 {
+                "vorne "
+            } else if p.y < -0.6 {
+                "hinten "
+            } else {
+                ""
+            };
+            format!("{fore}{side}")
+        };
+        let Some(pod) = self.pods.get(i) else {
+            return "?".into();
+        };
+        let n = name(pod.pos);
+        let same = self.pods[..i].iter().filter(|p| name(p.pos) == n).count();
+        if same > 0 {
+            format!("{n} {}", same + 1)
+        } else {
+            n
+        }
+    }
+
+    /// Frachtstück in ein anderes Modul umladen: sofort (angedockt) oder mit Laufzeit.
+    pub fn move_cargo(&mut self, id: u32, to: usize, instant: bool) -> Result<(), String> {
+        let Some(i) = self.cargo.iter().position(|c| c.id == id) else {
+            return Err("Dieses Frachtstück gibt es nicht mehr".into());
+        };
+        if to >= self.pods.len() {
+            return Err("Unbekanntes Frachtmodul".into());
+        }
+        let c = &self.cargo[i];
+        if c.pod == to && c.moving.is_none() {
+            return Err("Liegt schon dort".into());
+        }
+        if self.pod_free(to) + 1e-4 < c.mass {
+            return Err(format!(
+                "Im Modul {} ist nicht genug Platz",
+                self.pod_label(to)
+            ));
+        }
+        let secs = 0.8 + 0.6 * c.mass;
+        let c = &mut self.cargo[i];
+        if instant {
+            c.pod = to;
+            c.moving = None;
+        } else {
+            c.moving = Some((to, secs));
+        }
+        self.recompute_mass();
+        Ok(())
+    }
+
+    /// Laufendes Umladen fortschreiben; true, wenn ein Stück eingerastet ist.
+    pub fn update_cargo_moves(&mut self, dt: f32) -> bool {
+        let mut done = false;
+        for c in &mut self.cargo {
+            if let Some((to, left)) = c.moving {
+                let left = left - dt;
+                if left <= 0.0 {
+                    c.pod = to;
+                    c.moving = None;
+                    done = true;
+                } else {
+                    c.moving = Some((to, left));
+                }
+            }
+        }
+        if done {
+            self.recompute_mass();
+        }
+        done
+    }
+
     pub fn ore_amount(&self, ore: Ore) -> f32 {
         self.cargo
             .iter()
@@ -580,13 +722,63 @@ impl Ship {
     /// Fracht einlagern: in das Modul mit dem meisten freien Platz. Erz wird zusammengefasst.
     /// Gibt die eingelagerte Masse zurück.
     pub fn store(&mut self, kind: CargoKind, mass: f32) -> f32 {
+        self.store_with(kind, mass, CargoTrait::None)
+    }
+
+    /// Ein vorhandenes Frachtstück mit allen Eigenschaften einladen (Schiffswechsel,
+    /// Wiederaufnahme nach dem Abwurf). Erz wird wie immer verteilt und zusammengefasst.
+    pub fn store_item(&mut self, item: CargoItem) -> f32 {
+        if matches!(item.kind, CargoKind::Ore(_)) {
+            // Erz auf die Module verteilen, bis alles drin ist oder nichts mehr passt.
+            let mut done = 0.0;
+            while item.mass - done > 1e-4 {
+                let s = self.store(item.kind.clone(), item.mass - done);
+                if s <= 1e-5 {
+                    break;
+                }
+                done += s;
+            }
+            return done;
+        }
+        let Some(best) = self.best_pod() else {
+            return 0.0;
+        };
+        if self.pod_free(best) + 1e-4 < item.mass {
+            return 0.0;
+        }
+        let id = self.next_cargo;
+        self.next_cargo += 1;
+        let mass = item.mass;
+        self.cargo.push(CargoItem {
+            id,
+            pod: best,
+            moving: None,
+            slosh: Vec2::ZERO,
+            slosh_v: Vec2::ZERO,
+            ..item
+        });
+        self.recompute_mass();
+        mass
+    }
+
+    /// Modul mit dem meisten freien Platz.
+    fn best_pod(&self) -> Option<usize> {
+        (0..self.pods.len()).max_by(|a, b| {
+            self.pod_free(*a)
+                .total_cmp(&self.pod_free(*b))
+                .then(b.cmp(a))
+        })
+    }
+
+    /// Fracht mit Flugeigenschaften einlagern (Lieferaufträge).
+    pub fn store_with(&mut self, kind: CargoKind, mass: f32, traits: CargoTrait) -> f32 {
         if self.pods.is_empty() {
             return 0.0;
         }
         let mut best = 0;
         let mut best_free = f32::MIN;
         for i in 0..self.pods.len() {
-            let free = self.pods[i].capacity - self.pod_load(i);
+            let free = self.pod_free(i);
             if free > best_free + 1e-4 {
                 best_free = free;
                 best = i;
@@ -607,16 +799,18 @@ impl Ship {
             && let Some(item) = self
                 .cargo
                 .iter_mut()
-                .find(|c| c.kind == kind && c.pod == best)
+                .find(|c| c.kind == kind && c.pod == best && c.moving.is_none())
         {
             item.mass += stored;
             self.recompute_mass();
             return stored;
         }
+        let id = self.next_cargo;
+        self.next_cargo += 1;
         self.cargo.push(CargoItem {
-            kind,
-            mass: stored,
+            id,
             pod: best,
+            ..CargoItem::new(kind, stored, traits)
         });
         self.recompute_mass();
         stored

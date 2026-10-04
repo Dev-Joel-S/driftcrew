@@ -1246,6 +1246,68 @@ pub fn sync_bodies(
                     .id();
                 kids.push(holder);
             }
+            BodyKind::Dropped { item } => {
+                // Abgeworfene oder gefundene Fracht: Kiste in Größe der Masse, die Bandfarbe
+                // zeigt die Eigenschaft (Tank blau, empfindlich weiß, instabil cyan leuchtend).
+                use crate::sim::data::CargoTrait;
+                use crate::sim::ship::CargoKind;
+                let (band_c, bulb_c, glow) = match (&item.kind, item.traits) {
+                    (CargoKind::Ore(o), _) => (srgb(o.color()), srgb(o.color()), 1.2),
+                    (_, CargoTrait::Tank) => (
+                        Color::srgb(0.25, 0.55, 0.95),
+                        Color::srgb(0.4, 0.7, 1.0),
+                        0.0,
+                    ),
+                    (_, CargoTrait::Fragile) => (
+                        Color::srgb(0.92, 0.92, 0.9),
+                        Color::srgb(0.3, 1.0, 0.75),
+                        0.0,
+                    ),
+                    (_, CargoTrait::Unstable) => (
+                        Color::srgb(0.2, 0.8, 0.95),
+                        Color::srgb(0.5, 0.95, 1.0),
+                        2.2,
+                    ),
+                    _ => (
+                        Color::srgb(0.85, 0.55, 0.15),
+                        Color::srgb(1.0, 0.6, 0.2),
+                        0.0,
+                    ),
+                };
+                let shell = mats.add(art.panel_mat(Color::srgb(0.3, 0.32, 0.35), 0.4, 0.7));
+                let band = mats.add(art.panel_mat(band_c, 0.5, 0.3));
+                let bulb = mats.add(art.emissive_mat(bulb_c, 8.0));
+                let r = b.radius;
+                let body = art.bevel_box(&mut meshes, Vec3::new(1.5 * r, 1.0 * r, 1.0 * r));
+                let ring = art.bevel_box(&mut meshes, Vec3::new(0.35 * r, 1.05 * r, 1.05 * r));
+                let holder = commands
+                    .spawn((Transform::default(), Visibility::default(), BodyMesh(b.id)))
+                    .with_children(|h| {
+                        h.spawn((Mesh3d(body), MeshMaterial3d(shell)));
+                        h.spawn((Mesh3d(ring), MeshMaterial3d(band)));
+                        h.spawn((
+                            Mesh3d(art.sphere.clone()),
+                            MeshMaterial3d(bulb),
+                            Transform::from_xyz(0.6 * r, 0.0, 0.52 * r)
+                                .with_scale(Vec3::splat(0.12 * r)),
+                        ));
+                    })
+                    .id();
+                kids.push(holder);
+                if glow > 0.0 {
+                    let g = art.glow_mat(&mut mats, bulb_c, glow);
+                    kids.push(
+                        commands
+                            .spawn((
+                                Mesh3d(art.quad.clone()),
+                                MeshMaterial3d(g),
+                                Transform::from_xyz(0.0, 0.0, 0.9).with_scale(Vec3::splat(r * 4.0)),
+                                NotShadowCaster,
+                            ))
+                            .id(),
+                    );
+                }
+            }
             BodyKind::Derelict { .. } => {
                 let def = data.0.ship("kolibri").clone();
                 let ship = Ship::build(&def, &Loadout::full(&def), &ShipStats::default());

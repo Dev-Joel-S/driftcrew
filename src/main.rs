@@ -29,7 +29,10 @@ fn install_crash_log() {
         let bt = std::backtrace::Backtrace::force_capture();
         let _ = std::fs::write(
             &path,
-            format!("DriftCrew {} ist abgestürzt:\n{info}\n\n{bt}\n", env!("CARGO_PKG_VERSION")),
+            format!(
+                "DriftCrew {} ist abgestürzt:\n{info}\n\n{bt}\n",
+                env!("CARGO_PKG_VERSION")
+            ),
         );
         default(info);
     }));

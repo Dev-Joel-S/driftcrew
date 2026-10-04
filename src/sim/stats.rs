@@ -101,6 +101,8 @@ pub struct MissionReport {
     pub max_strain: Option<f32>,
     /// Zufriedenheit der Passagiere (0..1), falls welche an Bord waren.
     pub comfort: Option<f32>,
+    /// Zustand empfindlicher Fracht bei der Ablieferung (0..1).
+    pub cond: Option<f32>,
     /// Richtzeit in Sekunden.
     pub par: f32,
     /// Station, Rufstufe danach, gewonnene Punkte.
@@ -216,6 +218,7 @@ mod tests {
             bonus_gentle: 0,
             max_strain: None,
             comfort: None,
+            cond: None,
             par: 100.0,
             reputation: None,
             stats,

@@ -20,6 +20,7 @@ impl Plugin for PausePlugin {
                 Update,
                 pause_input
                     .before(super::logbook::logbook_input)
+                    .before(super::cargo::plan_input)
                     .run_if(in_state(AppState::Playing)),
             );
     }
@@ -38,6 +39,7 @@ enum PauseAct {
     Redistribute,
     Help,
     Logbook,
+    CargoPlan,
     SaveTitle,
     Quit,
 }
@@ -60,6 +62,11 @@ fn items(sim: &SimState) -> Vec<Item<PauseAct>> {
             sim.data.story.artifacts.len(),
             sim.story.logs.len(),
             sim.data.story.logs.len()
+        )),
+        Item::new("Ladeplan", PauseAct::CargoPlan).detail(format!(
+            "Fracht umladen oder abwerfen · {:.1} / {:.1} t an Bord",
+            sim.ship.cargo_mass().max(0.0),
+            sim.ship.cargo_capacity()
         )),
         Item::new("Steuerung & Spielprinzip", PauseAct::Help),
         Item::new("Speichern & zum Titel", PauseAct::SaveTitle),
@@ -123,8 +130,9 @@ pub fn pause_input(
     mut exit: MessageWriter<AppExit>,
     mut pending: ResMut<PendingCommands>,
     mut book: ResMut<super::logbook::Logbook>,
+    mut plan: ResMut<super::cargo::CargoPlan>,
 ) {
-    if book.open {
+    if book.open || plan.open {
         return;
     }
     if !help.is_empty() {
@@ -214,6 +222,16 @@ pub fn pause_input(
         PauseAct::Logbook => {
             book.open = true;
             book.opened = true;
+        }
+        PauseAct::CargoPlan => {
+            // Im Flug läuft die Welt weiter, angedockt bleibt sie angehalten.
+            let docked = sim.0.ship.docked.is_some();
+            for e in &roots {
+                commands.entity(e).despawn();
+            }
+            paused.0 = docked;
+            plan.open = true;
+            plan.opened = true;
         }
         PauseAct::SaveTitle => {
             write_save(&sim.0.to_save());

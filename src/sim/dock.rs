@@ -294,6 +294,12 @@ impl SimState {
                 CargoKind::Container { mission, .. } => {
                     self.fail_mission(mission, "Fracht zerstört")
                 }
+                // Die Geretteten steigen mit in die Rettungskapsel – der Auftrag ist trotzdem
+                // gescheitert.
+                CargoKind::Survivor { mission } => self.fail_mission(
+                    mission,
+                    "Schiff verloren, die Geretteten sind mit in die Kapsel",
+                ),
                 CargoKind::Ore(_) | CargoKind::Salvage { .. } => {}
             }
         }

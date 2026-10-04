@@ -457,6 +457,8 @@ impl SimState {
                 Command::DeliverProject => self.deliver_project(),
                 Command::StoreCargo => self.store_cargo(),
                 Command::SetStayInWreck(on) => self.story.stay_in_wreck = *on,
+                Command::MoveCargo { id, to } => self.move_cargo_cmd(*id, *to),
+                Command::Jettison { id } => self.jettison(*id),
                 Command::StartCourse { course } => self.arm_course(*course),
                 Command::AbortCourse => self.abort_course("auf Wunsch der Crew"),
                 Command::SetLoadout {
@@ -678,7 +680,7 @@ impl SimState {
         self.ship = super::ship::Ship::build(&def, &Loadout::full(&def), &stats);
         self.loadout = Loadout::full(&def);
         for item in cargo {
-            self.ship.store(item.kind, item.mass);
+            self.ship.store_item(item);
         }
         if let Some(pad) = pad {
             let p = self.world.pads[pad].clone();

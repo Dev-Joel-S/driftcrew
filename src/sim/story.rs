@@ -140,7 +140,7 @@ impl SimState {
             .unwrap_or_else(|| id.to_string())
     }
 
-    fn spawn_artifact(&mut self, id: &str, pos: Vec2, vel: Vec2) {
+    pub(crate) fn spawn_artifact(&mut self, id: &str, pos: Vec2, vel: Vec2) {
         let mass = self.artifact_def(id).map_or(1.0, |a| a.mass);
         let bid = self.next_id();
         self.bodies.push(Body {

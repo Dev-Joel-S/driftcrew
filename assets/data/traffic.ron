@@ -54,5 +54,7 @@
     )),
     rival: Some((name: "Crew Kestrel", ship: "hornisse", colors: ("#2a2f36", "#e04a2a"), home: "vega")),
     convoy_ship: "lastesel",
+    // Rettungsaufträge: dieses Schiff treibt havariert am Notrufort.
+    stranded_ship: "driftkutter",
     ambush: 3,
 )

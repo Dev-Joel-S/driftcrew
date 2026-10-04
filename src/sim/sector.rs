@@ -363,7 +363,9 @@ impl SimState {
                 BodyKind::Asteroid { ore: Some(o), .. } => BlipKind::Ore(*o),
                 BodyKind::OreChunk { ore, .. } => BlipKind::Ore(*ore),
                 BodyKind::Capsule { .. } => BlipKind::Capsule,
-                BodyKind::Crate { .. } | BodyKind::Salvage { .. } => BlipKind::Cargo,
+                BodyKind::Crate { .. } | BodyKind::Salvage { .. } | BodyKind::Dropped { .. } => {
+                    BlipKind::Cargo
+                }
                 _ => continue,
             };
             found.push(ScanBlip {

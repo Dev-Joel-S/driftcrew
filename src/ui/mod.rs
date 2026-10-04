@@ -1,5 +1,6 @@
 //! Benutzeroberfläche: gemeinsame Bausteine, Menülisten, Meldungen.
 
+pub mod cargo;
 pub mod course;
 pub mod hud;
 pub mod lobby;
@@ -75,6 +76,7 @@ impl Plugin for UiPlugin {
                 course::CoursePlugin,
                 minigame::MinigamePlugin,
                 logbook::LogbookPlugin,
+                cargo::CargoPlanPlugin,
             ));
     }
 }

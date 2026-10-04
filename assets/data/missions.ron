@@ -17,7 +17,35 @@
         (Survey, (1, 3)),
         (Escort, (2, 4)),
         (Smuggle, (1, 3)),
+        (Rescue, (1, 4)),
     ],
+    // Rettung (Notruf): ein havariertes Schiff treibt am Notrufort. Längsseits gehen (unter 5 m
+    // Lücke, kaum Fahrt) holt die Besatzung Person für Person herüber – jede braucht 0,4 t Platz
+    // im Frachtraum. Reicht der Platz nicht, muss eigene Fracht umgeladen oder abgeworfen werden.
+    // Gerettete melden sich nach thanks_after Sekunden an einer Station mit Dank und Geschenk.
+    rescue: (
+        ships: ["Kutter Ilse", "Frachter Morgenrot", "Shuttle Amsel", "Schlepper Hartmut", "Fähre Seestern"],
+        captains: ["Kapitänin Ilse Brandt", "Kapitän Ole Sandvik", "Pilotin Mara Kwon", "Kapitän Jero Haas", "Pilotin Tess Okafor"],
+        crew: (3, 6),
+        reward_per_person: 85.0,
+        thanks: [
+            "Hier {captain} von der {ship}. Wir sind wieder flott – ohne euch wären wir noch da draußen. Im Crew-Lager liegt eine kleine Aufmerksamkeit.",
+            "{captain} hier. Die {ship} fliegt wieder! Die ganze Besatzung lässt grüßen – schaut mal ins Crew-Lager.",
+            "Funkspruch von {captain}: Wir haben die {ship} zurückbekommen. Das vergessen wir euch nicht.",
+        ],
+        thanks_after: 240.0,
+        gift_credits: 150,
+        gift_parts: 2,
+    ),
+    // Zusatzfund (77): am Einsatzort einer Bergung treibt manchmal noch etwas Wertvolles.
+    // Mitnehmen ist freiwillig – mehr Gewicht, manchmal instabil. Der Auftrag geht auch ohne.
+    bonus: (
+        chance: 0.5,
+        names: ["Energiezelle", "Navigationskern", "Kryo-Behälter", "Sensorphalanx", "Reaktorstab"],
+        mass: (1.5, 4.0),
+        value: (240, 480),
+        unstable_chance: 0.4,
+    ),
     // Geleitschutz: ein NPC-Frachter fliegt mit, unterwegs greifen Piratendrohnen an.
     escort: (reward: 340.0, names: ["Frachter Albatros", "Frachter Lerche", "Frachter Reiher", "Frachter Zaunkönig"]),
     // Schmuggel (Vex im Nebelhafen): Ware an den Zollbojen vorbei. Scan dauert scan_time
@@ -48,12 +76,18 @@
     clean_bonus: 0.10,
     distress_offers: 2,
     delivery_cargo: [
+        // traits: Tank (Flüssigkeit schwappt nach), Fragile (verträgt keine harten Stöße,
+        // bezahlt wird nach Zustand), Unstable (verpufft bei zu viel Beschleunigung).
         (name: "Medizinische Vorräte", mass: 2.0, reward: 110),
         (name: "Ersatzteile",          mass: 4.0, reward: 140),
         (name: "Wasserkristalle",      mass: 6.0, reward: 170),
-        (name: "Forschungssonde",      mass: 3.0, reward: 150),
+        (name: "Forschungssonde",      mass: 3.0, reward: 150, traits: Fragile),
         (name: "Pflanzensamen",        mass: 1.5, reward: 100),
         (name: "Reaktorkern",          mass: 7.0, reward: 220),
+        (name: "Kühlmitteltank",       mass: 5.0, reward: 180, traits: Tank),
+        (name: "Treibstoffblase",      mass: 4.0, reward: 165, traits: Tank),
+        (name: "Messinstrumente",      mass: 2.5, reward: 170, traits: Fragile),
+        (name: "Reaktorproben",        mass: 2.0, reward: 210, traits: Unstable),
         // Schwerlast: passt in keinen Frachtraum und wird als Kiste am Kran geschleppt.
         // Die Masse hängt am Seil und zieht das Schiff mit – die Kiste pendelt.
         (name: "Bohrturm-Segment",     mass: 12.0, reward: 300, towed: true),

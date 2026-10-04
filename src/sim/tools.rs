@@ -249,20 +249,23 @@ impl SimState {
                         let slot = self.ship.tools[i].slot;
                         self.stats.slot(slot).grabs += 1;
                         let b = &self.bodies[bi];
-                        // Sperrige Teile werden dort gegriffen, wo der Greifer auftrifft,
-                        // runde in der Mitte.
-                        let local = if matches!(b.kind, BodyKind::Bulky { .. }) {
-                            let hit = mount + dir * t;
-                            let along = rot(hit - b.pos, -b.angle);
-                            match b.kind {
-                                BodyKind::Bulky { half_len, .. } => {
-                                    Vec2::new(along.x.clamp(-half_len, half_len), 0.0)
-                                }
-                                _ => Vec2::ZERO,
+                        // Schwere Lasten werden dort gegriffen, wo der Greifer auftrifft – so
+                        // können zwei Kräne dasselbe Objekt an zwei Punkten halten und es
+                        // gemeinsam drehen (66). Kleines, das eingeholt wird, in der Mitte.
+                        let hit = mount + dir * t;
+                        let along = rot(hit - b.pos, -b.angle);
+                        let local = match b.kind {
+                            BodyKind::Bulky { half_len, .. } => {
+                                Vec2::new(along.x.clamp(-half_len, half_len), 0.0)
                             }
-                        } else {
-                            Vec2::ZERO
+                            _ if b.stowable() => Vec2::ZERO,
+                            _ => along.clamp_length_max(b.radius * 0.85),
                         };
+                        let body_id = b.id;
+                        let shared = self.ship.tools.iter().enumerate().any(|(k, o)| {
+                            k != i
+                                && matches!(o.crane, CraneState::Attached { body, .. } if body == body_id)
+                        });
                         let anchor = b.anchor(local);
                         let rope = (anchor - mount).length().max(1.5);
                         self.events.push(SimEvent::CraneAttach { pos: anchor });
@@ -281,6 +284,14 @@ impl SimState {
                                 "{name} am Haken – am Ende gegriffen pendelt es stärker"
                             )),
                             _ => None,
+                        };
+                        let msg = if shared && !self.bodies[bi].stowable() {
+                            Some(
+                                "Zweiter Kran am selben Objekt – gemeinsam ziehen dreht und stabilisiert es"
+                                    .to_string(),
+                            )
+                        } else {
+                            msg
                         };
                         if let Some(msg) = msg {
                             self.toast(msg, ToastKind::Info);

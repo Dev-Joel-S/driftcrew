@@ -830,8 +830,15 @@ fn items_for(sim: &SimState, tab: Tab, sel: &Option<String>) -> Vec<Item<Act>> {
                         from: Owner::Planet(_),
                         ..
                     } => format!("{mass:.1} t Erzladung – verschiebt Masse und Schwerpunkt"),
-                    MissionKind::Delivery { mass, .. } => {
+                    MissionKind::Delivery {
+                        mass,
+                        traits: crate::sim::data::CargoTrait::None,
+                        ..
+                    } => {
                         format!("{mass:.1} t Container – landet seitlich im Frachtraum")
+                    }
+                    MissionKind::Delivery { mass, traits, .. } => {
+                        format!("{mass:.1} t {}", traits.label())
                     }
                     MissionKind::Haul { mass, to, .. }
                         if has_crane && sim.world.stations[*to].socket.is_some() =>
@@ -852,6 +859,20 @@ fn items_for(sim: &SimState, tab: Tab, sel: &Option<String>) -> Vec<Item<Act>> {
                     }
                     MissionKind::Capsules { .. } => {
                         "Kapseln einsammeln (Kran oder sanft berühren) und abliefern.".into()
+                    }
+                    MissionKind::Rescue { crew, .. } => {
+                        let need = *crew as f32 * crate::sim::cargo::PERSON_MASS;
+                        let free: f32 = (0..sim.ship.pods.len())
+                            .map(|i| sim.ship.pod_free(i).max(0.0))
+                            .sum();
+                        let room = if free + 1e-3 >= need {
+                            "Platz reicht".to_string()
+                        } else {
+                            format!("frei nur {free:.1} t – Fracht umladen oder abwerfen")
+                        };
+                        format!(
+                            "Havariertes Schiff treibt antriebslos. Längsseits gehen, Besatzung übernehmen: {crew} Personen brauchen {need:.1} t Platz ({room})."
+                        )
                     }
                     MissionKind::Escort { .. } => {
                         "Frachter legt mit euch ab – unterwegs lauern Piratendrohnen. Abfangen, bevor sie ihn zerlegen."
@@ -995,12 +1016,13 @@ fn items_for(sim: &SimState, tab: Tab, sel: &Option<String>) -> Vec<Item<Act>> {
                     crate::sim::ship::CargoKind::Artifact { id } => {
                         format!("Artefakt: {}", sim.artifact_name(id))
                     }
+                    crate::sim::ship::CargoKind::Survivor { .. } => "Gerettete Person".into(),
                 };
                 v.push(
                     Item::new(name, Act::Sell)
                         .right(format!("{:.1} t", c.mass))
                         .enabled(false)
-                        .detail(format!("Modul {}", c.pod + 1)),
+                        .detail(format!("Modul {}", sim.ship.pod_label(c.pod))),
                 );
             }
         }

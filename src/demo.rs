@@ -1055,6 +1055,7 @@ fn finance_scene() -> Vec<(f32, Act)> {
                     to: nova,
                     cargo: "Ersatzteile".into(),
                     mass: 4.0,
+                    traits: Default::default(),
                 },
                 reward: 420,
                 origin: Some(Owner::Station(kepler)),
