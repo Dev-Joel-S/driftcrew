@@ -248,7 +248,7 @@ Stand nach Phase 13: Punkte 1–63 sowie 65, 71, 72, 74, 75 sind umgesetzt. Offe
 | 73 | Manöveransagen | Feste Taste je Gerät öffnet einen kurzen Ansagekreis („Bremsen“, „Schub aus“, „Links drehen“, „Rechts drehen“, „Werkzeug bereit“); erscheint in Spielerfarbe über dem Schiff, optionaler Ton; läuft als Befehl durch die Simulation |
 | 70 | Gemeinsame Energiereserve | Zusatzenergie für Schildaufladung, Werkzeug-Boost und Übersteuerung; Grundfunktionen gehen immer, nur die Extras konkurrieren |
 
-### Phase 16 – Die Welt reagiert
+### Phase 16 – Die Welt reagiert (erledigt, siehe Protokoll)
 
 | Nr. | Punkt | Umsetzung |
 |---|---|---|
@@ -297,6 +297,23 @@ Stand nach Phase 13: Punkte 1–63 sowie 65, 71, 72, 74, 75 sind umgesetzt. Offe
 ---
 
 ## Protokoll
+
+### Runde 3 – Phase 16: Die Welt reagiert (erledigt)
+
+- **76 Wirkungen** (`src/sim/effects.rs`): erledigte Aufträge wirken 10 Minuten nach.
+  Lieferung, Schwerlast, Abbau, Passagiere → Zielstation *versorgt* (Munition und Reparatur dort
+  gratis). Abschleppen, Kapseln, Sperrgut, Rettung → Umkreis 1400 m der Zielstation *geräumt*
+  (Trümmer ×0,15, Meteorfelder ruhen, vorhandener Schrott verschwindet). Messflug, Geleitschutz →
+  *Sender* der Auftragsstation läuft (Karte im Umkreis aufgedeckt, Routen in der Nähe bekannt,
+  Scanner +50 %). Bei Abschluss: Meldung und Zeile in der Auswertung; Karte und Stationsmenü
+  zeigen laufende Wirkungen mit Restzeit; Ablauf wird gemeldet. Gespeichert.
+- **79 Routen** (world.ron `routes`): fünf Routen – Kobalt-Schneise (durchs Asteroidenfeld),
+  Ostbogen (Umweg darum), Sturzfeld-Querung (durchs Meteorfeld), Sogkante (an der
+  Gravitationsanomalie), Friedhofsgasse (in den Schiffsfriedhof). Entdeckt per Scanner-Ring,
+  Gerücht beim Andocken (`known_at`) oder Sender. Danach gepunktet auf der Karte (Abkürzung
+  orange, Umweg türkis) und im Logbuch mit Hinweis. Wer eine Route von einem Ende zum anderen
+  abfliegt, bekommt eine Zeit, die Bestzeit steht im Logbuch.
+- Tests: `src/sim/effects_tests.rs` (4), gesamt 143 grün, clippy sauber.
 
 ### Runde 3 – Phase 18: Unfall-Wiederholung (erledigt)
 

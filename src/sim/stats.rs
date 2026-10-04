@@ -103,6 +103,8 @@ pub struct MissionReport {
     pub comfort: Option<f32>,
     /// Zustand empfindlicher Fracht bei der Ablieferung (0..1).
     pub cond: Option<f32>,
+    /// Was sich durch den Auftrag in der Welt ändert (76).
+    pub effect: Option<String>,
     /// Richtzeit in Sekunden.
     pub par: f32,
     /// Station, Rufstufe danach, gewonnene Punkte.
@@ -219,6 +221,7 @@ mod tests {
             max_strain: None,
             comfort: None,
             cond: None,
+            effect: None,
             par: 100.0,
             reputation: None,
             stats,

@@ -17,6 +17,9 @@ mod course_tests;
 pub mod data;
 pub mod dock;
 pub mod economy;
+pub mod effects;
+#[cfg(test)]
+mod effects_tests;
 pub mod explore;
 pub mod finance;
 #[cfg(test)]
@@ -587,6 +590,14 @@ pub struct SimState {
     pub cargo_vel: Option<Vec2>,
     pub rescue_timer: f32,
     pub cargo_warn: f32,
+    /// Die Welt reagiert (76, 79): Wirkungen erledigter Aufträge, entdeckte Routen, Bestzeiten,
+    /// laufender Routenflug.
+    pub effects: Vec<effects::Effect>,
+    pub routes_known: Vec<String>,
+    pub route_best: Vec<(String, f32)>,
+    pub route_run: Option<effects::RouteRun>,
+    /// Gerade beendete Route: startet erst wieder, wenn das Schiff die Enden verlassen hat.
+    pub route_rest: Option<usize>,
 }
 
 impl SimState {
@@ -704,6 +715,11 @@ impl SimState {
             cargo_vel: None,
             rescue_timer: 0.0,
             cargo_warn: 0.0,
+            effects: Vec::new(),
+            routes_known: Vec::new(),
+            route_best: Vec::new(),
+            route_run: None,
+            route_rest: None,
         };
         s.load_projects(save);
         s.load_records(save);
@@ -711,6 +727,7 @@ impl SimState {
         s.load_workshop(save);
         s.load_story(save);
         s.load_cargo_state(save);
+        s.load_world_state(save);
         s.populate_fields();
         s.populate_wrecks();
         s.refresh_offers();
@@ -811,11 +828,15 @@ impl SimState {
             story: Default::default(),
             dropped: Vec::new(),
             rescued: Vec::new(),
+            effects: Vec::new(),
+            routes: Vec::new(),
+            route_best: Vec::new(),
         };
         self.save_finance(&mut save);
         self.save_workshop(&mut save);
         self.save_story(&mut save);
         self.save_cargo_state(&mut save);
+        self.save_world_state(&mut save);
         save
     }
 
@@ -872,6 +893,7 @@ impl SimState {
         // die das Präzisionsandocken als Aufsetzgeschwindigkeit braucht.
         self.update_course();
         self.update_cargo();
+        self.update_effects();
         self.update_tracking();
         self.update_precision();
         self.update_regen();

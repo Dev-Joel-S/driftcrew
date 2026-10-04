@@ -166,6 +166,7 @@ impl SimState {
             self.crew.home_station = si;
             self.charge_dock_fee(si);
             self.story_docked(si);
+            self.routes_docked(si);
         }
         self.on_docked(owner);
     }

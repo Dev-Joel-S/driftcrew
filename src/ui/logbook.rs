@@ -36,7 +36,8 @@ pub struct LogbookRoot;
 
 /// Zeilen für die Fundliste: (Kategorie, Titel, Text) in Fundreihenfolge.
 fn found(sim: &SimState) -> Vec<(String, String, String)> {
-    sim.story
+    let mut v: Vec<(String, String, String)> = sim
+        .story
         .logs
         .iter()
         .filter_map(|id| sim.data.story.logs.iter().find(|l| &l.id == id))
@@ -47,7 +48,25 @@ fn found(sim: &SimState) -> Vec<(String, String, String)> {
                 l.text.clone(),
             )
         })
-        .collect()
+        .collect();
+    // Entdeckte Routen (79) mit Hinweis und Bestzeit.
+    for id in &sim.routes_known {
+        let Some(r) = sim.data.world.routes.iter().find(|r| &r.id == id) else {
+            continue;
+        };
+        let best = sim
+            .route_best
+            .iter()
+            .find(|(b, _)| b == id)
+            .map(|(_, t)| format!(" Bestzeit {t:.1} s."))
+            .unwrap_or_else(|| " Noch nicht am Stück geflogen.".into());
+        v.push((
+            format!("Route · {}", r.kind.label()),
+            r.name.clone(),
+            format!("{}{best}", r.hint),
+        ));
+    }
+    v
 }
 
 fn close_logbook(
@@ -113,7 +132,7 @@ pub fn logbook_input(
         s.story.stay_in_wreck,
         s.crew.artifacts,
         s.artifacts_aboard().len()
-    );
+    ) + &format!("|{}|{}", s.routes_known.len(), s.route_best.len());
     let h = sig_of(&key);
     if h == book.sig && !roots.is_empty() {
         return;
@@ -247,7 +266,11 @@ fn spawn_logbook(commands: &mut Commands, s: &SimState, sel: usize) {
                     })
                     .with_children(|c| {
                         c.spawn(text(
-                            format!("FUNDE  {} von {}", entries.len(), story.logs.len()),
+                            format!(
+                                "FUNDE  {} von {}",
+                                entries.len(),
+                                story.logs.len() + s.data.world.routes.len()
+                            ),
                             15.0,
                             ACCENT,
                         ));

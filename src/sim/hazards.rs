@@ -153,7 +153,9 @@ impl SimState {
         let zones = self.data.world.meteor_zones.clone();
         for (zi, z) in zones.iter().enumerate() {
             let c = Vec2::new(z.center.0, z.center.1);
-            if (self.ship.pos - c).length() > z.radius + 380.0 {
+            if (self.ship.pos - c).length() > z.radius + 380.0
+                || self.effect_near(super::data::EffectKind::Cleared, c)
+            {
                 continue;
             }
             self.meteor_timers[zi] -= DT;

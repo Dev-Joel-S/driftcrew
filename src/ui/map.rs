@@ -247,7 +247,7 @@ fn draw_map(
         s.crew.credits,
         s.explored.version,
         s.course.as_ref().map(|r| (r.course, r.step))
-    );
+    ) + &format!("|{:?}|{}", s.routes_known, s.effects.len());
     let h = super::sig_of(&key);
     if sig.0 == h {
         return;
@@ -440,6 +440,48 @@ fn draw_map(
                     true,
                 );
                 label(m, at, format!("☠ {}", n.name), Color::srgb(1.0, 0.35, 0.3));
+            }
+            // Entdeckte Routen (79): gepunktete Linie, Abkürzungen orange, Umwege türkis.
+            for (ri, r) in s.data.world.routes.iter().enumerate() {
+                if !s.route_known(ri) {
+                    continue;
+                }
+                let c = match r.kind {
+                    crate::sim::data::RouteKind::Shortcut => Color::srgb(1.0, 0.6, 0.15),
+                    crate::sim::data::RouteKind::Detour => Color::srgb(0.2, 0.9, 0.8),
+                };
+                let pts: Vec<Vec2> = r
+                    .points
+                    .iter()
+                    .map(|p| to_map(Vec2::new(p.0, p.1)))
+                    .collect();
+                for w in pts.windows(2) {
+                    let n = ((w[1] - w[0]).length() / 6.0).ceil().max(1.0) as usize;
+                    for k in 0..n {
+                        dot(m, w[0].lerp(w[1], k as f32 / n as f32), 2.5, c, true);
+                    }
+                }
+                if let Some(first) = pts.first() {
+                    dot(m, *first, 6.0, c, true);
+                }
+                if let (Some(a), Some(b)) = (pts.first(), pts.last()) {
+                    label(
+                        m,
+                        (*a + *b) * 0.5,
+                        format!("{} ({})", r.name, r.kind.label()),
+                        c,
+                    );
+                }
+            }
+            // Wirkungen erledigter Aufträge an den Stationen (76).
+            for e in &s.effects {
+                let at = to_map(s.world.stations[e.station].pos) + Vec2::new(0.0, 14.0);
+                label(
+                    m,
+                    at,
+                    format!("◆ {}", crate::sim::effects::effect_short(e.kind)),
+                    Color::srgb(0.45, 1.0, 0.6),
+                );
             }
             for cp in &s.data.traffic.checkpoints {
                 let c = Vec2::new(cp.pos.0, cp.pos.1);

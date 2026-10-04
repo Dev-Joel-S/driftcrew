@@ -164,6 +164,9 @@ fn draw_report(
             if let Some(c) = r.comfort {
                 parts.push(format!("Passagiere {:.0} % zufrieden", c * 100.0));
             }
+            if let Some(e) = &r.effect {
+                parts.push(e.clone());
+            }
             if let Some(c) = r.cond {
                 parts.push(format!("Fracht in {:.0} % Zustand angekommen", c * 100.0));
             }

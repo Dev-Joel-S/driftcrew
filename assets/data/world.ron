@@ -321,4 +321,38 @@
         (-220.0, 640.0), (880.0, 260.0), (-920.0, -260.0), (1620.0, -480.0),
         (420.0, -1080.0), (-1320.0, 940.0), (1300.0, 1300.0), (-600.0, 300.0),
     ],
+    // Versteckte Routen (79): erst nach Entdeckung auf der Karte und im Logbuch. Entdeckt
+    // werden sie, wenn ein Scanner-Ring einen Wegpunkt erfasst, beim Andocken an `known_at`
+    // (Gerücht unter Piloten) oder durch einen reparierten Sender in der Nähe. Wer eine Route
+    // von einem Ende zum anderen abfliegt (alle Punkte der Reihe nach), bekommt eine Zeit.
+    routes: [
+        (
+            id: "route_kobalt", name: "Kobalt-Schneise", kind: Shortcut,
+            points: [(1300.0, -420.0), (1480.0, -660.0), (1560.0, -760.0), (1610.0, -900.0), (1640.0, -1260.0)],
+            hint: "Kepler → Nebelhafen mitten durch den Kobaltschwarm. Zwischen den großen Brocken gibt es eine Gasse, kaum breiter als ein Frachter. Wer sie trifft, spart ein Drittel der Strecke.",
+            known_at: Some("kepler"),
+        ),
+        (
+            id: "route_ostbogen", name: "Ostbogen", kind: Detour,
+            points: [(1330.0, -400.0), (1780.0, -560.0), (1860.0, -900.0), (1760.0, -1260.0)],
+            hint: "Kepler → Nebelhafen im weiten Bogen östlich am Kobaltschwarm vorbei. Länger, aber hier liegt nichts im Weg – die Route der Schwertransporte.",
+        ),
+        (
+            id: "route_sturzfeld", name: "Sturzfeld-Querung", kind: Shortcut,
+            points: [(150.0, 30.0), (780.0, 250.0), (1000.0, 300.0), (1220.0, 320.0), (1900.0, 170.0)],
+            hint: "Nova → Vega quer durchs Sturzfeld. Die Meteore kommen in Schüben – zwischen zwei Schüben ist der Weg frei. Nach einer Bergung ist das Feld eine Weile ruhig.",
+            known_at: Some("vega"),
+        ),
+        (
+            id: "route_sogkante", name: "Sogkante", kind: Shortcut,
+            points: [(100.0, -120.0), (600.0, -700.0), (880.0, -1040.0), (1150.0, -1260.0), (1500.0, -1380.0)],
+            hint: "Nova → Nebelhafen an der Kante der Gravitationsanomalie entlang. Der Sog zieht nach innen und beschleunigt zugleich – wer gegenhält, fliegt schneller als auf jeder anderen Strecke.",
+        ),
+        (
+            id: "route_friedhof", name: "Friedhofsgasse", kind: Detour,
+            points: [(-1150.0, 520.0), (-1100.0, 900.0), (-1060.0, 1250.0), (-1150.0, 1430.0)],
+            hint: "Von der Werft Orion in den Schiffsfriedhof: eine Gasse, die die Bergungscrews freigeräumt halten. Weniger Schrott als quer durchs Feld.",
+            known_at: Some("werft"),
+        ),
+    ],
 )

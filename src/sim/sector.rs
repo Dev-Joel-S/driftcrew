@@ -153,7 +153,11 @@ impl SimState {
         if self.ship.destroyed {
             return;
         }
-        let density = self.sector_at(me).debris;
+        let mut density = self.sector_at(me).debris;
+        // Geräumte Umgebung (76): kaum noch Schrott.
+        if self.effect_near(super::data::EffectKind::Cleared, me) {
+            density *= 0.15;
+        }
         let want = (density * 70.0) as usize;
         let have = self
             .bodies
@@ -318,7 +322,11 @@ impl SimState {
         let nebula = self.sector_at(origin).nebula;
         // Artefakte an Bord stören den Scanner ebenfalls.
         let jam = self.artifact_jam();
-        let max = self.ship.scan_range * (1.0 - 0.55 * nebula) * (1.0 - 0.6 * jam);
+        let mut max = self.ship.scan_range * (1.0 - 0.55 * nebula) * (1.0 - 0.6 * jam);
+        // Reparierter Sender in der Nähe (76): Scanner reicht weiter.
+        if self.effect_near(super::data::EffectKind::Beacon, origin) {
+            max *= 1.5;
+        }
         self.scan = Some(ScanPulse {
             origin,
             radius: 0.0,
@@ -346,6 +354,7 @@ impl SimState {
             let d = (q - p.origin).length();
             d >= r0 && d < p.radius
         };
+        self.scan_routes(p.origin, r0, p.radius);
         let mut found = Vec::new();
         let mut wrecks = Vec::new();
         for b in &self.bodies {

@@ -707,6 +707,59 @@ pub struct WorldDef {
     pub wrecks: Vec<WreckDef>,
     #[serde(default)]
     pub events: EventsDef,
+    /// Versteckte Routen (79): sichere Umwege und riskante Abkürzungen.
+    #[serde(default)]
+    pub routes: Vec<RouteDef>,
+}
+
+/// Eine Route durch die Welt, die erst entdeckt werden muss (Scanner, Gerüchte an einer Station,
+/// reparierter Sender).
+#[derive(Deserialize, Clone, Debug)]
+pub struct RouteDef {
+    pub id: String,
+    pub name: String,
+    pub kind: RouteKind,
+    pub points: Vec<P>,
+    /// Hinweis fürs Logbuch.
+    pub hint: String,
+    /// Station, an der Piloten davon erzählen (beim Andocken).
+    #[serde(default)]
+    pub known_at: Option<String>,
+}
+
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RouteKind {
+    /// Kürzer, aber durch Gefahr (Asteroiden, Meteore, Sog).
+    Shortcut,
+    /// Länger, aber an der Gefahr vorbei.
+    Detour,
+}
+
+impl RouteKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            RouteKind::Shortcut => "Abkürzung",
+            RouteKind::Detour => "Sicherer Umweg",
+        }
+    }
+}
+
+/// Auswirkung eines erledigten Auftrags auf die Umgebung einer Station (76).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EffectKind {
+    /// Versorgt: Munition und Reparatur dort gratis.
+    Supplied,
+    /// Geräumt: kaum Trümmer, keine Meteore im Umkreis.
+    Cleared,
+    /// Sender repariert: Routen in der Nähe bekannt, Scanner reicht weiter.
+    Beacon,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct EffectSave {
+    pub kind: EffectKind,
+    pub station: String,
+    pub left: f32,
 }
 
 // ---------------------------------------------------------------------------
@@ -1688,6 +1741,13 @@ pub struct CrewSave {
     /// Gerettete Besatzungen, die sich noch melden werden.
     #[serde(default)]
     pub rescued: Vec<RescuedSave>,
+    /// Wirkungen erledigter Aufträge, entdeckte Routen und Bestzeiten darauf.
+    #[serde(default)]
+    pub effects: Vec<EffectSave>,
+    #[serde(default)]
+    pub routes: Vec<String>,
+    #[serde(default)]
+    pub route_best: Vec<(String, f32)>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -1807,6 +1867,9 @@ impl CrewSave {
             story: StorySave::default(),
             dropped: Vec::new(),
             rescued: Vec::new(),
+            effects: Vec::new(),
+            routes: Vec::new(),
+            route_best: Vec::new(),
         }
     }
 

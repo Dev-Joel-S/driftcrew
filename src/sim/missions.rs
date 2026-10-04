@@ -1337,6 +1337,11 @@ impl SimState {
             format!("Auftrag erfüllt: {title}  +{paid} Credits"),
             ToastKind::Good,
         );
+        // Die Welt reagiert (76): was sich durch den Auftrag eine Weile ändert.
+        let effect = self.mission_effect(&m.kind, m.origin);
+        if let Some(text) = &effect {
+            self.toast(text.clone(), ToastKind::Good);
+        }
         // Ruf: bei der Station, die den Auftrag vergeben hat – bei Notrufen und Lieferungen
         // von Außenposten bei der Zielstation.
         let rep_station = match (m.origin, &m.kind) {
@@ -1386,6 +1391,7 @@ impl SimState {
             max_strain: m.max_strain,
             comfort,
             cond,
+            effect,
             par: m.par,
             reputation,
             stats,

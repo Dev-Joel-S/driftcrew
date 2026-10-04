@@ -181,6 +181,15 @@ impl SimState {
 
     /// Preis für einen Service (Reparatur, Schild und Tanken anteilig), mit Ortsfaktor.
     fn service_price(&self, effect: &ServiceEffect, base: u32) -> u32 {
+        // Versorgte Station (76): Munition und Reparatur gratis.
+        if self.service_free_here()
+            && matches!(
+                effect,
+                ServiceEffect::Ammo(_) | ServiceEffect::RepairFull | ServiceEffect::RepairThrusters
+            )
+        {
+            return 0;
+        }
         let frac = match effect {
             ServiceEffect::RepairFull => 1.0 - self.ship.hull / self.ship.max_hull,
             ServiceEffect::ShieldFull => 1.0 - self.ship.shield / self.ship.max_shield.max(1.0),

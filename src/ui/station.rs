@@ -793,6 +793,24 @@ fn items_for(sim: &SimState, tab: Tab, sel: &Option<String>) -> Vec<Item<Act>> {
             }
         }
         Tab::Missions => {
+            // Was erledigte Aufträge hier gerade bewirken (76).
+            if let Some(si) = sim.docked_station() {
+                for e in sim.effects.iter().filter(|e| e.station == si) {
+                    v.push(
+                        Item::new(
+                            format!("◆ {}", crate::sim::effects::effect_short(e.kind)),
+                            Act::Undock,
+                        )
+                        .right(format!(
+                            "noch {}:{:02}",
+                            e.left as u32 / 60,
+                            e.left as u32 % 60
+                        ))
+                        .detail("Wirkung eurer erledigten Aufträge")
+                        .enabled(false),
+                    );
+                }
+            }
             for m in &sim.active {
                 v.push(
                     Item::new(format!("✓ {}", m.title(sim)), Act::Abandon(m.id))
