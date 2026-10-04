@@ -7,10 +7,11 @@ pkgs.mkShell {
     udev
     libxkbcommon
     wayland
-    xorg.libX11
-    xorg.libXcursor
-    xorg.libXi
-    xorg.libXrandr
+    # Neue Namen (ab 2026), mit Rückfall auf die alten für ältere Nixpkgs.
+    (pkgs.libx11 or pkgs.xorg.libX11)
+    (pkgs.libxcursor or pkgs.xorg.libXcursor)
+    (pkgs.libxi or pkgs.xorg.libXi)
+    (pkgs.libxrandr or pkgs.xorg.libXrandr)
     stdenv.cc.cc.lib
   ]);
   # Normale Linux-Programme suchen ihren Lader unter /lib64 – den gibt es auf NixOS nicht.
