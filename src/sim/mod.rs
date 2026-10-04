@@ -39,6 +39,8 @@ pub mod missions;
 pub mod npc;
 #[cfg(test)]
 mod npc_tests;
+#[cfg(test)]
+mod ore_tests;
 pub mod physics;
 pub mod power;
 #[cfg(test)]

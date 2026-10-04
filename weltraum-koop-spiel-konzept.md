@@ -198,4 +198,5 @@ Was sich gegenüber der ersten Fassung geändert hat (Begründungen und Details 
 - **Runde 4, Flugmodell nachgeschärft:** Nach dem Schub driftet man lange und langsam ausklingend weiter, der Stabilisator ist nur noch klein; die Grund-Bremse ist schwach und wird über Bremsdüsen-Upgrades stärker *(umgesetzt in Phase 19)*
 - **Runde 4, Upgrades verkaufen:** Eingebaute Upgrades lassen sich zum halben Preis wieder ausbauen (höchste Stufe zuerst) *(umgesetzt in Phase 19)*
 - **Runde 4, Einführung:** Der Grundkurs ist zugleich die optionale Einführung und steht für neue Crews oben im Stationsmenü *(umgesetzt in Phase 19)*
+- **Runde 4, Erze:** Asteroidenfelder haben ein Haupterz plus Beimischungen, damit es schon nahe der Heimat mehr als Eisen gibt; weniger taubes Gestein; der Bohrer zeigt vorab, was im Ziel steckt. Bergbau-Richtzeiten rechnen mit dem Weg zum passenden Erz, alle Richtzeiten +25 % *(umgesetzt in Phase 19)*
 - **Runde 4, Bremse als Slot:** Zusätzlich zur festen Bremstaste lässt sich die Bremse in der Lobby wie ein Slot auf eine eigene Taste legen – für Geräte ohne Steuerkreuz *(umgesetzt in Phase 19)*

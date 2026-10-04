@@ -303,46 +303,56 @@
             landing_zones: [90.0, 270.0],
         ),
     ],
+    // ore_chance: Anteil der Asteroiden mit Erz (der Rest ist taubes Gestein).
+    // mixed: davon trägt dieser Anteil ein anderes Erz als das Haupterz des Felds.
     asteroid_fields: [
         (
             name: "Splittergürtel", center: (260.0, 1380.0), radius: 210.0, count: 160,
-            min_radius: 1.4, max_radius: 7.5, ore: Ferrit, ore_chance: 0.6, color: "#8a6a58",
+            min_radius: 1.4, max_radius: 7.5, ore: Ferrit, ore_chance: 0.8, color: "#8a6a58",
+            mixed: [(Kobalt, 0.2), (Solarit, 0.12), (Ionit, 0.05)],
         ),
         (
             name: "Kobaltschwarm", center: (1560.0, -760.0), radius: 150.0, count: 85,
-            min_radius: 1.2, max_radius: 5.0, ore: Kobalt, ore_chance: 0.75, color: "#5a6a8a",
+            min_radius: 1.2, max_radius: 5.0, ore: Kobalt, ore_chance: 0.85, color: "#5a6a8a",
+            mixed: [(Ferrit, 0.15), (Ionit, 0.08)],
         ),
         // Phase 19: mehr zu tun in den leeren Gegenden.
         // Kieselfeld direkt nördlich von Nova: lockeres Übungsfeld zum ersten Abbauen.
         (
             name: "Kieselfeld", center: (-260.0, 640.0), radius: 95.0, count: 22,
-            min_radius: 1.0, max_radius: 3.2, ore: Ferrit, ore_chance: 0.7, color: "#8a7a68",
+            min_radius: 1.0, max_radius: 3.2, ore: Ferrit, ore_chance: 0.9, color: "#8a7a68",
+            mixed: [(Kobalt, 0.3), (Solarit, 0.12)],
         ),
         // Frostwolke ganz im Norden: seltenes Ionit, weit draußen.
         (
             name: "Frostwolke", center: (-250.0, 2080.0), radius: 170.0, count: 45,
-            min_radius: 1.4, max_radius: 5.5, ore: Ionit, ore_chance: 0.55, color: "#9ab8d8",
+            min_radius: 1.4, max_radius: 5.5, ore: Ionit, ore_chance: 0.75, color: "#9ab8d8",
+            mixed: [(Kobalt, 0.2)],
         ),
         // Äußerer Ring: weiter draußen reicher, aber gefährlicher.
         // Ascheriff im Süden bei der Südwacht: viel Solarit, ringsum Meteore.
         (
             name: "Ascheriff", center: (-150.0, -2200.0), radius: 160.0, count: 55,
-            min_radius: 1.4, max_radius: 6.0, ore: Solarit, ore_chance: 0.7, color: "#7a5a48",
+            min_radius: 1.4, max_radius: 6.0, ore: Solarit, ore_chance: 0.85, color: "#7a5a48",
+            mixed: [(Ferrit, 0.15)],
         ),
         // Ostklippen am Ostrand: Ionit, bewacht von den Klippenpiraten.
         (
             name: "Ostklippen", center: (2250.0, -900.0), radius: 140.0, count: 45,
-            min_radius: 1.6, max_radius: 6.5, ore: Ionit, ore_chance: 0.65, color: "#6a5a7a",
+            min_radius: 1.6, max_radius: 6.5, ore: Ionit, ore_chance: 0.8, color: "#6a5a7a",
+            mixed: [(Solarit, 0.2)],
         ),
         // Westwall: Kobalt, ruhig gelegen – aber weit von allem weg.
         (
             name: "Westwall", center: (-2250.0, 250.0), radius: 150.0, count: 45,
-            min_radius: 1.2, max_radius: 5.0, ore: Kobalt, ore_chance: 0.65, color: "#5a6a7a",
+            min_radius: 1.2, max_radius: 5.0, ore: Kobalt, ore_chance: 0.8, color: "#5a6a7a",
+            mixed: [(Ionit, 0.12)],
         ),
         // Glimmerband im Nordosten zwischen Relais Ost und Azura.
         (
             name: "Glimmerband", center: (2050.0, 1750.0), radius: 140.0, count: 35,
-            min_radius: 1.2, max_radius: 4.5, ore: Solarit, ore_chance: 0.6, color: "#b89a58",
+            min_radius: 1.2, max_radius: 4.5, ore: Solarit, ore_chance: 0.8, color: "#b89a58",
+            mixed: [(Kobalt, 0.2)],
         ),
     ],
     meteor_zones: [

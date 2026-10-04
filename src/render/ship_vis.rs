@@ -137,7 +137,7 @@ pub fn blink_nav_lights(time: Res<Time>, mut q: Query<(&NavLight, &mut Visibilit
 pub struct VisMaps {
     pub bodies: HashMap<u32, Entity>,
     pub projectiles: HashMap<u32, Entity>,
-    pub rock_mats: HashMap<(usize, bool), Handle<StandardMaterial>>,
+    pub rock_mats: HashMap<(usize, Option<crate::sim::data::Ore>), Handle<StandardMaterial>>,
 }
 
 pub fn ship_signature(ship: &Ship) -> String {
@@ -900,7 +900,7 @@ pub fn sync_bodies(
         let mut kids: Vec<Entity> = Vec::new();
         match &b.kind {
             BodyKind::Asteroid { ore, field, .. } => {
-                let key = (*field, ore.is_some());
+                let key = (*field, *ore);
                 let mat = if let Some(m) = maps.rock_mats.get(&key) {
                     m.clone()
                 } else {

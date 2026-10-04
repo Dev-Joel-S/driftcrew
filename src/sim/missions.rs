@@ -9,6 +9,9 @@ use super::stats::{CrewStats, MissionReport};
 use super::world::Owner;
 use super::{Body, BodyKind, DT, SimEvent, SimState, ToastKind};
 
+/// Zuschlag auf alle Richtzeiten: das Flugmodell mit langer Drift braucht Zeit zum Abfangen.
+pub const PAR_SLACK: f32 = 1.25;
+
 pub const MAX_ACTIVE: usize = 4;
 /// Ab dieser Beschleunigung (m/s²) wird es den Passagieren ungemütlich.
 pub const COMFORT_ACCEL: f32 = 10.0;
@@ -310,21 +313,29 @@ impl Mission {
             }
             MissionKind::Mining { ore, .. } => {
                 let have = s.ship.ore_amount(*ore).max(0.0);
-                let source = s
-                    .world
-                    .planets
+                // Die zwei nächsten Fundorte, reiche zuerst genannt.
+                let mut src = s.ore_sources(*ore);
+                src.sort_by(|a, b| {
+                    (a.0 - s.ship.pos)
+                        .length()
+                        .total_cmp(&(b.0 - s.ship.pos).length())
+                });
+                let names: Vec<String> = src
                     .iter()
-                    .find(|p| p.ore == *ore)
-                    .map(|p| p.name.clone())
-                    .or_else(|| {
-                        s.data
-                            .world
-                            .asteroid_fields
-                            .iter()
-                            .find(|f| f.ore == *ore)
-                            .map(|f| f.name.clone())
+                    .take(2)
+                    .map(|(_, n, rich)| {
+                        if *rich {
+                            n.clone()
+                        } else {
+                            format!("{n} (wenig)")
+                        }
                     })
-                    .unwrap_or_else(|| "?".into());
+                    .collect();
+                let source = if names.is_empty() {
+                    "?".to_string()
+                } else {
+                    names.join(", ")
+                };
                 format!("Vorkommen: {source} · an Bord {have:.1} t")
             }
             MissionKind::Tow { .. } => "Treibendes Schiff mit dem Kran zur Station ziehen".into(),
@@ -396,21 +407,10 @@ impl Mission {
                     Some(station(*to))
                 } else {
                     let ship = s.ship.pos;
-                    let planet = s
-                        .world
-                        .planets
-                        .iter()
-                        .filter(|p| p.ore == *ore)
-                        .map(|p| p.pos)
-                        .min_by(|a, b| (*a - ship).length().total_cmp(&(*b - ship).length()));
-                    planet.or_else(|| {
-                        s.data
-                            .world
-                            .asteroid_fields
-                            .iter()
-                            .find(|f| f.ore == *ore)
-                            .map(|f| v(f.center))
-                    })
+                    s.ore_sources(*ore)
+                        .into_iter()
+                        .map(|(p, _, _)| p)
+                        .min_by(|a, b| (*a - ship).length().total_cmp(&(*b - ship).length()))
                 }
             }
             MissionKind::Bulky { site, to, body, .. } => {
@@ -618,10 +618,7 @@ impl SimState {
         let md = self.data.missions.clone();
         let n_st = self.world.stations.len();
         let level = self.rep_level_at(si);
-        let ore_exists = |s: &SimState, ore: Ore| {
-            s.world.planets.iter().any(|p| p.ore == ore)
-                || s.data.world.asteroid_fields.iter().any(|f| f.ore == ore)
-        };
+        let ore_exists = |s: &SimState, ore: Ore| !s.ore_sources(ore).is_empty();
         let ores_exist = md.mining.iter().any(|m| ore_exists(self, m.ore));
         // Wer vergibt den Auftrag, und welche Art? Schwerlast gibt es erst ab Stufe „Bekannt“.
         let npcs = self.npcs_at(Owner::Station(si));
@@ -833,6 +830,25 @@ impl SimState {
         }
     }
 
+    /// Wo es dieses Erz gibt: Planeten mit Adern und Asteroidenfelder (Ort, Name, reich?).
+    /// Felder, in denen das Erz nur beigemischt ist, zählen ab einem Anteil von 10 %.
+    pub fn ore_sources(&self, ore: Ore) -> Vec<(Vec2, String, bool)> {
+        let mut out: Vec<(Vec2, String, bool)> = self
+            .world
+            .planets
+            .iter()
+            .filter(|p| p.ore == ore)
+            .map(|p| (p.pos, p.name.clone(), true))
+            .collect();
+        for f in &self.data.world.asteroid_fields {
+            let share = f.ore_share(ore);
+            if f.ore == ore || share >= 0.1 {
+                out.push((v(f.center), f.name.clone(), f.ore == ore));
+            }
+        }
+        out
+    }
+
     /// Richtzeit: Strecke durch ein gemütliches Tempo plus Zeit fürs Hantieren.
     pub fn par_time(&self, kind: &MissionKind) -> f32 {
         let st = |i: usize| self.world.stations[i].pos;
@@ -844,15 +860,15 @@ impl SimState {
             MissionKind::Delivery { from, to, .. } => (at(*from) - st(*to)).length() / 10.0 + 60.0,
             MissionKind::Passengers { from, to, .. } => (st(*from) - st(*to)).length() / 8.0 + 60.0,
             MissionKind::Haul { from, to, .. } => (st(*from) - st(*to)).length() / 6.0 + 90.0,
-            MissionKind::Mining { amount, to, .. } => {
-                // Grob: hin zur nächsten Quelle und zurück, plus Abbau.
+            MissionKind::Mining { ore, amount, to } => {
+                // Hin zum nächsten Fundort dieses Erzes und zurück, dazu der Abbau: Felsen
+                // anfliegen, ruhig halten, weiterziehen – gut 12 s pro Tonne.
                 let src = self
-                    .world
-                    .planets
+                    .ore_sources(*ore)
                     .iter()
-                    .map(|p| (p.pos - st(*to)).length())
+                    .map(|(p, _, _)| (*p - st(*to)).length())
                     .fold(f32::MAX, f32::min);
-                src.min(2000.0) * 2.0 / 12.0 + amount * 12.0 + 60.0
+                src.min(3000.0) * 2.0 / 9.0 + amount * 12.0 + 120.0
             }
             MissionKind::Tow { site, to, .. } => (*site - st(*to)).length() / 6.0 + 150.0,
             MissionKind::Bulky { site, to, .. } => (*site - st(*to)).length() / 6.0 + 180.0,
@@ -884,7 +900,8 @@ impl SimState {
                 d / 10.0 + sites.len() as f32 * (self.data.missions.survey.seconds + 30.0) + 30.0
             }
         };
-        (t / 10.0).round() * 10.0
+        // Lange Drift und schwache Grund-Bremse (Runde 4): Manöver brauchen mehr Zeit.
+        (t * PAR_SLACK / 10.0).round() * 10.0
     }
 
     /// Außenposten verschicken ihr Erz als Ladung zu einer Station.

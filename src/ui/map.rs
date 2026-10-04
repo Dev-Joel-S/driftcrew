@@ -388,7 +388,9 @@ fn draw_map(
                     srgb(hex(&f.color)).with_alpha(0.35),
                     true,
                 );
-                label(m, at, f.name.clone(), MUTED);
+                // Was es dort gibt: Haupterz zuerst, Beimischungen klein dahinter.
+                let ores: Vec<&str> = f.ores().iter().map(|o| o.label()).collect();
+                label(m, at, format!("{}\n{}", f.name, ores.join(" · ")), MUTED);
             }
             for z in s
                 .data

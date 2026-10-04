@@ -93,7 +93,18 @@ impl SimState {
             f.min_radius + (f.max_radius - f.min_radius) * t.powf(1.4)
         });
         let ore = if self.rng.chance(f.ore_chance) {
-            Some(f.ore)
+            // Beimischung: manche Erz-Asteroiden tragen ein anderes Erz als das Feld.
+            let roll = self.rng.f32();
+            let mut acc = 0.0;
+            let mut o = f.ore;
+            for (m, c) in &f.mixed {
+                acc += c;
+                if roll < acc {
+                    o = *m;
+                    break;
+                }
+            }
+            Some(o)
         } else {
             None
         };
@@ -106,7 +117,7 @@ impl SimState {
             id,
             kind: BodyKind::Asteroid {
                 ore,
-                ore_left: if ore.is_some() { r * 1.6 } else { 0.0 },
+                ore_left: if ore.is_some() { r * 2.2 } else { 0.0 },
                 hp: asteroid_hp(r),
                 field,
                 vein,

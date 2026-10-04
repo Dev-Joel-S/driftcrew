@@ -297,6 +297,32 @@ die Phasen 14–18 den Rest). Phase 19 setzt die Rückmeldungen aus dem ersten S
 
 ## Protokoll
 
+### Runde 4 – Phase 19, Teil 8: Erze verständlich, Abbau und Richtzeiten (erledigt)
+
+- Rückmeldung: „Was gibt mir welches Material? Die wenigsten Asteroiden geben irgendwas, ich
+  habe nur Eisen bekommen. Zeit fehlt, wenn Aufträge nach Zeit bezahlen. Minen dauert
+  ordentlich – nicht wie in Rings of Saturn, muss man für die Zeit bedenken. Lore ziemlich gut.“
+- Befund: Die beiden Felder nahe Nova (Kieselfeld, Splittergürtel) hatten nur Ferrit; 30–45 %
+  aller Asteroiden waren taub; man sah erst beim Bohren, ob etwas drin ist. Die Richtzeit für
+  Bergbau rechnete mit dem nächsten Planeten – egal mit welchem Erz.
+- **Felder mit Beimischung:** `FieldDef::mixed` (Erz, Anteil der Erz-Asteroiden),
+  `ore_share`, `ores`. Kieselfeld: Ferrit mit 30 % Kobalt, 12 % Solarit; Splittergürtel:
+  Ferrit mit Kobalt, Solarit, selten Ionit; die fernen Felder je eine Beimischung.
+  `ore_chance` überall 0,75–0,9 (vorher 0,55–0,75).
+- **Bohrer-Anzeige:** `SimState::drill_preview` – bis 16 m voraus steht am Ziel, was drinsteckt
+  (Erz und Tonnen in Erzfarbe, „taubes Gestein – kein Erz“, „abgebaut“, Schrott, Planeten-Ader),
+  außerhalb der Bohrreichweite (5,5 m) mit „näher ran“. Zielsuche als `drill_target` geteilt.
+- **Karte:** Felder zeigen ihre Erze (Haupterz zuerst). Hilfe und LIESMICH: „Erze – was gibt es
+  wo?“. Asteroiden-Material im Cache jetzt pro Erz (vorher nur „mit/ohne Erz“ – gemischte Felder
+  hätten sonst die falsche Aderfarbe gezeigt).
+- **Abbau:** Bohrleistung 1,6 → 2,4 t/s, Erz pro Asteroid r × 1,6 → r × 2,2 t.
+- **Richtzeiten:** `SimState::ore_sources` (Planeten und Felder, Beimischung ab 10 %) für Hinweis,
+  Wegpunkt und Richtzeit; Bergbau: Weg zum nächsten passenden Fundort hin und zurück bei 9 m/s,
+  12 s pro Tonne, +120 s. Alle Richtzeiten ×1,25 (`PAR_SLACK`) wegen langer Drift und schwacher
+  Bremse.
+- Tests `ore_tests`: Mischung im Kieselfeld, Fundorte, Bohrer-Anzeige (Erz, taub, „näher ran“,
+  außer Reichweite), Richtzeit Ionit > Ferrit. 173 Tests grün.
+
 ### Runde 4 – Phase 19, Teil 7: Feinschliff nach dem zweiten Spieltest (erledigt)
 
 - Rückmeldung: „Fast perfekt. Am Anfang vielleicht eine Art Tutorial (optional).

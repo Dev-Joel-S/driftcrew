@@ -1302,6 +1302,15 @@ fn update_markers(
             }
         }
     }
+    // Bohrer: was steckt im Ziel? Erz und Menge, taubes Gestein, Schrott.
+    for i in 0..s.ship.tools.len() {
+        if let Some((at, label, ore)) = s.drill_preview(i) {
+            let color = ore
+                .map(|o| crate::render::srgb(o.color()))
+                .unwrap_or(Color::srgb(0.65, 0.65, 0.68));
+            add(&mut commands, at, label, color, false);
+        }
+    }
     // Scanner-Funde im Bild beschriften (nur Wracks und Vorkommen, sonst wird es zu voll).
     for b in &s.blips {
         use crate::sim::sector::BlipKind;

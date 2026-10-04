@@ -155,11 +155,7 @@ impl SimState {
         let ores: Vec<Ore> = Ore::ALL
             .iter()
             .copied()
-            .filter(|o| {
-                *o != Ore::Schrott
-                    && (self.world.planets.iter().any(|p| p.ore == *o)
-                        || self.data.world.asteroid_fields.iter().any(|f| f.ore == *o))
-            })
+            .filter(|o| *o != Ore::Schrott && !self.ore_sources(*o).is_empty())
             .collect();
         if ores.is_empty() {
             return;

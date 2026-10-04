@@ -521,7 +521,8 @@ impl Ship {
             ang_damp: def.angular_damping + stats.gyro,
             brake_mul: stats.brake_mul,
             crane_range: 20.0 * stats.crane_mul,
-            drill_rate: 1.6 * stats.drill_mul,
+            // Runde 4: schneller abbauen (vorher 1,6 t/s) – Anfliegen und Halten dauern genug.
+            drill_rate: 2.4 * stats.drill_mul,
             fuel: max_fuel,
             max_fuel,
             fuel_burn: def.fuel_burn * stats.fuel_burn_mul,

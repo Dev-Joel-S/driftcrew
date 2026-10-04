@@ -429,6 +429,15 @@ entscheidet, **Gleichstand bedeutet Nein**. Allein gespielt wird direkt gekauft.
 und rollt nur langsam aus (die Fahrt halbiert sich nach etwa 14 s), ein kleiner Stabilisator
 dämpft Drehungen. In den Einstellungen abschaltbar – dann gilt die reibungsfreie Physik.
 
+**Erze – was gibt es wo?** Erz leuchtet in seiner Farbe aus den Adern (Ferrit orange, Kobalt
+blau, Solarit gelb, Ionit türkis), taubes Gestein bleibt dunkel. Der Bohrer zeigt bis 16 m
+voraus, was im Ziel steckt („Kobalt · 4,2 t“, „taubes Gestein – kein Erz“, außerhalb der
+Bohrreichweite mit „näher ran“), die Karte nennt die Erze jedes Felds. Jedes Feld hat ein
+Haupterz und Beimischungen (`mixed` in `world.ron`): das Kieselfeld nördlich von Nova ist Ferrit
+mit etwas Kobalt und Solarit, der Splittergürtel ebenso (dazu selten Ionit); Kobalt gibt es im
+Kobaltschwarm und am Westwall, Solarit im Ascheriff und Glimmerband, Ionit in der Frostwolke
+und an den Ostklippen. Bohrleistung 2,4 t/s, ein Asteroid trägt etwa 2,2 t pro Meter Radius.
+
 **Bremse:** Die Grund-Bremse ist bewusst schwach (2 m/s², rückwärts höchstens 1,2 m/s). Stärker
 wird sie mit den Upgrades **Bremsdüsen I/II** und dem **Gegenschub-Ring** (Bordsysteme).
 

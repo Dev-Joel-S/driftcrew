@@ -18,6 +18,8 @@ const ROPE_BREAK_IMPULSE: f32 = 70.0;
 /// Ab diesem Seilimpuls reißt ein Bauteil aus einem Wrack (ein Ruck, kein ruhiges Ziehen).
 pub const TEAR_IMPULSE: f32 = 12.0;
 const DRILL_RANGE: f32 = 5.5;
+/// So weit zeigt der Bohrer schon an, was im Ziel steckt.
+const DRILL_PREVIEW: f32 = 16.0;
 /// Schubanteil, wenn der Tank leer ist – damit niemand im reibungsfreien All festsitzt.
 pub const EMERGENCY_THRUST: f32 = 0.25;
 
@@ -631,11 +633,8 @@ impl SimState {
         }
     }
 
-    fn update_drill(&mut self, i: usize) {
-        self.ship.tools[i].drill = None;
-        if !self.ship.tools[i].pressed {
-            return;
-        }
+    /// Was der Bohrer von Werkzeug `i` gerade träfe: Abstand entlang der Zielrichtung und Ziel.
+    fn drill_target(&self, i: usize, range: f32) -> Option<(f32, Target)> {
         let mount = self.ship.tool_world_pos(i);
         let dir = self.ship.tools[i].aim_dir();
         let mut best: Option<(f32, Target)> = None;
@@ -645,7 +644,7 @@ impl SimState {
             }
         };
         for (pi, p) in self.world.planets.iter().enumerate() {
-            if let Some(t) = ray_circle(mount, dir, DRILL_RANGE, p.pos, p.radius) {
+            if let Some(t) = ray_circle(mount, dir, range, p.pos, p.radius) {
                 consider(t, Target::Planet(pi), &mut best);
             }
         }
@@ -654,22 +653,95 @@ impl SimState {
                 continue;
             }
             for (cp, cr) in b.circles().iter() {
-                if let Some(t) = ray_circle(mount, dir, DRILL_RANGE, cp, cr) {
+                if let Some(t) = ray_circle(mount, dir, range, cp, cr) {
                     consider(t, Target::Body(bi), &mut best);
                 }
             }
         }
         for col in &self.world.colliders {
             if let Shape::Poly(q) = col.shape {
-                if !col.enabled || !col.aabb.expand(DRILL_RANGE).contains(mount) {
+                if !col.enabled || !col.aabb.expand(range).contains(mount) {
                     continue;
                 }
-                if let Some(t) = ray_poly(mount, dir, DRILL_RANGE, &q) {
+                if let Some(t) = ray_poly(mount, dir, range, &q) {
                     consider(t, Target::Rock, &mut best);
                 }
             }
         }
-        let Some((t, target)) = best else {
+        best
+    }
+
+    /// Anzeige am Bohrer: was im Ziel steckt (Punkt, Text, Erz). None = nichts in Reichweite.
+    pub fn drill_preview(&self, i: usize) -> Option<(Vec2, String, Option<super::data::Ore>)> {
+        let t = self.ship.tools.get(i)?;
+        if t.kind != ToolKind::Drill || self.ship.docked.is_some() || self.ship.destroyed {
+            return None;
+        }
+        let (d, target) = self.drill_target(i, DRILL_PREVIEW)?;
+        // Außerhalb der Bohrreichweite: schon zeigen, was drinsteckt, aber „näher ran“.
+        let far = if d > DRILL_RANGE {
+            " · näher ran"
+        } else {
+            ""
+        };
+        let point = self.ship.tool_world_pos(i) + t.aim_dir() * d;
+        match target {
+            Target::Planet(pi) => {
+                let p = &self.world.planets[pi];
+                let ang = f32::atan2(point.y - p.pos.y, point.x - p.pos.x);
+                let half = p.deposit_half_angle();
+                let left = p
+                    .deposits
+                    .iter()
+                    .find(|dp| angle_diff(ang, dp.angle).abs() < half)
+                    .map(|dp| dp.amount);
+                Some(match left {
+                    Some(a) if a > 0.05 => (
+                        point,
+                        format!("{}-Ader · {a:.1} t{far}", p.ore.label()),
+                        Some(p.ore),
+                    ),
+                    Some(_) => (point, "Ader erschöpft".into(), None),
+                    None => (
+                        point,
+                        format!("keine Ader hier – {} liegt in den Adern", p.ore.label()),
+                        None,
+                    ),
+                })
+            }
+            Target::Body(bi) => match &self.bodies[bi].kind {
+                BodyKind::Asteroid {
+                    ore: Some(o),
+                    ore_left,
+                    ..
+                } if *ore_left > 0.05 => Some((
+                    point,
+                    format!("{} · {:.1} t{far}", o.label(), ore_left),
+                    Some(*o),
+                )),
+                BodyKind::Asteroid { ore: Some(_), .. } => Some((point, "abgebaut".into(), None)),
+                BodyKind::Asteroid { ore: None, .. } => {
+                    Some((point, "taubes Gestein – kein Erz".into(), None))
+                }
+                BodyKind::Wreck { scrap, .. } if *scrap > 0.05 => Some((
+                    point,
+                    format!("Schrott · {scrap:.1} t{far}"),
+                    Some(super::data::Ore::Schrott),
+                )),
+                _ => None,
+            },
+            Target::Rock => None,
+        }
+    }
+
+    fn update_drill(&mut self, i: usize) {
+        self.ship.tools[i].drill = None;
+        if !self.ship.tools[i].pressed {
+            return;
+        }
+        let mount = self.ship.tool_world_pos(i);
+        let dir = self.ship.tools[i].aim_dir();
+        let Some((t, target)) = self.drill_target(i, DRILL_RANGE) else {
             return;
         };
         let point = mount + dir * t;

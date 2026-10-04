@@ -560,6 +560,36 @@ pub struct FieldDef {
     pub ore: Ore,
     pub ore_chance: f32,
     pub color: String,
+    /// Beimischung: Anteil der Erz-Asteroiden, die stattdessen ein anderes Erz tragen.
+    #[serde(default)]
+    pub mixed: Vec<(Ore, f32)>,
+}
+
+impl FieldDef {
+    /// Anteil aller Asteroiden des Felds, die dieses Erz tragen.
+    pub fn ore_share(&self, o: Ore) -> f32 {
+        let mixed: f32 = self.mixed.iter().map(|(_, c)| c).sum();
+        if o == self.ore {
+            return self.ore_chance * (1.0 - mixed).max(0.0);
+        }
+        self.mixed
+            .iter()
+            .filter(|(m, _)| *m == o)
+            .map(|(_, c)| self.ore_chance * c)
+            .sum()
+    }
+
+    /// Erze des Felds, das Haupterz zuerst.
+    pub fn ores(&self) -> Vec<Ore> {
+        let mut v = vec![self.ore];
+        v.extend(
+            self.mixed
+                .iter()
+                .map(|(o, _)| *o)
+                .filter(|o| *o != self.ore),
+        );
+        v
+    }
 }
 
 #[derive(Deserialize, Clone, Debug)]
