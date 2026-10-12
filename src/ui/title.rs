@@ -1,5 +1,6 @@
 //! Titelbildschirm: Weiterspielen, Neues Spiel, Steuerung, Beenden.
 
+use crate::fx;
 use std::sync::Arc;
 
 use bevy::prelude::*;
@@ -316,7 +317,7 @@ pub fn title_input(
             // Neue Crew: Kran, Kanone und Schild muss sie erst kaufen oder finden.
             save.gear = Some(Vec::new());
             save.ammo = Some(0);
-            save.shield = Some(0.0);
+            save.shield = Some(fx!(0.0));
             write_save(&save);
             has_save.0 = true;
             let def = data.0.ship(&save.current_ship).clone();

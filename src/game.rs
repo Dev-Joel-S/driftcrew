@@ -170,7 +170,7 @@ impl Plugin for GamePlugin {
         app.insert_resource(Data(data))
             .insert_resource(Sim(sim))
             .insert_resource(HasSave(has_save))
-            .insert_resource(Time::<Fixed>::from_hz(TICK_HZ))
+            .insert_resource(Time::<Fixed>::from_hz(TICK_HZ as f64))
             .init_state::<AppState>()
             .init_resource::<LobbyMode>()
             .init_resource::<Paused>()
@@ -299,12 +299,14 @@ fn fixed_tick(
         _ => false,
     });
     if crash && replay.capture_in == 0 {
-        replay.capture_in = (TICK_HZ * 0.9) as u32;
+        replay.capture_in = (TICK_HZ as f32 * 0.9) as u32;
     }
     if replay.capture_in > 0 {
         replay.capture_in -= 1;
         if replay.capture_in == 0 {
-            replay.offer = replay.rec.clip(REPLAY_SECONDS + 0.9);
+            replay.offer = replay
+                .rec
+                .clip(crate::sim::fx::Fx::from_f32(REPLAY_SECONDS + 0.9));
             replay.offer_left = 10.0;
         }
     }

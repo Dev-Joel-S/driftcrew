@@ -667,7 +667,7 @@ fn draw_slot_labels(
     let ship = &sim.0.ship;
     let mut wanted: Vec<(usize, Vec2, String)> = Vec::new();
     for (ti, t) in ship.thrusters.iter().enumerate() {
-        let world = ship.to_world(t.pos - Vec2::Y * 1.6);
+        let world = ship.to_world(crate::sim::fx::Vec2::from_bevy(t.pos - Vec2::Y * 1.6));
         let label = active
             .0
             .iter()
@@ -675,11 +675,11 @@ fn draw_slot_labels(
             .map(|b| b.btn.label())
             .unwrap_or_else(|| "?".into());
         let _ = thruster_label(ti, ship.thrusters.len());
-        wanted.push((t.slot as usize, world, label));
+        wanted.push((t.slot as usize, (world).to_bevy(), label));
     }
     for t in &ship.tools {
-        let out = (t.pos - ship.com).normalize_or(Vec2::Y);
-        let world = ship.to_world(t.pos + out * 1.7);
+        let out = (t.pos - ship.com).normalize_or(crate::sim::fx::Vec2::from_bevy(Vec2::Y));
+        let world = ship.to_world(crate::sim::fx::Vec2::from_bevy(t.pos + out * 1.7));
         let label = active
             .0
             .iter()
@@ -688,7 +688,7 @@ fn draw_slot_labels(
         if let Some(l) = label {
             wanted.push((
                 t.slot as usize,
-                world,
+                (world).to_bevy(),
                 format!("{}\n[{}]", t.kind.label(), l),
             ));
         }

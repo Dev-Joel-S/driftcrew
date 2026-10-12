@@ -2,13 +2,13 @@
 //! Bohrer ein paar Sekunden genau auf einer kleinen Stelle bleibt. Eine Person bohrt, die
 //! anderen halten das Schiff ruhig. Fortschritt und Abweichung sieht die ganze Crew.
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::rng::hash32;
 use super::{Body, BodyKind, DT, SimState, ToastKind};
 
 /// So nah (Meter) muss der Bohrpunkt an der Markierung sein.
-pub const PRECISION_RADIUS: f32 = 0.7;
+pub const PRECISION_RADIUS: Fx = fx!(0.7);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PrecisionKind {
@@ -25,10 +25,10 @@ impl PrecisionKind {
             PrecisionKind::Joint => "Wrackverbindung",
         }
     }
-    fn hold_seconds(self) -> f32 {
+    fn hold_seconds(self) -> Fx {
         match self {
-            PrecisionKind::Vein => 4.0,
-            PrecisionKind::Joint => 3.0,
+            PrecisionKind::Vein => fx!(4.0),
+            PrecisionKind::Joint => fx!(3.0),
         }
     }
 }
@@ -38,11 +38,11 @@ pub struct Precision {
     pub body: u32,
     pub kind: PrecisionKind,
     /// 0..1
-    pub progress: f32,
+    pub progress: Fx,
     /// Abstand des Bohrpunkts zur Markierung (m).
-    pub offset: f32,
+    pub offset: Fx,
     /// Sekunden ohne Bohrkontakt (danach endet die Arbeit).
-    pub idle: f32,
+    pub idle: Fx,
 }
 
 /// Markierung an einem Körper (Weltposition), falls er eine hat.
@@ -52,7 +52,7 @@ pub fn precision_target(b: &Body) -> Option<(Vec2, PrecisionKind)> {
         BodyKind::Wreck { parts, .. } if parts > 0 => (PrecisionKind::Joint, 0x51 + parts),
         _ => return None,
     };
-    let a = (hash32(b.seed ^ salt) % 6283) as f32 / 1000.0 + b.angle;
+    let a = Fx::from(hash32(b.seed ^ salt) % 6283) / fx!(1000.0) + b.angle;
     Some((b.pos + Vec2::new(a.cos(), a.sin()) * b.radius, kind))
 }
 
@@ -70,22 +70,22 @@ impl SimState {
                 self.precision = Some(Precision {
                     body: id,
                     kind,
-                    progress: 0.0,
+                    progress: fx!(0.0),
                     offset: d,
-                    idle: 0.0,
+                    idle: fx!(0.0),
                 });
                 self.precision.as_mut().unwrap()
             }
         };
         p.offset = d;
-        p.idle = 0.0;
+        p.idle = fx!(0.0);
         if d < PRECISION_RADIUS {
             p.progress += DT / kind.hold_seconds();
         } else {
             // Abgerutscht: der Fortschritt bröckelt.
-            p.progress = (p.progress - 0.35 * DT).max(0.0);
+            p.progress = (p.progress - fx!(0.35) * DT).max(fx!(0.0));
         }
-        if p.progress >= 1.0 {
+        if p.progress >= fx!(1.0) {
             self.precision = None;
             self.finish_precision(bi, kind, target);
         }
@@ -105,8 +105,8 @@ impl SimState {
                 let value = (self.data.shop.ore_price(ore) * 9).max(80);
                 let id = self.next_id();
                 let out = (at - self.bodies[bi].pos).normalize_or_zero();
-                let pos = at + out * 0.9;
-                let vel = self.bodies[bi].vel + out * 1.5;
+                let pos = at + out * fx!(0.9);
+                let vel = self.bodies[bi].vel + out * fx!(1.5);
                 self.bodies.push(Body {
                     id,
                     kind: BodyKind::Salvage {
@@ -115,15 +115,15 @@ impl SimState {
                     },
                     pos,
                     vel,
-                    angle: 0.0,
-                    ang_vel: 1.5,
-                    radius: 0.7,
-                    mass: 1.2,
+                    angle: fx!(0.0),
+                    ang_vel: fx!(1.5),
+                    radius: fx!(0.7),
+                    mass: fx!(1.2),
                     prev_pos: pos,
-                    prev_angle: 0.0,
+                    prev_angle: fx!(0.0),
                     alive: true,
                     seed: hash32(id),
-                    age: 0.0,
+                    age: fx!(0.0),
                 });
                 self.toast(
                     format!(
@@ -147,11 +147,11 @@ impl SimState {
             return;
         };
         p.idle += DT;
-        if p.idle > DT * 1.5 {
-            p.progress = (p.progress - 0.25 * DT).max(0.0);
+        if p.idle > DT * fx!(1.5) {
+            p.progress = (p.progress - fx!(0.25) * DT).max(fx!(0.0));
         }
         let gone = !self.bodies.iter().any(|b| b.id == p.body && b.alive);
-        if p.idle > 2.0 || gone {
+        if p.idle > fx!(2.0) || gone {
             self.precision = None;
         }
     }

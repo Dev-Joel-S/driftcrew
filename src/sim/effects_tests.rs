@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use bevy::math::Vec2;
+use crate::sim::fx::Vec2;
 
 use super::data::{CrewSave, EffectKind, GameData, v};
 use super::economy::Purchase;
@@ -39,9 +39,9 @@ fn complete(s: &mut SimState, kind: MissionKind, origin: Option<Owner>) {
         origin,
         giver: None,
         start: None,
-        top_speed: 0.0,
+        top_speed: fx!(0.0),
         max_strain: None,
-        par: 600.0,
+        par: fx!(600.0),
     });
     s.events.clear();
     let idx = s.active.len() - 1;
@@ -52,7 +52,7 @@ fn complete(s: &mut SimState, kind: MissionKind, origin: Option<Owner>) {
 fn delivery_supplies_the_station_and_service_is_free_there() {
     let mut s = sim();
     let si = s.docked_station().unwrap();
-    s.ship.hull = s.ship.max_hull * 0.5;
+    s.ship.hull = s.ship.max_hull * fx!(0.5);
     let price_before = s
         .purchase_info(&Purchase::Service("repair".into()))
         .map(|(_, p)| p);
@@ -62,7 +62,7 @@ fn delivery_supplies_the_station_and_service_is_free_there() {
             from: Owner::Station(si),
             to: si,
             cargo: "Test".into(),
-            mass: 1.0,
+            mass: fx!(1.0),
             traits: Default::default(),
         },
         Some(Owner::Station(si)),
@@ -84,7 +84,7 @@ fn delivery_supplies_the_station_and_service_is_free_there() {
     }
     // Läuft nach einer Weile ab.
     for e in &mut s.effects {
-        e.left = DT * 2.0;
+        e.left = DT * fx!(2.0);
     }
     for _ in 0..3 {
         s.step(&TickInput::default());
@@ -108,7 +108,7 @@ fn salvage_clears_debris_and_meteors_around_the_target() {
     // Schiff mitten ins Meteorfeld: ohne Räumung kommen Meteore.
     let fly_in = |s: &mut SimState| {
         s.ship.docked = None;
-        s.ship.pos = c + Vec2::new(0.0, zone.radius + 100.0);
+        s.ship.pos = c + Vec2::new(fx!(0.0), zone.radius + fx!(100.0));
         s.ship.vel = Vec2::ZERO;
         let meteors = |s: &SimState| {
             s.bodies
@@ -119,7 +119,7 @@ fn salvage_clears_debris_and_meteors_around_the_target() {
         let mut seen = 0;
         for _ in 0..600 {
             s.step(&TickInput::default());
-            s.ship.pos = c + Vec2::new(0.0, zone.radius + 100.0);
+            s.ship.pos = c + Vec2::new(fx!(0.0), zone.radius + fx!(100.0));
             s.ship.vel = Vec2::ZERO;
             seen = seen.max(meteors(s));
         }
@@ -162,7 +162,7 @@ fn routes_are_found_by_scanner_rumour_and_beacon() {
         .find(|&i| routes[i].known_at.is_none())
         .unwrap();
     let p = v(routes[rj].points[1]);
-    s.scan_routes(p + Vec2::new(30.0, 0.0), 0.0, 50.0);
+    s.scan_routes(p + Vec2::new(fx!(30.0), fx!(0.0)), fx!(0.0), fx!(50.0));
     assert!(s.route_known(rj));
     assert!(toasts(&s).iter().any(|t| t.contains("Route entdeckt")));
     // Sender (Messflug abgeschlossen) deckt Routen in der Nähe auf.
@@ -173,7 +173,7 @@ fn routes_are_found_by_scanner_rumour_and_beacon() {
         MissionKind::Survey {
             sites: vec![0],
             done: 1,
-            hold: 0.0,
+            hold: fx!(0.0),
         },
         Some(Owner::Station(nova)),
     );
@@ -183,7 +183,7 @@ fn routes_are_found_by_scanner_rumour_and_beacon() {
     let save = t.to_save();
     assert_eq!(save.routes, t.routes_known);
     assert_eq!(save.effects.len(), 1);
-    assert!(save.effects[0].left > EFFECT_SECONDS - 5.0);
+    assert!(save.effects[0].left > EFFECT_SECONDS - fx!(5.0));
 }
 
 #[test]
@@ -201,13 +201,13 @@ fn flying_a_route_end_to_end_records_a_time() {
     // Von Punkt zu Punkt „teleportieren“ und je ein paar Ticks verweilen.
     for p in &pts {
         for _ in 0..20 {
-            s.ship.pos = *p + Vec2::new(ROUTE_REACH * 0.3, 0.0);
+            s.ship.pos = *p + Vec2::new(ROUTE_REACH * fx!(0.3), fx!(0.0));
             s.ship.vel = Vec2::ZERO;
             s.step(&TickInput::default());
         }
     }
     let best = s.route_best.iter().find(|(r, _)| *r == id);
     assert!(best.is_some(), "Zeit eingetragen");
-    assert!(best.unwrap().1 > 0.5);
+    assert!(best.unwrap().1 > fx!(0.5));
     assert!(s.route_run.is_none());
 }

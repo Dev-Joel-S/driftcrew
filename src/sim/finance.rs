@@ -5,6 +5,7 @@
 use super::data::{CrewSave, DemandSave, LoanSave, Ore, Service};
 use super::world::Owner;
 use super::{DT, SimState, ToastKind};
+use crate::sim::fx::Fx;
 
 /// Laufender Schiffskredit: Restschuld (mit Zinsen) und Rate nach jedem Auftrag.
 #[derive(Clone, Debug, PartialEq)]
@@ -19,7 +20,7 @@ pub struct Loan {
 pub struct Demand {
     pub owner: Owner,
     pub ore: Ore,
-    pub left: f32,
+    pub left: Fx,
 }
 
 /// Was die Crew unterwegs ausgegeben hat (laufende Summen; für einen Auftrag die Differenz).
@@ -95,14 +96,14 @@ impl SimState {
     }
 
     /// Angebot und Nachfrage: aktueller Faktor auf den Ankaufspreis (1.0 = normal).
-    pub fn market_factor(&self, owner: Owner, ore: Ore) -> f32 {
+    pub fn market_factor(&self, owner: Owner, ore: Ore) -> Fx {
         self.market
             .get(self.market_slot(owner))
-            .map_or(1.0, |m| m[ore_index(ore)])
+            .map_or(fx!(1.0), |m| m[ore_index(ore)])
     }
 
     /// Verkauf drückt den Preis an diesem Ort.
-    pub(crate) fn note_sale(&mut self, owner: Owner, ore: Ore, tons: f32) {
+    pub(crate) fn note_sale(&mut self, owner: Owner, ore: Ore, tons: Fx) {
         let fd = &self.data.shop.finance;
         let (drop, floor) = (fd.drop_per_t, fd.floor);
         let slot = self.market_slot(owner);
@@ -117,12 +118,12 @@ impl SimState {
         let fd = self.data.shop.finance.clone();
         if let Some(d) = &mut self.demand {
             d.left -= DT;
-            if d.left <= 0.0 {
+            if d.left <= fx!(0.0) {
                 self.demand = None;
             }
         }
         self.demand_timer -= DT;
-        if self.demand_timer <= 0.0 {
+        if self.demand_timer <= fx!(0.0) {
             self.demand_timer = self.rng.range(fd.demand_interval.0, fd.demand_interval.1);
             if self.demand.is_none() {
                 self.start_demand(fd.demand_seconds, fd.demand_factor);
@@ -133,7 +134,7 @@ impl SimState {
             let owner = self.owner_of_slot(slot);
             for (k, ore) in Ore::ALL.iter().enumerate() {
                 let hot = demand.is_some_and(|d| d.owner == owner && d.ore == *ore);
-                let target = if hot { fd.demand_factor } else { 1.0 };
+                let target = if hot { fd.demand_factor } else { fx!(1.0) };
                 let f = self.market[slot][k];
                 let tau = if hot && f < target {
                     fd.demand_rise
@@ -145,7 +146,7 @@ impl SimState {
         }
     }
 
-    fn start_demand(&mut self, seconds: f32, factor: f32) {
+    fn start_demand(&mut self, seconds: Fx, factor: Fx) {
         let owners = self.market_owners();
         if owners.is_empty() {
             return;
@@ -170,7 +171,7 @@ impl SimState {
         self.toast(
             format!(
                 "Nachfrage: {name} zahlt bald +{:.0} % für {}",
-                (factor - 1.0) * 100.0,
+                (factor - fx!(1.0)) * fx!(100.0),
                 ore.label()
             ),
             ToastKind::Info,
@@ -180,9 +181,11 @@ impl SimState {
     /// Dockgebühr an einer Station (Ruf senkt sie um 20 % pro Stufe).
     pub fn dock_fee_at(&self, si: usize) -> u32 {
         let fd = &self.data.shop.finance;
-        let rep = self.rep_level_at(si) as f32;
-        let f = fd.dock_fee as f32 * self.world.stations[si].prices.dock * (1.0 - 0.2 * rep);
-        f.round().max(0.0) as u32
+        let rep = Fx::from(self.rep_level_at(si));
+        let f = Fx::from(fd.dock_fee)
+            * self.world.stations[si].prices.dock
+            * (fx!(1.0) - fx!(0.2) * rep);
+        (f.round().max(fx!(0.0))).to_u32()
     }
 
     /// Beim Andocken: Gebühr abbuchen (nicht noch einmal, wer gerade erst hier war).
@@ -210,14 +213,14 @@ impl SimState {
             return 0;
         }
         let fd = &self.data.shop.finance;
-        ((base as f32 * fd.premium_share).round() as u32).max(fd.premium_min)
+        ((Fx::from(base) * fd.premium_share).round_int() as u32).max(fd.premium_min)
     }
 
     /// Kreditbedingungen für einen Schiffspreis: (Anzahlung, Restschuld mit Zinsen, Rate).
     pub fn loan_terms(&self, price: u32) -> (u32, u32, u32) {
         let fd = &self.data.shop.finance;
-        let down = (price as f32 * fd.down_payment).ceil() as u32;
-        let rest = ((price - down.min(price)) as f32 * (1.0 + fd.interest)).ceil() as u32;
+        let down = (Fx::from(price) * fd.down_payment).ceil_int() as u32;
+        let rest = (Fx::from(price - down.min(price)) * (fx!(1.0) + fd.interest)).ceil_int() as u32;
         let rate = rest.div_ceil(fd.installments.max(1));
         (down, rest, rate)
     }
@@ -251,7 +254,7 @@ impl SimState {
             installment: l.installment,
         });
         let n = self.world.stations.len() + self.world.planets.len();
-        self.market = vec![[1.0; 5]; n];
+        self.market = vec![[fx!(1.0); 5]; n];
         for (id, factors) in &save.market {
             if let Some(owner) = self.owner_by_id(id) {
                 let slot = self.market_slot(owner);
@@ -282,7 +285,7 @@ impl SimState {
             .market
             .iter()
             .enumerate()
-            .filter(|(_, m)| m.iter().any(|f| (f - 1.0).abs() > 0.005))
+            .filter(|(_, m)| m.iter().any(|f| (f - fx!(1.0)).abs() > fx!(0.005)))
             .map(|(slot, m)| (self.owner_id(self.owner_of_slot(slot)), m.to_vec()))
             .collect();
         save.demand = self.demand.map(|d| DemandSave {

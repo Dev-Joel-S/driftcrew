@@ -1,5 +1,6 @@
 //! HUD: Kasse, Aufträge, Lebensbalken, Slot-Leiste, Radar, Markierungen, Andockhilfe.
 
+use crate::fx;
 use bevy::prelude::*;
 
 use super::{ACCENT, BAD, BG, BORDER, GOOD, MUTED, Signature, TEAL, TEXT, WARN, fmt_num, text};
@@ -425,8 +426,10 @@ fn region_name(sim: &SimState) -> String {
         .regions
         .iter()
         .min_by(|a, b| {
-            let da = (Vec2::new(a.center.0, a.center.1) - p).length() / a.radius;
-            let db = (Vec2::new(b.center.0, b.center.1) - p).length() / b.radius;
+            let da =
+                (Vec2::new((a.center.0).to_f32(), (a.center.1).to_f32()) - p).length() / a.radius;
+            let db =
+                (Vec2::new((b.center.0).to_f32(), (b.center.1).to_f32()) - p).length() / b.radius;
             da.total_cmp(&db)
         })
         .map(|r| r.name.clone())
@@ -465,7 +468,7 @@ fn update_info(
     // Besondere Bedingungen im Sektor und laufende Ereignisse.
     let sec = s.sector_at(s.ship.pos);
     if s.flare() {
-        let left = s.event.as_ref().map_or(0.0, |e| e.time_left);
+        let left = s.event.as_ref().map_or(0.0, |e| (e.time_left).to_f32());
         lines.push((
             format!("☀ Sonneneruption – Radar und Scanner gestört ({left:.0} s)"),
             13.0,
@@ -569,7 +572,7 @@ fn update_precision(
     let Some(p) = p else { return };
     let on = p.offset < crate::sim::precision::PRECISION_RADIUS;
     if let Ok((mut n, mut bg)) = fill.single_mut() {
-        n.width = Val::Percent(p.progress.clamp(0.0, 1.0) * 100.0);
+        n.width = Val::Percent(p.progress.clamp(fx!(0.0), fx!(1.0)) * 100.0);
         bg.0 = if on { GOOD } else { WARN };
     }
     if let Ok(mut t) = label.single_mut() {
@@ -620,11 +623,13 @@ fn update_bars(
 ) {
     let s = &sim.0.ship;
     let frac = |k: BarKind| match k {
-        BarKind::Hull => (s.hull / s.max_hull).clamp(0.0, 1.0),
-        BarKind::Shield => (s.shield / s.max_shield.max(1.0)).clamp(0.0, 1.0),
-        BarKind::Energy => (s.energy / s.max_energy.max(1.0)).clamp(0.0, 1.0),
-        BarKind::Fuel => (s.fuel / s.max_fuel.max(1.0)).clamp(0.0, 1.0),
-        BarKind::Cargo => (s.cargo_mass() / s.cargo_capacity().max(0.1)).clamp(0.0, 1.0),
+        BarKind::Hull => (s.hull / s.max_hull).clamp(fx!(0.0), fx!(1.0)),
+        BarKind::Shield => (s.shield / s.max_shield.max(fx!(1.0))).clamp(fx!(0.0), fx!(1.0)),
+        BarKind::Energy => (s.energy / s.max_energy.max(fx!(1.0))).clamp(fx!(0.0), fx!(1.0)),
+        BarKind::Fuel => (s.fuel / s.max_fuel.max(fx!(1.0))).clamp(fx!(0.0), fx!(1.0)),
+        BarKind::Cargo => {
+            (s.cargo_mass() / s.cargo_capacity().max(fx!(0.1))).clamp(fx!(0.0), fx!(1.0))
+        }
     };
     for (b, mut n, mut bg) in &mut bars {
         let f = frac(b.0);
@@ -644,7 +649,7 @@ fn update_bars(
     }
     for (b, mut t) in &mut texts {
         let v = match b.0 {
-            BarKind::Hull => format!("{:.0} / {:.0}", s.hull.max(0.0), s.max_hull),
+            BarKind::Hull => format!("{:.0} / {:.0}", s.hull.max(fx!(0.0)), s.max_hull),
             BarKind::Shield => format!("{:.0} / {:.0}", s.shield, s.max_shield),
             BarKind::Energy if s.energy < 0.5 => "leer – nur Grundfunktionen".to_string(),
             BarKind::Energy => format!("{:.0} / {:.0}", s.energy, s.max_energy),
@@ -652,7 +657,7 @@ fn update_bars(
             BarKind::Fuel => format!("{:.0} / {:.0}", s.fuel, s.max_fuel),
             BarKind::Cargo => format!(
                 "{:.1} / {:.1} t",
-                s.cargo_mass().max(0.0),
+                s.cargo_mass().max(fx!(0.0)),
                 s.cargo_capacity()
             ),
         };
@@ -951,7 +956,7 @@ fn pois(sim: &SimState) -> Vec<Poi> {
             StationKind::Station => TEAL,
         };
         v.push(Poi {
-            pos: st.pos,
+            pos: (st.pos).to_bevy(),
             color,
             size: 9.0,
             round: false,
@@ -963,23 +968,23 @@ fn pois(sim: &SimState) -> Vec<Poi> {
         }
         let c = sim.data.world.planets[i].atmosphere.clone();
         v.push(Poi {
-            pos: p.pos,
-            color: srgb(crate::sim::data::hex(&c)),
+            pos: (p.pos).to_bevy(),
+            color: srgb((crate::sim::data::hex(&c)).map(crate::sim::fx::Fx::to_f32)),
             size: (p.radius / 6.0).clamp(7.0, 14.0),
             round: true,
         });
     }
     for m in sim.world.monuments.iter().filter(|m| sim.discovered(m.pos)) {
         v.push(Poi {
-            pos: m.pos,
-            color: srgb(m.accent_color),
+            pos: (m.pos).to_bevy(),
+            color: srgb((m.accent_color).map(crate::sim::fx::Fx::to_f32)),
             size: 9.0,
             round: false,
         });
     }
     for an in sim.world.anomalies.iter().filter(|a| sim.discovered(a.pos)) {
         v.push(Poi {
-            pos: an.pos,
+            pos: (an.pos).to_bevy(),
             color: if an.is_black_hole() {
                 Color::srgb(0.65, 0.4, 1.0)
             } else {
@@ -1035,7 +1040,11 @@ fn update_radar(
     };
     // Nebel und Sonneneruption: Radar sieht nur noch die Nähe und rauscht.
     let sec = s.sector_at(me);
-    let disturb = if s.flare() { 0.8 } else { sec.nebula };
+    let disturb = if s.flare() {
+        0.8
+    } else {
+        (sec.nebula).to_f32()
+    };
     let reach = RADAR_RANGE * (1.0 - 0.75 * disturb);
     for p in pois(s) {
         if (p.pos - me).length() > reach && disturb > 0.05 {
@@ -1046,7 +1055,7 @@ fn update_radar(
     for b in &s.blips {
         spawn_dot(
             &mut commands,
-            place(b.pos),
+            place((b.pos).to_bevy()),
             5.0,
             Color::srgb(0.35, 0.95, 0.9),
             false,
@@ -1075,7 +1084,7 @@ fn update_radar(
         if let Some(t) = m.nav_target(s)
             && blink
         {
-            spawn_dot(&mut commands, place(t), 10.0, ACCENT, true);
+            spawn_dot(&mut commands, place((t).to_bevy()), 10.0, ACCENT, true);
         }
     }
     for b in &s.bodies {
@@ -1084,7 +1093,7 @@ fn update_radar(
         {
             spawn_dot(
                 &mut commands,
-                place(b.pos),
+                place((b.pos).to_bevy()),
                 3.0,
                 Color::srgb(1.0, 0.5, 0.2),
                 true,
@@ -1096,7 +1105,13 @@ fn update_radar(
         if (n.ship.pos - me).length() > reach.min(RADAR_RANGE) {
             continue;
         }
-        spawn_dot(&mut commands, place(n.ship.pos), 5.0, npc_color(n), false);
+        spawn_dot(
+            &mut commands,
+            place((n.ship.pos).to_bevy()),
+            5.0,
+            npc_color(n),
+            false,
+        );
     }
     spawn_dot(&mut commands, Vec2::splat(half), 8.0, Color::WHITE, true);
 }
@@ -1251,7 +1266,7 @@ fn update_markers(
             StationKind::Shipyard => Color::srgb(1.0, 0.6, 0.2),
             _ => TEAL,
         };
-        if st.bounds.expand(20.0).contains(s.ship.pos) || !s.station_known(si) {
+        if st.bounds.expand(fx!(20.0)).contains(s.ship.pos) || !s.station_known(si) {
             continue;
         }
         let anchor = st.pos + Vec2::Y * ((st.bounds.max.y - st.bounds.min.y) * 0.5 + 6.0);
@@ -1278,7 +1293,13 @@ fn update_markers(
     for m in &s.active {
         if let Some(t) = m.nav_target(s) {
             let label = if m.is_distress() { "Notruf" } else { "Ziel" };
-            add(&mut commands, t, label.to_string(), ACCENT, true);
+            add(
+                &mut commands,
+                (t).to_bevy(),
+                label.to_string(),
+                ACCENT,
+                true,
+            );
         }
     }
     // Parcours: nächstes Ziel als Pfeil am Rand, sonst Starttore in der Nähe beschriften.
@@ -1286,7 +1307,13 @@ fn update_markers(
     match &s.course {
         Some(r) => {
             if let Some(t) = s.course_target() {
-                add(&mut commands, t, s.step_label(r.course, r.step), flag, true);
+                add(
+                    &mut commands,
+                    (t).to_bevy(),
+                    s.step_label(r.course, r.step),
+                    flag,
+                    true,
+                );
             }
         }
         None => {
@@ -1297,7 +1324,13 @@ fn update_markers(
                         .world_to_viewport(cam_t, t.extend(0.0))
                         .is_ok_and(|v| v.x > 0.0 && v.y > 0.0 && v.x < size.x && v.y < size.y)
                 {
-                    add(&mut commands, t, s.step_label(ci, 0), flag, false);
+                    add(
+                        &mut commands,
+                        (t).to_bevy(),
+                        s.step_label(ci, 0),
+                        flag,
+                        false,
+                    );
                 }
             }
         }
@@ -1306,9 +1339,9 @@ fn update_markers(
     for i in 0..s.ship.tools.len() {
         if let Some((at, label, ore)) = s.drill_preview(i) {
             let color = ore
-                .map(|o| crate::render::srgb(o.color()))
+                .map(|o| crate::render::srgb((o.color()).map(crate::sim::fx::Fx::to_f32)))
                 .unwrap_or(Color::srgb(0.65, 0.65, 0.68));
-            add(&mut commands, at, label, color, false);
+            add(&mut commands, (at).to_bevy(), label, color, false);
         }
     }
     // Scanner-Funde im Bild beschriften (nur Wracks und Vorkommen, sonst wird es zu voll).
@@ -1326,7 +1359,7 @@ fn update_markers(
         if on_screen {
             add(
                 &mut commands,
-                b.pos,
+                (b.pos).to_bevy(),
                 b.kind.label(),
                 Color::srgb(0.35, 0.95, 0.9),
                 false,
@@ -1348,7 +1381,7 @@ fn update_markers(
                 &mut commands,
                 anchor,
                 format!("{} · {state}", m.name),
-                srgb(m.accent_color),
+                srgb((m.accent_color).map(crate::sim::fx::Fx::to_f32)),
                 false,
             );
         }
@@ -1386,7 +1419,7 @@ fn update_markers(
         };
         add(
             &mut commands,
-            p.pos,
+            (p.pos).to_bevy(),
             label,
             crate::input::player_color(p.player as usize),
             false,
@@ -1417,7 +1450,7 @@ fn update_center(
             "SCHIFF ZERSTÖRT".to_string(),
             format!(
                 "\nRettungskapsel ausgestoßen · Bergung nach {home} in {:.0} s\nBergungskosten {} Cr aus der gemeinsamen Kasse",
-                s.ship.respawn_timer.max(0.0).ceil(),
+                s.ship.respawn_timer.max(fx!(0.0)).ceil(),
                 fmt_num(s.salvage_fee)
             ),
         )
@@ -1499,7 +1532,7 @@ fn update_center(
             };
             format!(
                 "ANDOCKEN  ·  {:.1} m über der Plattform{side}",
-                g.height.max(0.0)
+                g.height.max(fx!(0.0))
             )
         } else {
             String::new()

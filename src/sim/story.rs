@@ -10,7 +10,7 @@
 //! - Kapitel beginnen, wenn Aufträge, Ruf und Sammlung reichen, und enden mit einem Ziel.
 //! - Monumente erwachen, wenn die Crew sie mit genug Artefakten in der Sammlung scannt.
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::data::{ArtifactEffect, ChapterGoal, CrewSave, LogSource, v};
 use super::rng::{Rng, hash32};
@@ -18,11 +18,11 @@ use super::ship::CargoKind;
 use super::{Body, BodyKind, DT, SimEvent, SimState, ToastKind};
 
 /// Radius und Dämpfung eines Artefakts in der Welt (es treibt kaum und folgt keinem Sog).
-pub const ARTIFACT_RADIUS: f32 = 0.9;
+pub const ARTIFACT_RADIUS: Fx = fx!(0.9);
 /// So nah muss ein Scan an einem Monument beginnen, damit es reagiert (über seinen Rand hinaus).
-const MONUMENT_SCAN: f32 = 70.0;
+const MONUMENT_SCAN: Fx = fx!(70.0);
 /// Bis zu dieser Entfernung spüren Monumente Artefakte an Bord (Resonanz).
-pub const RESONANCE_RANGE: f32 = 260.0;
+pub const RESONANCE_RANGE: Fx = fx!(260.0);
 
 #[derive(Clone, Debug, Default)]
 pub struct Story {
@@ -141,22 +141,22 @@ impl SimState {
     }
 
     pub(crate) fn spawn_artifact(&mut self, id: &str, pos: Vec2, vel: Vec2) {
-        let mass = self.artifact_def(id).map_or(1.0, |a| a.mass);
+        let mass = self.artifact_def(id).map_or(fx!(1.0), |a| a.mass);
         let bid = self.next_id();
         self.bodies.push(Body {
             id: bid,
             kind: BodyKind::Artifact { id: id.to_string() },
             pos,
             vel,
-            angle: 0.0,
-            ang_vel: 0.4,
+            angle: fx!(0.0),
+            ang_vel: fx!(0.4),
             radius: ARTIFACT_RADIUS,
             mass,
             prev_pos: pos,
-            prev_angle: 0.0,
+            prev_angle: fx!(0.0),
             alive: true,
             seed: hash32(bid),
-            age: 0.0,
+            age: fx!(0.0),
         });
     }
 
@@ -180,14 +180,14 @@ impl SimState {
     }
 
     /// Störung von Radar und Scanner durch Artefakte an Bord (0..1).
-    pub fn artifact_jam(&self) -> f32 {
+    pub fn artifact_jam(&self) -> Fx {
         self.aboard_effects()
             .iter()
             .map(|e| match e {
                 ArtifactEffect::Jam(j) => *j,
-                _ => 0.0,
+                _ => fx!(0.0),
             })
-            .fold(0.0, f32::max)
+            .fold(fx!(0.0), Fx::max)
     }
 
     /// Zieht ein Artefakt an Bord Piraten an?
@@ -196,49 +196,49 @@ impl SimState {
     }
 
     /// Mehrverbrauch an Treibstoff durch Artefakte an Bord (Faktor).
-    pub fn artifact_heat(&self) -> f32 {
+    pub fn artifact_heat(&self) -> Fx {
         self.aboard_effects()
             .iter()
             .map(|e| match e {
                 ArtifactEffect::Heat(f) => *f,
-                _ => 1.0,
+                _ => fx!(1.0),
             })
             .product()
     }
 
     /// Drehstöße durch Artefakte an Bord (in `apply_forces`).
     pub(crate) fn artifact_spin(&mut self) {
-        let k: f32 = self
+        let k: Fx = self
             .aboard_effects()
             .iter()
             .map(|e| match e {
                 ArtifactEffect::Spin(s) => *s,
-                _ => 0.0,
+                _ => fx!(0.0),
             })
             .sum();
-        if k <= 0.0 || self.ship.docked.is_some() || self.ship.destroyed {
+        if k <= fx!(0.0) || self.ship.docked.is_some() || self.ship.destroyed {
             return;
         }
         let t = self.time;
-        let wobble = (t * 1.7).sin() * 0.6 + (t * 0.63 + 1.3).sin() * 0.4;
+        let wobble = (t * fx!(1.7)).sin() * fx!(0.6) + (t * fx!(0.63) + fx!(1.3)).sin() * fx!(0.4);
         self.ship.ang_vel += wobble * k * DT;
     }
 
     /// Resonanz eines Monuments mit den Artefakten an Bord (0..1, für Licht und Ton).
-    pub fn monument_resonance(&self, mi: usize) -> f32 {
+    pub fn monument_resonance(&self, mi: usize) -> Fx {
         let Some(m) = self.world.monuments.get(mi) else {
-            return 0.0;
+            return fx!(0.0);
         };
         if m.awake {
-            return 1.0;
+            return fx!(1.0);
         }
         let d = (self.ship.pos - m.pos).length();
         if d > RESONANCE_RANGE || self.ship.destroyed {
-            return 0.0;
+            return fx!(0.0);
         }
-        let need = self.data.story.monuments[mi].artifacts.max(1) as f32;
-        let have = (self.artifacts_aboard().len() + self.crew.artifacts.len()) as f32;
-        (have / need).min(1.0) * (1.0 - d / RESONANCE_RANGE).clamp(0.2, 1.0)
+        let need = Fx::from(self.data.story.monuments[mi].artifacts.max(1));
+        let have = Fx::from(self.artifacts_aboard().len() + self.crew.artifacts.len());
+        (have / need).min(fx!(1.0)) * (fx!(1.0) - d / RESONANCE_RANGE).clamp(fx!(0.2), fx!(1.0))
     }
 
     /// Logbuch-Eintrag gefunden (einmalig).
@@ -304,9 +304,9 @@ impl SimState {
     pub(crate) fn story_ship_lost(&mut self, ids: Vec<String>, at: Vec2, vel: Vec2) {
         for (k, id) in ids.into_iter().enumerate() {
             if self.story.stay_in_wreck {
-                let a = k as f32 * 2.1;
-                let off = Vec2::new(a.cos(), a.sin()) * 2.5;
-                self.spawn_artifact(&id, at + off, vel * 0.5 + off * 0.4);
+                let a = Fx::from(k) * fx!(2.1);
+                let off = Vec2::new(a.cos(), a.sin()) * fx!(2.5);
+                self.spawn_artifact(&id, at + off, vel * fx!(0.5) + off * fx!(0.4));
                 let name = self.artifact_name(&id);
                 self.toast(
                     format!("{name} liegt jetzt im Wrack – holt es zurück"),
@@ -326,7 +326,7 @@ impl SimState {
             .logs
             .iter()
             .filter(|l| {
-                matches!(l.source, LogSource::Echo { pos, radius } if (v(pos) - origin).length() < radius)
+                matches!(l.source, LogSource::Echo { pos, radius } if (v(pos) - origin).shorter_than(radius))
             })
             .map(|l| l.id.clone())
             .collect();
@@ -337,15 +337,15 @@ impl SimState {
         if self.story.started
             && let Some(ch) = self.data.story.chapters.get(self.story.chapter)
             && let ChapterGoal::Scan { pos, radius } = ch.goal
-            && (v(pos) - origin).length() < radius
+            && (v(pos) - origin).shorter_than(radius)
         {
             self.complete_chapter();
         }
         // Monumente in Reichweite.
         for mi in 0..self.world.monuments.len() {
             let m = &self.world.monuments[mi];
-            let reach = (m.bounds.max - m.bounds.min).length() * 0.5 + MONUMENT_SCAN;
-            if (m.pos - origin).length() > reach {
+            let reach = (m.bounds.max - m.bounds.min).length() * fx!(0.5) + MONUMENT_SCAN;
+            if (m.pos - origin).longer_than(reach) {
                 continue;
             }
             self.scan_monument(mi);
@@ -393,10 +393,10 @@ impl SimState {
             self.story.sites_revealed = true;
             let homes: Vec<Vec2> = self.artifact_positions();
             for p in homes {
-                self.explored.reveal(p, 180.0);
+                self.explored.reveal(p, fx!(180.0));
             }
             for m in self.world.monuments.clone() {
-                self.explored.reveal(m.pos, 220.0);
+                self.explored.reveal(m.pos, fx!(220.0));
             }
         }
         self.find_log_by(|s| *s == LogSource::Monument(md.id.clone()));

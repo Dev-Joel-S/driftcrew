@@ -2,6 +2,7 @@
 //! Ersatzteil am Kran) unten in der Mitte, Andockport-Hack mit dem Tastenmuster oben.
 //! Reine Anzeige – die Spiele selbst laufen in der Simulation.
 
+use crate::fx;
 use bevy::prelude::*;
 
 use super::{ACCENT, BAD, BG, GOOD, MUTED, Signature, TEXT, WARN, text};
@@ -105,11 +106,11 @@ fn rhythm_task(s: &SimState, bindings: &ActiveBindings) -> Option<(String, Vec<S
     for &i in &failed {
         let t = &s.ship.thrusters[i];
         let (name, key) = slot_names(s, bindings, t.slot);
-        let p = s.repair.thrusters.get(i).copied().unwrap_or(0.0);
-        let hits = (p * PATCH_HITS).round() as u32;
+        let p = s.repair.thrusters.get(i).copied().unwrap_or(fx!(0.0));
+        let hits = ((p * PATCH_HITS).round()).to_u32();
         lines.push(format!(
             "{name} [{key}] im Takt: {hits}/{}",
-            PATCH_HITS as u32
+            (PATCH_HITS).to_u32()
         ));
     }
     if let Some(p) = patching {
@@ -143,7 +144,7 @@ fn rhythm_task(s: &SimState, bindings: &ActiveBindings) -> Option<(String, Vec<S
         return Some(("TRIEBWERK AUSGEFALLEN".into(), lines));
     }
     if s.hull_needs_patch() && s.repair.rest > 0.6 {
-        let left = (REST_TO_REPAIR - s.repair.rest).max(0.0);
+        let left = (REST_TO_REPAIR - s.repair.rest).max(fx!(0.0));
         return Some((
             "NOTREPARATUR".into(),
             vec![
@@ -411,7 +412,7 @@ fn draw_hack(
                 Pickable::IGNORE,
             ))
             .with_children(|bar| {
-                let f = (h.left / h.total.max(0.01)).clamp(0.0, 1.0);
+                let f = (h.left / h.total.max(fx!(0.01))).clamp(fx!(0.0), fx!(1.0));
                 bar.spawn((
                     Node {
                         width: Val::Percent(f * 100.0),

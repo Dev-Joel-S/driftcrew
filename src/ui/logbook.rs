@@ -266,7 +266,7 @@ fn spawn_journal(commands: &mut Commands, s: &SimState, sel: usize) {
                                     }
                                 ),
                                 14.0,
-                                Color::srgb(pl.color[0], pl.color[1], pl.color[2]),
+                                Color::srgb((pl.color[0]).to_f32(), (pl.color[1]).to_f32(), (pl.color[2]).to_f32()),
                             ));
                         }
                         c.spawn(Node {

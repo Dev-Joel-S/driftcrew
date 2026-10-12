@@ -170,7 +170,7 @@ fn draw_report(
             if let Some(c) = r.cond {
                 parts.push(format!("Fracht in {:.0} % Zustand angekommen", c * 100.0));
             }
-            let par = format!("{}:{:02}", r.par as u32 / 60, r.par as u32 % 60);
+            let par = format!("{}:{:02}", (r.par).to_u32() / 60, (r.par).to_u32() % 60);
             if r.bonus_time > 0 {
                 parts.push(format!("Zeitbonus +{} (unter {par})", r.bonus_time));
             } else {
@@ -224,7 +224,7 @@ fn draw_report(
             p.spawn(text(
                 format!(
                     "Dauer {mins}:{secs:02}  ·  {} m geflogen  ·  Spitze {:.0} m/s  ·  Schaden {:.0}",
-                    fmt_num(st.distance as u32),
+                    fmt_num((st.distance).to_u32()),
                     st.top_speed,
                     st.damage
                 ),

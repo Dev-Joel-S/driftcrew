@@ -4,22 +4,23 @@
 use super::data::{Ore, ProjectSave, Service};
 use super::ship::CargoKind;
 use super::{SimEvent, SimState, ToastKind};
+use crate::sim::fx::Fx;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProjectState {
     pub station: usize,
     pub stage: u8,
     /// Für die laufende Etappe schon geliefert.
-    pub delivered: Vec<(Ore, f32)>,
+    pub delivered: Vec<(Ore, Fx)>,
     pub parts: u32,
 }
 
 impl ProjectState {
-    pub fn delivered_of(&self, ore: Ore) -> f32 {
+    pub fn delivered_of(&self, ore: Ore) -> Fx {
         self.delivered
             .iter()
             .find(|(o, _)| *o == ore)
-            .map_or(0.0, |(_, t)| *t)
+            .map_or(fx!(0.0), |(_, t)| *t)
     }
 }
 
@@ -94,11 +95,11 @@ impl SimState {
         let mut gave = Vec::new();
         for (ore, need) in &def.needs {
             let missing = need - self.projects[pi].delivered_of(*ore);
-            if missing <= 1e-3 {
+            if missing <= fx!(1e-3) {
                 continue;
             }
             let taken = self.ship.take_ore(*ore, missing);
-            if taken > 1e-3 {
+            if taken > fx!(1e-3) {
                 let p = &mut self.projects[pi];
                 match p.delivered.iter_mut().find(|(o, _)| o == ore) {
                     Some(d) => d.1 += taken,
@@ -137,7 +138,7 @@ impl SimState {
         let done = def
             .needs
             .iter()
-            .all(|(o, n)| p.delivered_of(*o) + 1e-3 >= *n)
+            .all(|(o, n)| p.delivered_of(*o) + fx!(1e-3) >= *n)
             && p.parts >= def.parts;
         if !done {
             return;

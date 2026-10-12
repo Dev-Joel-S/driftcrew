@@ -6,15 +6,15 @@ use bevy::prelude::*;
 use super::ship_vis::ShieldVis;
 use super::{Art, CameraRig, slot_color, srgb};
 use crate::game::{AppState, Sim, SimMsg};
+use crate::prng::Prng;
 use crate::sim::geom::rot;
-use crate::sim::rng::Rng;
 use crate::sim::{BodyKind, SimEvent};
 
 pub struct FxPlugin;
 
 impl Plugin for FxPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(FxRng(Rng::new(4242)))
+        app.insert_resource(FxRng(Prng::new(4242)))
             .init_resource::<ShieldFlash>()
             .add_systems(
                 Update,
@@ -29,7 +29,7 @@ impl Plugin for FxPlugin {
 }
 
 #[derive(Resource)]
-pub struct FxRng(pub Rng);
+pub struct FxRng(pub Prng);
 
 #[derive(Resource, Default)]
 pub struct ShieldFlash(pub f32);
@@ -94,7 +94,7 @@ fn burst(
     commands: &mut Commands,
     art: &mut Art,
     mats: &mut Assets<StandardMaterial>,
-    rng: &mut Rng,
+    rng: &mut Prng,
     pos: Vec2,
     count: usize,
     speed: (f32, f32),
@@ -169,14 +169,14 @@ fn react_to_sim_events(
                 }
             }
             SimEvent::Explosion { pos, size, color } => {
-                let c = srgb(*color);
+                let c = srgb((*color).map(crate::sim::fx::Fx::to_f32));
                 if !crowded {
                     burst(
                         &mut commands,
                         &mut art,
                         &mut mats,
                         &mut rng.0,
-                        *pos,
+                        (*pos).to_bevy(),
                         (14.0 * size) as usize + 10,
                         (2.0, 8.0 * size.sqrt()),
                         c,
@@ -189,7 +189,7 @@ fn react_to_sim_events(
                         &mut art,
                         &mut mats,
                         &mut rng.0,
-                        *pos,
+                        (*pos).to_bevy(),
                         (6.0 * size) as usize + 4,
                         (0.5, 2.0),
                         Color::srgb(1.0, 0.95, 0.8),
@@ -202,7 +202,7 @@ fn react_to_sim_events(
                         &mut art,
                         &mut mats,
                         &mut rng.0,
-                        *pos,
+                        (*pos).to_bevy(),
                         (10.0 * size) as usize,
                         (1.0, 4.0),
                         Color::srgb(0.35, 0.3, 0.3),
@@ -273,7 +273,7 @@ fn react_to_sim_events(
                     &mut art,
                     &mut mats,
                     &mut rng.0,
-                    *pos,
+                    (*pos).to_bevy(),
                     10,
                     (2.0, 9.0),
                     Color::srgb(1.0, 0.7, 0.3),
@@ -314,7 +314,7 @@ fn react_to_sim_events(
                     &mut art,
                     &mut mats,
                     &mut rng.0,
-                    p,
+                    (p).to_bevy(),
                     12,
                     (1.0, 4.0),
                     Color::srgb(0.4, 1.0, 0.9),
@@ -338,8 +338,8 @@ pub fn retro_jets(sim: &crate::sim::SimState) -> Vec<(Vec2, Vec2)> {
     if ship.destroyed || ship.docked.is_some() || !(sim.braking || sim.reversing) {
         return Vec::new();
     }
-    let fwd = rot(Vec2::Y, ship.angle);
-    let side = rot(Vec2::X, ship.angle);
+    let fwd = rot(crate::sim::fx::Vec2::from_bevy(Vec2::Y), ship.angle);
+    let side = rot(crate::sim::fx::Vec2::from_bevy(Vec2::X), ship.angle);
     let r = ship.bound_radius();
     if sim.reversing {
         // Rückwärts: zwei Düsen an der Nase blasen nach vorn, das Schiff fährt heck voran.
@@ -353,15 +353,32 @@ pub fn retro_jets(sim: &crate::sim::SimState) -> Vec<(Vec2, Vec2)> {
         let y = n.pos.y + n.half.y;
         let dx = n.half.x * 0.55;
         return vec![
-            (ship.to_world(Vec2::new(n.pos.x - dx, y)), fwd),
-            (ship.to_world(Vec2::new(n.pos.x + dx, y)), fwd),
+            (
+                (ship.to_world(crate::sim::fx::Vec2::from_bevy(Vec2::new(
+                    n.pos.x - dx,
+                    (y).to_f32(),
+                ))))
+                .to_bevy(),
+                (fwd).to_bevy(),
+            ),
+            (
+                (ship.to_world(crate::sim::fx::Vec2::from_bevy(Vec2::new(
+                    n.pos.x + dx,
+                    (y).to_f32(),
+                ))))
+                .to_bevy(),
+                (fwd).to_bevy(),
+            ),
         ];
     }
     if ship.vel.length() > 0.3 {
         // Bremsen: Düsen auf der Seite in Flugrichtung blasen der Bewegung entgegen.
         let d = ship.vel.normalize();
         let at = ship.pos + d * r * 0.75;
-        return vec![(at + d.perp() * 0.6, d), (at - d.perp() * 0.6, d)];
+        return vec![
+            (at + d.perp() * 0.6, (d).to_bevy()),
+            (at - d.perp() * 0.6, (d).to_bevy()),
+        ];
     }
     // Nur noch Drehung abfangen: vorn und hinten seitlich gegeneinander.
     let s = if ship.ang_vel > 0.0 { 1.0 } else { -1.0 };
@@ -403,7 +420,9 @@ fn emit_continuous(
                 let world_dir = rot(t.dir, ship.angle);
                 let nozzle = ship.to_world(t.pos) - world_dir * 1.0;
                 let spread = rng.0.range(-0.25, 0.25);
-                let v = ship.vel - rot(world_dir, spread) * rng.0.range(14.0, 22.0);
+                let v = ship.vel
+                    - rot(world_dir, crate::sim::fx::Fx::from_f32(spread))
+                        * rng.0.range(14.0, 22.0);
                 let c = slot_color(t.slot);
                 spawn_particle(
                     &mut commands,
@@ -441,7 +460,11 @@ fn emit_continuous(
                     ((10.0, 17.0), (0.75, 0.1), (0.3, 0.5), 3.0),
                 ] {
                     let spread = rng.0.range(-0.22, 0.22);
-                    let v = ship.vel + rot(dir, spread) * rng.0.range(speed.0, speed.1);
+                    let v = ship.vel
+                        + rot(
+                            crate::sim::fx::Vec2::from_bevy(dir),
+                            crate::sim::fx::Fx::from_f32(spread),
+                        ) * rng.0.range(speed.0, speed.1);
                     spawn_particle(
                         &mut commands,
                         &mut art,
@@ -460,7 +483,7 @@ fn emit_continuous(
                 if let Some(d) = &tool.drill {
                     let c = d
                         .ore
-                        .map(|o| srgb(o.color()))
+                        .map(|o| srgb((o.color()).map(crate::sim::fx::Fx::to_f32)))
                         .unwrap_or(Color::srgb(1.0, 0.7, 0.4));
                     for _ in 0..2 {
                         let a = rng.0.range(0.0, std::f32::consts::TAU);
@@ -489,7 +512,7 @@ fn emit_continuous(
                 continue;
             }
             let dir = wind.normalize();
-            let side = Vec2::new(-dir.y, dir.x);
+            let side = Vec2::new((-dir.y).to_f32(), (dir.x).to_f32());
             let p = ship.pos - dir * 45.0
                 + side * rng.0.range(-40.0, 40.0)
                 + dir * rng.0.range(0.0, 50.0);
@@ -609,6 +632,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::fx;
     use crate::sim::data::{CrewSave, GameData};
     use crate::sim::ship::Loadout;
     use crate::sim::{SimState, TickInput};
@@ -621,10 +645,10 @@ mod tests {
         let mut s = SimState::new(data, &save, Loadout::full(&def), 1);
         s.flight_assist = false;
         s.ship.docked = None;
-        s.ship.pos = Vec2::new(-900.0, -900.0);
+        s.ship.pos = crate::sim::fx::Vec2::from_bevy(Vec2::new(-900.0, -900.0));
         s.ship.prev_pos = s.ship.pos;
-        s.ship.angle = 0.0;
-        s.ship.vel = Vec2::new(4.0, 0.0);
+        s.ship.angle = fx!(0.0);
+        s.ship.vel = crate::sim::fx::Vec2::from_bevy(Vec2::new(4.0, 0.0));
         assert!(retro_jets(&s).is_empty(), "ohne Bremse keine Düsen");
         let brake = TickInput {
             brake: true,
@@ -645,10 +669,10 @@ mod tests {
             }
         }
         assert!(s.reversing);
-        let fwd = rot(Vec2::Y, s.ship.angle);
+        let fwd = rot(crate::sim::fx::Vec2::from_bevy(Vec2::Y), s.ship.angle);
         for (at, dir) in retro_jets(&s) {
-            assert!(dir.dot(fwd) > 0.99, "Ausstoß nach vorn");
-            assert!((at - s.ship.pos).dot(fwd) > 0.5, "an der Nase");
+            assert!(dir.dot((fwd).to_bevy()) > 0.99, "Ausstoß nach vorn");
+            assert!((at - s.ship.pos).dot((fwd).to_bevy()) > 0.5, "an der Nase");
         }
     }
 }

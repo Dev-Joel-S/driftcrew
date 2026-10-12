@@ -553,6 +553,11 @@ in die Binärdatei eingebettet; liegt `assets/data/` im Arbeitsverzeichnis (z. B
 ```
 src/
   sim/        Deterministische Simulation, keine Abhängigkeit vom Rendering
+    fx.rs       Fixed-Point: `Fx` (Q32.32 in i64, i128-Zwischenwerte, sättigend), `Vec2`, Wurzel
+                und Sinus/Kosinus/Arkustangens (CORDIC) nur mit Ganzzahlen; `fx!(0.6)` rechnet
+                Dezimalzahlen zur Übersetzungszeit um
+    selftest.rs fester Lauf mit bekannten Soll-Bits (`driftcrew --selbsttest`)
+    float_guard.rs Test: kein f32/f64/Float-Literal in der Simulation
     mod.rs      SimState, TickInput (Slot-Bitmaske + Zielwinkel + Befehle), Schritt-Reihenfolge
     physics.rs  eigene Starrkörperphysik: Kräfte an versetzten Punkten, Impuls-Kontakte
     geom.rs     SAT/Clipping-Kontakte für konvexe Polygone und Kreise, Strahltests
@@ -594,10 +599,37 @@ Skript ab, speichert Screenshots und beendet sich. Szenen: `tour`, `ui`, `system
 
 ---
 
+### Fixed-Point statt Floats
+
+Die gesamte Simulation (`src/sim`) rechnet ausschließlich mit Ganzzahlen: Zustand, Physik,
+Zufall, NPCs, Aufträge, Preise. Damit hat jeder Rechner dieselben Bits – Voraussetzung für
+Online-Koop mit „nur Eingaben übers Netz“ und für Wiederholungen, die garantiert gleich ablaufen.
+
+- **`Fx`** ist eine Ganzzahl mit 32 Nachkommabits (Auflösung 2⁻³² ≈ 0,0000000002, Bereich
+  ±2 Mrd.). Alle Operationen sättigen statt zu überlaufen, Teilen durch null liefert „unendlich“
+  (Maximum) statt eines Absturzes – in Debug und Release dasselbe.
+- **Wurzel, Sinus, Kosinus, Arkustangens** sind reine Ganzzahlrechnung (`isqrt`, CORDIC mit
+  Tabelle), keine Systembibliothek; die Genauigkeit liegt besser als 5·10⁻⁹.
+- **Zahlen im Quelltext** schreibt man `fx!(0.6)`; der Compiler rechnet das zur Übersetzungszeit
+  um (`const`-Block), im Programm bleibt nur die Ganzzahl.
+- **Floats gibt es nur an den Rändern:** Datendateien und Spielstände (Dezimalzahlen rein/raus,
+  alte Spielstände laden weiter), Eingabegeräte (Sticks, Maus), Rendering, Ton und Anzeige.
+  Dort steht `to_f32`/`from_f32` bzw. die Brücke in `fx.rs`.
+- **Abgesichert** durch drei Dinge: der Test `no_floats_in_sim` (kein `f32`/`f64`, keine
+  Float-Literale außerhalb von `fx!`, kein Bevy-Import in `src/sim`), der Lint
+  `#![deny(clippy::float_arithmetic)]` im Simulationsmodul und der Test `golden_run_is_bit_exact`
+  (900 Ticks mit festen Eingaben, Soll-Bits als Konstanten).
+- **Selbsttest für jeden Rechner:** `driftcrew --selbsttest` führt denselben Lauf aus und meldet
+  „OK“ oder „ABWEICHUNG“ (Windows: Datei `selbsttest.txt` neben dem Spielstand). Windows und
+  Linux müssen dieselben Zahlen zeigen.
+- Der Zufall der Darstellung (Partikel, Texturen, Rauschen) ist getrennt: `src/prng.rs` liefert
+  Float-Werte und wird von der Simulation nie benutzt.
+
+---
+
 ## Ausblick
 
 - Online-Koop mit Rollback-Netcode (z. B. `ggrs` / `bevy_ggrs`)
-- Simulation auf Fixed-Point umstellen, damit nur Eingaben übers Netz gehen
 - Spielstand online beim Host
 - Abstimmung auch für Missionen
 - mehr Sektoren, Stationen und Missionstypen

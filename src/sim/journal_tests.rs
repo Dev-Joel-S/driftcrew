@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::data::{CrewSave, GameData};
 use super::journal::{JournalKind, MAX_MARKS, MAX_NAME};
@@ -109,10 +109,10 @@ fn journal_records_firsts_sectors_and_notes() {
     );
     let last = s.journal.entries.last().unwrap();
     assert_eq!(last.kind, JournalKind::Note);
-    assert!(last.time > 0.0, "mit Flugzeit");
+    assert!(last.time > fx!(0.0), "mit Flugzeit");
     let t = reload(&s);
     assert_eq!(t.journal.entries.len(), s.journal.entries.len());
-    assert!(t.journal.playtime > 0.0);
+    assert!(t.journal.playtime > fx!(0.0));
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn map_marks_are_capped_labelled_and_removable() {
         cmd(
             &mut s,
             Command::AddMark {
-                pos: Vec2::new(i as f32 * 10.0, 500.0),
+                pos: Vec2::new(Fx::from(i) * fx!(10.0), fx!(500.0)),
                 text: format!("M{i}"),
             },
         );
@@ -167,16 +167,16 @@ fn special_salvage_and_rescue_give_plaques_and_records() {
         origin: None,
         giver: None,
         start: None,
-        top_speed: 0.0,
+        top_speed: fx!(0.0),
         max_strain: None,
-        par: 600.0,
+        par: fx!(600.0),
     });
-    s.ship.hull = s.ship.max_hull * 0.2;
+    s.ship.hull = s.ship.max_hull * fx!(0.2);
     s.complete_mission(s.active.len() - 1);
     let plaques = s.ship_plaques();
     assert_eq!(plaques.len(), 1);
     assert!(plaques[0].title.contains("Kutter Ilse"));
-    assert_eq!(s.journal.closest_rescue.map(|h| h.round()), Some(20.0));
+    assert_eq!(s.journal.closest_rescue.map(|h| h.round()), Some(fx!(20.0)));
     assert!(s.journal.biggest_salvage.is_some());
     assert!(
         s.events

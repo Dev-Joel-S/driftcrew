@@ -6,13 +6,14 @@
 
 use std::collections::VecDeque;
 
+use super::fx::Fx;
 use super::{SimState, TICK_HZ, TickInput};
 
 /// Abstand der Schnappschüsse und wie weit der Puffer zurückreicht (Ticks).
 pub const SNAP_EVERY: u64 = 120;
 pub const KEEP_TICKS: u64 = 14 * TICK_HZ as u64;
 /// So viele Sekunden zeigt eine Wiederholung mindestens (soweit aufgezeichnet).
-pub const REPLAY_SECONDS: f32 = 8.0;
+pub const REPLAY_SECONDS: Fx = fx!(8.0);
 
 #[derive(Clone, Default)]
 pub struct Recorder {
@@ -56,9 +57,9 @@ impl Recorder {
     }
 
     /// Die letzten (mindestens) `seconds` Sekunden bis jetzt.
-    pub fn clip(&self, seconds: f32) -> Option<Clip> {
+    pub fn clip(&self, seconds: Fx) -> Option<Clip> {
         let last = self.inputs.back()?.0;
-        let want = last.saturating_sub((seconds * TICK_HZ as f32) as u64);
+        let want = last.saturating_sub((seconds * Fx::from(TICK_HZ)).to_u64());
         // Jüngster Schnappschuss, der weit genug zurückliegt – sonst der älteste.
         let start = self
             .snaps
@@ -86,7 +87,7 @@ impl Recorder {
 mod tests {
     use std::sync::Arc;
 
-    use bevy::math::Vec2;
+    use crate::sim::fx::{Fx, Vec2};
 
     use super::*;
     use crate::sim::data::{CrewSave, GameData};
@@ -120,9 +121,9 @@ mod tests {
             rec.after_step(&s, &input);
         }
         let clip = rec.clip(REPLAY_SECONDS).expect("Ausschnitt vorhanden");
-        let secs = clip.inputs.len() as f32 / TICK_HZ as f32;
+        let secs = Fx::from(clip.inputs.len()) / Fx::from(TICK_HZ);
         assert!(
-            (REPLAY_SECONDS..=REPLAY_SECONDS + 2.1).contains(&secs),
+            (REPLAY_SECONDS..=REPLAY_SECONDS + fx!(2.1)).contains(&secs),
             "{secs} s"
         );
         // Abspielen: gleicher Endzustand bis aufs Bit.
@@ -142,7 +143,7 @@ mod tests {
     fn buffer_stays_bounded() {
         let mut s = sim();
         let mut rec = Recorder::default();
-        for _ in 0..(40 * TICK_HZ as u32) {
+        for _ in 0..(40 * TICK_HZ) {
             let input = TickInput::default();
             rec.before_step(&s);
             s.step(&input);

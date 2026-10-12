@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::data::{CrewSave, GameData, Ore, ShipDef};
 use super::economy::Purchase;
@@ -27,7 +27,7 @@ fn at_orion(s: &mut SimState) {
 }
 
 fn stock(s: &mut SimState) {
-    s.crew.storage = [40.0; 5];
+    s.crew.storage = [fx!(40.0); 5];
     s.crew.storage_parts = 6;
 }
 
@@ -51,14 +51,14 @@ fn module(mount: &str, module: &str) -> Purchase {
 #[test]
 fn cargo_goes_into_the_crew_storage_except_mission_ore() {
     let mut s = sim();
-    s.ship.store(CargoKind::Ore(Ore::Ferrit), 5.0);
-    s.ship.store(CargoKind::Ore(Ore::Kobalt), 3.0);
+    s.ship.store(CargoKind::Ore(Ore::Ferrit), fx!(5.0));
+    s.ship.store(CargoKind::Ore(Ore::Kobalt), fx!(3.0));
     s.ship.store(
         CargoKind::Salvage {
             name: "Ventil".into(),
             value: 30,
         },
-        0.5,
+        fx!(0.5),
     );
     // Ein Abbau-Auftrag braucht 2 t Kobalt – die bleiben an Bord.
     let id = s.next_id();
@@ -66,31 +66,31 @@ fn cargo_goes_into_the_crew_storage_except_mission_ore() {
         id,
         kind: MissionKind::Mining {
             ore: Ore::Kobalt,
-            amount: 2.0,
+            amount: fx!(2.0),
             to: 0,
         },
         reward: 100,
         origin: Some(Owner::Station(0)),
         giver: None,
         start: None,
-        top_speed: 0.0,
+        top_speed: fx!(0.0),
         max_strain: None,
-        par: 100.0,
+        par: fx!(100.0),
     });
     s.step(&TickInput {
         commands: vec![Command::StoreCargo],
         ..Default::default()
     });
-    assert!((s.stored(Ore::Ferrit) - 5.0).abs() < 1e-3);
-    assert!((s.stored(Ore::Kobalt) - 1.0).abs() < 1e-3);
+    assert!((s.stored(Ore::Ferrit) - fx!(5.0)).abs() < fx!(1e-3));
+    assert!((s.stored(Ore::Kobalt) - fx!(1.0)).abs() < fx!(1e-3));
     assert_eq!(s.crew.storage_parts, 1);
-    assert!((s.ship.ore_amount(Ore::Kobalt) - 2.0).abs() < 1e-3);
+    assert!((s.ship.ore_amount(Ore::Kobalt) - fx!(2.0)).abs() < fx!(1e-3));
     // Bleibt im Spielstand.
     let save = s.to_save();
     let data = s.data.clone();
     let def = data.ship(&save.current_ship).clone();
     let s2 = SimState::new(data, &save, Loadout::full(&def), 1);
-    assert!((s2.stored(Ore::Ferrit) - 5.0).abs() < 1e-3);
+    assert!((s2.stored(Ore::Ferrit) - fx!(5.0)).abs() < fx!(1e-3));
     assert_eq!(s2.crew.storage_parts, 1);
 }
 
@@ -106,15 +106,15 @@ fn cargo_module_shifts_the_centre_of_mass_and_survives_saving() {
     let (mass, com, cap) = (s.ship.mass, s.ship.com, s.ship.cargo_capacity());
     let credits = s.crew.credits;
     buy(&mut s, p);
-    assert!(s.ship.mass > mass + 0.5);
+    assert!(s.ship.mass > mass + fx!(0.5));
     assert!(
-        s.ship.com.x < com.x - 0.05,
+        s.ship.com.x < com.x - fx!(0.05),
         "Schwerpunkt wandert nach links"
     );
-    assert!((s.ship.cargo_capacity() - cap - 5.0).abs() < 1e-3);
+    assert!((s.ship.cargo_capacity() - cap - fx!(5.0)).abs() < fx!(1e-3));
     let md = s.data.module("frachtmodul").unwrap().clone();
     assert_eq!(s.crew.credits, credits - md.credits);
-    assert!((s.stored(Ore::Ferrit) - (40.0 - 5.0)).abs() < 1e-3);
+    assert!((s.stored(Ore::Ferrit) - (fx!(40.0) - fx!(5.0))).abs() < fx!(1e-3));
     assert!(
         !s.events.contains(&SimEvent::ShipChanged),
         "kein neuer Slot, keine Lobby"
@@ -124,7 +124,7 @@ fn cargo_module_shifts_the_centre_of_mass_and_survives_saving() {
     let data = s.data.clone();
     let def = data.built_ship(&save.current_ship, &save.builds[0].1);
     let s2 = SimState::new(data, &save, Loadout::full(&def), 1);
-    assert!((s2.ship.cargo_capacity() - s.ship.cargo_capacity()).abs() < 1e-3);
+    assert!((s2.ship.cargo_capacity() - s.ship.cargo_capacity()).abs() < fx!(1e-3));
 }
 
 #[test]
@@ -146,30 +146,30 @@ fn engine_module_adds_a_fixed_thruster_with_its_own_slot() {
     assert_eq!(n as u8, before + 1);
     let extra = s.ship.thrusters.last().unwrap();
     assert!(
-        (extra.pos - Vec2::new(-2.15, -1.25)).length() < 1e-3,
+        (extra.pos - Vec2::new(-fx!(2.15), -fx!(1.25))).length() < fx!(1e-3),
         "feste Position"
     );
     // Die Grundtriebwerke stehen weiter nach ihrem Layout (das äußerste rechte bei 1,45).
     let max_x = s.ship.thrusters[..n - 1]
         .iter()
         .map(|t| t.pos.x)
-        .fold(f32::MIN, f32::max);
-    assert!((max_x - 1.45).abs() < 1e-3);
+        .fold(Fx::MIN, Fx::max);
+    assert!((max_x - fx!(1.45)).abs() < fx!(1e-3));
     // Allein gezündet dreht das seitliche Triebwerk das Schiff.
     let slot = extra.slot;
     s.ship.docked = None;
-    s.ship.pos = Vec2::new(-400.0, -300.0);
+    s.ship.pos = Vec2::new(-fx!(400.0), -fx!(300.0));
     s.ship.vel = Vec2::ZERO;
-    s.ship.ang_vel = 0.0;
+    s.ship.ang_vel = fx!(0.0);
     for _ in 0..30 {
         s.step(&TickInput {
             slots: 1 << slot,
-            aims: vec![0.0; MAX_SLOTS],
+            aims: vec![fx!(0.0); MAX_SLOTS],
             commands: vec![],
             brake: false,
         });
     }
-    assert!(s.ship.ang_vel.abs() > 0.05);
+    assert!(s.ship.ang_vel.abs() > fx!(0.05));
 }
 
 #[test]
@@ -181,7 +181,7 @@ fn modules_must_fit_the_mount_and_removal_refunds_half() {
     assert!(s.purchase_info(&module("heck_l", "frachtmodul")).is_err());
     let hull = s.ship.max_hull;
     buy(&mut s, module("heck_r", "panzerplatte"));
-    assert!((s.ship.max_hull - hull - 30.0).abs() < 1e-3);
+    assert!((s.ship.max_hull - hull - fx!(30.0)).abs() < fx!(1e-3));
     let ferrit = s.stored(Ore::Ferrit);
     buy(
         &mut s,
@@ -189,9 +189,9 @@ fn modules_must_fit_the_mount_and_removal_refunds_half() {
             mount: "heck_r".into(),
         },
     );
-    assert!((s.ship.max_hull - hull).abs() < 1e-3);
+    assert!((s.ship.max_hull - hull).abs() < fx!(1e-3));
     assert!(
-        (s.stored(Ore::Ferrit) - ferrit - 3.0).abs() < 1e-3,
+        (s.stored(Ore::Ferrit) - ferrit - fx!(3.0)).abs() < fx!(1e-3),
         "halbes Material zurück"
     );
     // Nur in Werften.
@@ -214,19 +214,27 @@ fn upgrades_cost_material_and_add_mass_where_they_sit() {
     let mass = s.ship.mass;
     let inertia = s.ship.inertia;
     buy(&mut s, Purchase::Upgrade("armor1".into()));
-    assert!((s.ship.mass - mass - 1.5).abs() < 1e-3, "Panzerung wiegt");
+    assert!(
+        (s.ship.mass - mass - fx!(1.5)).abs() < fx!(1e-3),
+        "Panzerung wiegt"
+    );
     assert!(s.ship.inertia > inertia);
-    assert!((s.stored(Ore::Ferrit) - 34.0).abs() < 1e-3);
+    assert!((s.stored(Ore::Ferrit) - fx!(34.0)).abs() < fx!(1e-3));
     // Ein größerer Tank zieht den Schwerpunkt nach hinten.
     let com = s.ship.com;
     buy(&mut s, Purchase::Upgrade("tank1".into()));
-    assert!(s.ship.com.y < com.y - 0.02, "{} → {}", com.y, s.ship.com.y);
+    assert!(
+        s.ship.com.y < com.y - fx!(0.02),
+        "{} → {}",
+        com.y,
+        s.ship.com.y
+    );
     // Kanone und Kran: Feuerrate und Tragkraft.
     buy(&mut s, Purchase::Upgrade("rapid1".into()));
     buy(&mut s, Purchase::Upgrade("crane1".into()));
     buy(&mut s, Purchase::Upgrade("crane2".into()));
-    assert!(s.ship.cannon_rate < 1.0);
-    assert!(s.ship.crane_load > 1.0);
+    assert!(s.ship.cannon_rate < fx!(1.0));
+    assert!(s.ship.crane_load > fx!(1.0));
 }
 
 #[test]

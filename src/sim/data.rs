@@ -4,20 +4,21 @@
 //! eingebettet, damit das Spiel auch ohne Asset-Ordner startet. Liegt eine Datei im
 //! Ordner, hat sie Vorrang (so lassen sich Werte ohne Neukompilieren ändern).
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 use serde::{Deserialize, Serialize};
 
-pub type P = (f32, f32);
+pub type P = (Fx, Fx);
 
 pub fn v(p: P) -> Vec2 {
     Vec2::new(p.0, p.1)
 }
 
 /// Farbe aus "#rrggbb" in lineare-ish sRGB-Komponenten 0..1 (die Umrechnung macht das Rendering).
-pub fn hex(s: &str) -> [f32; 3] {
+pub fn hex(s: &str) -> [Fx; 3] {
     let s = s.trim_start_matches('#');
     let p = |i: usize| {
-        u8::from_str_radix(s.get(i..i + 2).unwrap_or("ff"), 16).unwrap_or(255) as f32 / 255.0
+        Fx::from(u8::from_str_radix(s.get(i..i + 2).unwrap_or("ff"), 16).unwrap_or(255))
+            / fx!(255.0)
     };
     [p(0), p(2), p(4)]
 }
@@ -52,9 +53,9 @@ pub enum PartKind {
     Cockpit,
     Armor,
     /// Frachtmodul mit Kapazität in Tonnen.
-    CargoPod(f32),
+    CargoPod(Fx),
     /// Triebwerk mit Schubkraft.
-    Thruster(f32),
+    Thruster(Fx),
     Tool(ToolKind),
 }
 
@@ -63,10 +64,10 @@ pub struct PartDef {
     pub kind: PartKind,
     pub pos: P,
     pub size: P,
-    pub mass: f32,
+    pub mass: Fx,
     /// Schubrichtung in Grad relativ zur Schiffsnase (0 = schiebt nach vorne).
     #[serde(default, skip_serializing_if = "is_zero")]
-    pub dir: f32,
+    pub dir: Fx,
     /// Umriss des Teils (Optik und Kollision).
     #[serde(default)]
     pub shape: PartShape,
@@ -76,8 +77,8 @@ pub struct PartDef {
     pub fixed: bool,
 }
 
-fn is_zero(x: &f32) -> bool {
-    *x == 0.0
+fn is_zero(x: &Fx) -> bool {
+    *x == fx!(0.0)
 }
 fn is_false(b: &bool) -> bool {
     !*b
@@ -89,15 +90,15 @@ pub enum PartShape {
     #[default]
     Box,
     /// Trapez: (Breite oben, Breite unten) als Anteil der vollen Breite.
-    Taper(f32, f32),
+    Taper(Fx, Fx),
     /// Abgeschrägte Ecken; Anteil der kürzeren Halbachse.
-    Chamfer(f32),
+    Chamfer(Fx),
     /// Spitze nach vorne; Anteil der Höhe, den die Spitze einnimmt.
-    Nose(f32),
+    Nose(Fx),
     /// Spitze nach hinten.
-    Tail(f32),
+    Tail(Fx),
     /// Keil zur Seite: (Höhe links, Höhe rechts) als Anteil – für Flügel und Flossen.
-    Wing(f32, f32),
+    Wing(Fx, Fx),
 }
 
 impl PartShape {
@@ -118,7 +119,7 @@ impl PartShape {
                 Vec2::new(-hx * top, hy),
             ],
             PartShape::Chamfer(c) => {
-                let k = c.clamp(0.0, 0.9) * hx.min(hy);
+                let k = c.clamp(fx!(0.0), fx!(0.9)) * hx.min(hy);
                 vec![
                     Vec2::new(-hx + k, -hy),
                     Vec2::new(hx - k, -hy),
@@ -131,19 +132,19 @@ impl PartShape {
                 ]
             }
             PartShape::Nose(f) => {
-                let y = hy - 2.0 * hy * f.clamp(0.05, 0.95);
+                let y = hy - fx!(2.0) * hy * f.clamp(fx!(0.05), fx!(0.95));
                 vec![
                     Vec2::new(-hx, -hy),
                     Vec2::new(hx, -hy),
                     Vec2::new(hx, y),
-                    Vec2::new(0.0, hy),
+                    Vec2::new(fx!(0.0), hy),
                     Vec2::new(-hx, y),
                 ]
             }
             PartShape::Tail(f) => {
-                let y = -hy + 2.0 * hy * f.clamp(0.05, 0.95);
+                let y = -hy + fx!(2.0) * hy * f.clamp(fx!(0.05), fx!(0.95));
                 vec![
-                    Vec2::new(0.0, -hy),
+                    Vec2::new(fx!(0.0), -hy),
                     Vec2::new(hx, y),
                     Vec2::new(hx, hy),
                     Vec2::new(-hx, hy),
@@ -153,13 +154,13 @@ impl PartShape {
             PartShape::Wing(left, right) => vec![
                 Vec2::new(-hx, -hy),
                 Vec2::new(hx, -hy),
-                Vec2::new(hx, -hy + 2.0 * hy * right.clamp(0.05, 1.0)),
-                Vec2::new(-hx, -hy + 2.0 * hy * left.clamp(0.05, 1.0)),
+                Vec2::new(hx, -hy + fx!(2.0) * hy * right.clamp(fx!(0.05), fx!(1.0))),
+                Vec2::new(-hx, -hy + fx!(2.0) * hy * left.clamp(fx!(0.05), fx!(1.0))),
             ],
         };
         // Doppelte Punkte (z. B. Trapez mit Spitze 0) entfernen.
-        pts.dedup_by(|a, b| (*a - *b).length() < 1e-4);
-        if pts.len() > 3 && (pts[0] - *pts.last().unwrap()).length() < 1e-4 {
+        pts.dedup_by(|a, b| (*a - *b).length() < fx!(1e-4));
+        if pts.len() > 3 && (pts[0] - *pts.last().unwrap()).length() < fx!(1e-4) {
             pts.pop();
         }
         pts
@@ -169,7 +170,7 @@ impl PartShape {
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ThrusterLayout {
     pub count: u8,
-    pub xs: Vec<f32>,
+    pub xs: Vec<Fx>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -181,27 +182,27 @@ pub struct ShipDef {
     pub price: u32,
     pub hull_color: String,
     pub accent_color: String,
-    pub max_hull: f32,
-    pub max_shield: f32,
+    pub max_hull: Fx,
+    pub max_shield: Fx,
     pub max_ammo: u32,
     #[serde(default = "default_ang_damp")]
-    pub angular_damping: f32,
+    pub angular_damping: Fx,
     #[serde(default = "default_min_thrusters")]
     pub min_thrusters: u8,
     /// Schild lädt sich nach `shield_delay` Sekunden ohne Treffer mit `shield_regen` pro Sekunde auf.
     #[serde(default = "default_shield_regen")]
-    pub shield_regen: f32,
+    pub shield_regen: Fx,
     #[serde(default = "default_shield_delay")]
-    pub shield_delay: f32,
+    pub shield_delay: Fx,
     /// Empfohlene Crewgröße (von, bis). Slots belegen nur Menschen, keine Bots.
     #[serde(default = "default_crew")]
     pub crew: (u8, u8),
     /// Tankgröße (Einheiten).
     #[serde(default = "default_fuel")]
-    pub fuel_capacity: f32,
+    pub fuel_capacity: Fx,
     /// Verbrauch pro Schubeinheit und Sekunde.
     #[serde(default = "default_fuel_burn")]
-    pub fuel_burn: f32,
+    pub fuel_burn: Fx,
     /// Reihenfolge der Triebwerke = Reihenfolge, in der sie in der Lobby belegt werden.
     pub parts: Vec<PartDef>,
     #[serde(default)]
@@ -249,44 +250,44 @@ pub struct ModuleDef {
     pub slot: ModuleSlot,
     pub part: PartKind,
     pub size: P,
-    pub mass: f32,
+    pub mass: Fx,
     #[serde(default)]
     pub shape: PartShape,
     /// Zusätzliche Hülle (Panzerung).
     #[serde(default)]
-    pub hull: f32,
+    pub hull: Fx,
     pub credits: u32,
     #[serde(default)]
-    pub materials: Vec<(Ore, f32)>,
+    pub materials: Vec<(Ore, Fx)>,
     /// Bauteile aus Wracks.
     #[serde(default)]
     pub parts: u32,
 }
 
-fn default_ang_damp() -> f32 {
-    0.12
+fn default_ang_damp() -> Fx {
+    fx!(0.12)
 }
 fn default_min_thrusters() -> u8 {
     2
 }
-fn default_shield_regen() -> f32 {
-    4.0
+fn default_shield_regen() -> Fx {
+    fx!(4.0)
 }
-fn default_shield_delay() -> f32 {
-    4.0
+fn default_shield_delay() -> Fx {
+    fx!(4.0)
 }
 fn default_crew() -> (u8, u8) {
     (1, 4)
 }
-fn default_fuel() -> f32 {
-    100.0
+fn default_fuel() -> Fx {
+    fx!(100.0)
 }
-fn default_fuel_burn() -> f32 {
-    0.0065
+fn default_fuel_burn() -> Fx {
+    fx!(0.0065)
 }
 
 impl ShipDef {
-    pub fn thruster_parts(&self) -> impl Iterator<Item = (usize, &PartDef, f32)> {
+    pub fn thruster_parts(&self) -> impl Iterator<Item = (usize, &PartDef, Fx)> {
         self.parts
             .iter()
             .enumerate()
@@ -307,17 +308,17 @@ impl ShipDef {
     pub fn max_thrusters(&self) -> u8 {
         self.thruster_parts().count() as u8
     }
-    pub fn cargo_capacity(&self) -> f32 {
+    pub fn cargo_capacity(&self) -> Fx {
         self.parts
             .iter()
             .map(|p| match p.kind {
                 PartKind::CargoPod(c) => c,
-                _ => 0.0,
+                _ => fx!(0.0),
             })
             .sum()
     }
     /// x-Positionen der Triebwerke, wenn `n` belegt sind (symmetrisch neu angeordnet).
-    pub fn thruster_xs(&self, n: u8) -> Vec<f32> {
+    pub fn thruster_xs(&self, n: u8) -> Vec<Fx> {
         if let Some(l) = self
             .thruster_layouts
             .iter()
@@ -328,12 +329,12 @@ impl ShipDef {
         let span = self
             .thruster_parts()
             .map(|(_, p, _)| p.pos.0.abs())
-            .fold(0.0f32, f32::max);
+            .fold(fx!(0.0), Fx::max);
         if n <= 1 {
-            return vec![0.0];
+            return vec![fx!(0.0)];
         }
         (0..n)
-            .map(|i| -span + 2.0 * span * i as f32 / (n - 1) as f32)
+            .map(|i| -span + fx!(2.0) * span * Fx::from(i) / Fx::from(n - 1))
             .collect()
     }
 }
@@ -370,13 +371,13 @@ impl Ore {
         }
     }
     /// Leuchtfarbe des Erzes (sRGB).
-    pub fn color(self) -> [f32; 3] {
+    pub fn color(self) -> [Fx; 3] {
         match self {
-            Ore::Ferrit => [1.0, 0.55, 0.25],
-            Ore::Kobalt => [0.25, 0.55, 1.0],
-            Ore::Solarit => [1.0, 0.85, 0.15],
-            Ore::Ionit => [0.2, 1.0, 0.85],
-            Ore::Schrott => [0.72, 0.66, 0.58],
+            Ore::Ferrit => [fx!(1.0), fx!(0.55), fx!(0.25)],
+            Ore::Kobalt => [fx!(0.25), fx!(0.55), fx!(1.0)],
+            Ore::Solarit => [fx!(1.0), fx!(0.85), fx!(0.15)],
+            Ore::Ionit => [fx!(0.2), fx!(1.0), fx!(0.85)],
+            Ore::Schrott => [fx!(0.72), fx!(0.66), fx!(0.58)],
         }
     }
 }
@@ -405,31 +406,31 @@ pub enum Service {
 #[serde(default)]
 pub struct Prices {
     /// Ankaufspreis für Erz, pro Sorte. Fehlende Sorten zahlen den Grundpreis.
-    pub ore: Vec<(Ore, f32)>,
-    pub fuel: f32,
-    pub service: f32,
+    pub ore: Vec<(Ore, Fx)>,
+    pub fuel: Fx,
+    pub service: Fx,
     /// Faktor auf die Dockgebühr (0 = kostenlos).
-    pub dock: f32,
+    pub dock: Fx,
 }
 
 impl Default for Prices {
     fn default() -> Self {
         Prices {
             ore: Vec::new(),
-            fuel: 1.0,
-            service: 1.0,
-            dock: 1.0,
+            fuel: fx!(1.0),
+            service: fx!(1.0),
+            dock: fx!(1.0),
         }
     }
 }
 
 impl Prices {
-    pub fn ore_factor(&self, ore: Ore) -> f32 {
+    pub fn ore_factor(&self, ore: Ore) -> Fx {
         self.ore
             .iter()
             .find(|(o, _)| *o == ore)
             .map(|(_, f)| *f)
-            .unwrap_or(1.0)
+            .unwrap_or(fx!(1.0))
     }
 }
 
@@ -446,7 +447,7 @@ pub struct StationDef {
     pub name: String,
     pub kind: StationKind,
     pub pos: P,
-    pub cell: f32,
+    pub cell: Fx,
     pub main_color: String,
     pub accent_color: String,
     pub services: Vec<Service>,
@@ -474,11 +475,11 @@ pub struct StationDef {
     pub project: Option<ProjectDef>,
     /// Ablagezone für sperrige Bergungsobjekte (Versatz zur Stationsmitte, Radius).
     #[serde(default)]
-    pub drop_zone: Option<(P, f32)>,
+    pub drop_zone: Option<(P, Fx)>,
     /// Lastaufnahme: U-förmige Halterung, in die Schwerlastkisten gesetzt werden
     /// (Versatz zur Stationsmitte, Richtung der Öffnung in Grad, 0 = +x).
     #[serde(default)]
-    pub socket: Option<(P, f32)>,
+    pub socket: Option<(P, Fx)>,
     /// Gesicherter Andockport: erst nach einem Hack (Tastenmuster der Slots) anfliegbar.
     #[serde(default)]
     pub hack: Option<HackDef>,
@@ -488,9 +489,9 @@ pub struct StationDef {
 pub struct HackDef {
     /// Länge des Musters, Zeit dafür (s), Sperre nach einem Fehler (s), wie lange offen (s).
     pub length: u32,
-    pub time: f32,
-    pub lockout: f32,
-    pub open: f32,
+    pub time: Fx,
+    pub lockout: Fx,
+    pub open: Fx,
 }
 
 /// Wiederaufbau einer Station.
@@ -504,7 +505,7 @@ pub struct ProjectDef {
 pub struct StageDef {
     pub name: String,
     /// Benötigtes Material (Erz/Schrott in Tonnen).
-    pub needs: Vec<(Ore, f32)>,
+    pub needs: Vec<(Ore, Fx)>,
     /// Benötigte Bauteile (aus Wracks).
     #[serde(default)]
     pub parts: u32,
@@ -529,19 +530,19 @@ pub struct PlanetDef {
     pub id: String,
     pub name: String,
     pub pos: P,
-    pub radius: f32,
+    pub radius: Fx,
     /// Farbverlauf für die prozedurale Oberfläche.
     pub colors: Vec<String>,
     pub atmosphere: String,
     pub ore: Ore,
     pub deposits: u32,
-    pub deposit_amount: f32,
+    pub deposit_amount: Fx,
     /// Winkel (Grad) einer kleinen Landestation auf der Oberfläche.
     #[serde(default)]
-    pub outpost_angle: Option<f32>,
+    pub outpost_angle: Option<Fx>,
     /// Winkel (Grad) freier Landezonen. Neben jeder liegt ein Erzvorkommen.
     #[serde(default)]
-    pub landing_zones: Vec<f32>,
+    pub landing_zones: Vec<Fx>,
     /// Preise am Außenposten.
     #[serde(default)]
     pub prices: Prices,
@@ -553,24 +554,24 @@ pub struct PlanetDef {
 pub struct FieldDef {
     pub name: String,
     pub center: P,
-    pub radius: f32,
+    pub radius: Fx,
     pub count: u32,
-    pub min_radius: f32,
-    pub max_radius: f32,
+    pub min_radius: Fx,
+    pub max_radius: Fx,
     pub ore: Ore,
-    pub ore_chance: f32,
+    pub ore_chance: Fx,
     pub color: String,
     /// Beimischung: Anteil der Erz-Asteroiden, die stattdessen ein anderes Erz tragen.
     #[serde(default)]
-    pub mixed: Vec<(Ore, f32)>,
+    pub mixed: Vec<(Ore, Fx)>,
 }
 
 impl FieldDef {
     /// Anteil aller Asteroiden des Felds, die dieses Erz tragen.
-    pub fn ore_share(&self, o: Ore) -> f32 {
-        let mixed: f32 = self.mixed.iter().map(|(_, c)| c).sum();
+    pub fn ore_share(&self, o: Ore) -> Fx {
+        let mixed: Fx = self.mixed.iter().map(|(_, c)| c).sum();
         if o == self.ore {
-            return self.ore_chance * (1.0 - mixed).max(0.0);
+            return self.ore_chance * (fx!(1.0) - mixed).max(fx!(0.0));
         }
         self.mixed
             .iter()
@@ -596,19 +597,19 @@ impl FieldDef {
 pub struct MeteorZoneDef {
     pub name: String,
     pub center: P,
-    pub radius: f32,
-    pub interval: f32,
+    pub radius: Fx,
+    pub interval: Fx,
     pub speed: P,
 }
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct SpinnerDef {
     pub pos: P,
-    pub arm_length: f32,
-    pub arm_width: f32,
+    pub arm_length: Fx,
+    pub arm_width: Fx,
     pub arms: u32,
     /// Winkelgeschwindigkeit in Grad pro Sekunde.
-    pub speed: f32,
+    pub speed: Fx,
     pub color: String,
     /// Form: Arme durch die Mitte (Standard) oder ein Ring mit Öffnungen (Wrackring).
     #[serde(default)]
@@ -622,7 +623,7 @@ pub enum SpinnerShape {
     /// Ring aus `segments` Platten mit Radius `radius`; `openings` gleichmäßig verteilte
     /// Öffnungen, jede `gap` Segmente breit.
     Ring {
-        radius: f32,
+        radius: Fx,
         segments: u32,
         openings: u32,
         gap: u32,
@@ -645,9 +646,9 @@ pub struct AnomalyDef {
     #[serde(default)]
     pub kind: AnomalyKind,
     pub pos: P,
-    pub radius: f32,
-    pub core_radius: f32,
-    pub strength: f32,
+    pub radius: Fx,
+    pub core_radius: Fx,
+    pub strength: Fx,
 }
 
 /// Ein Wrack zum Ausschlachten: Bohrer gewinnt Schrott, der Kran reißt Bauteile ab.
@@ -662,9 +663,9 @@ pub struct WreckDef {
     pub ship: String,
     pub pos: P,
     #[serde(default)]
-    pub angle: f32,
+    pub angle: Fx,
     /// Schrott in Tonnen, den der Bohrer herausholen kann.
-    pub scrap: f32,
+    pub scrap: Fx,
     /// Bauteile, die der Kran abreißen kann.
     pub parts: u32,
 }
@@ -673,18 +674,18 @@ pub struct WreckDef {
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq)]
 pub enum SectorEffect {
     /// Treibende Trümmer, Dichte 0..1.
-    Debris(f32),
+    Debris(Fx),
     /// Nebel: Sicht, Radar und Scanner gestört, Stärke 0..1.
-    Nebula(f32),
+    Nebula(Fx),
     /// Sonnenwind: Richtung und Beschleunigung in m/s².
-    SolarWind(P, f32),
+    SolarWind(P, Fx),
 }
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct RegionDef {
     pub name: String,
     pub center: P,
-    pub radius: f32,
+    pub radius: Fx,
     pub colors: (String, String),
     #[serde(default)]
     pub effect: Option<SectorEffect>,
@@ -696,19 +697,19 @@ pub struct RegionDef {
 pub struct EventsDef {
     /// Abstand zwischen zwei Ereignissen in Sekunden (von, bis).
     pub interval: P,
-    pub flare_seconds: f32,
+    pub flare_seconds: Fx,
     pub shower_meteors: u32,
     /// Belohnungsfaktor für spontane Notsignale.
-    pub distress_bonus: f32,
+    pub distress_bonus: Fx,
 }
 
 impl Default for EventsDef {
     fn default() -> Self {
         EventsDef {
-            interval: (110.0, 220.0),
-            flare_seconds: 20.0,
+            interval: (fx!(110.0), fx!(220.0)),
+            flare_seconds: fx!(20.0),
             shower_meteors: 14,
-            distress_bonus: 1.3,
+            distress_bonus: fx!(1.3),
         }
     }
 }
@@ -716,8 +717,8 @@ impl Default for EventsDef {
 #[derive(Deserialize, Clone, Debug)]
 pub struct BackdropDef {
     pub pos: P,
-    pub depth: f32,
-    pub radius: f32,
+    pub depth: Fx,
+    pub radius: Fx,
     pub colors: Vec<String>,
     #[serde(default)]
     pub rings: bool,
@@ -726,7 +727,7 @@ pub struct BackdropDef {
 #[derive(Deserialize, Clone, Debug)]
 pub struct WorldDef {
     pub seed: u64,
-    pub radius: f32,
+    pub radius: Fx,
     pub start_station: String,
     pub stations: Vec<StationDef>,
     pub planets: Vec<PlanetDef>,
@@ -755,23 +756,23 @@ pub struct WorldDef {
 #[derive(Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct FlightDef {
-    pub assist_thrust: f32,
+    pub assist_thrust: Fx,
     /// Dämpfung der Fahrt pro Sekunde (Anteil).
-    pub assist_linear_damping: f32,
+    pub assist_linear_damping: Fx,
     /// Zusätzliche Dämpfung der Drehung pro Sekunde, und der Stabilisator obendrauf, solange
     /// kein Triebwerk feuert (fängt Drehungen in etwa einer Sekunde ab).
-    pub assist_angular_damping: f32,
-    pub stabilizer: f32,
+    pub assist_angular_damping: Fx,
+    pub stabilizer: Fx,
     /// Verstärkung des Drehmoments aus versetztem Schub.
-    pub assist_turn: f32,
+    pub assist_turn: Fx,
     /// Bremsassistent: Verzögerung (m/s²), Drehdämpfung pro Sekunde, Treibstoff pro Sekunde.
-    pub brake_accel: f32,
-    pub brake_spin: f32,
-    pub brake_fuel: f32,
+    pub brake_accel: Fx,
+    pub brake_spin: Fx,
+    pub brake_fuel: Fx,
     /// Rückwärtsgang (Bremstaste weiter halten, wenn das Schiff steht): Beschleunigung und
     /// Höchstgeschwindigkeit – unter der Landegrenze, damit man rückwärts aufsetzen kann.
-    pub reverse_accel: f32,
-    pub reverse_max: f32,
+    pub reverse_accel: Fx,
+    pub reverse_max: Fx,
 }
 
 impl Default for FlightDef {
@@ -780,16 +781,16 @@ impl Default for FlightDef {
         // erst nach ~14 s), nur ein kleiner Stabilisator, schwache Grund-Bremse – mehr Bremskraft
         // gibt es als Upgrade (Bremsdüsen).
         FlightDef {
-            assist_thrust: 0.6,
-            assist_linear_damping: 0.05,
-            assist_angular_damping: 0.35,
-            stabilizer: 0.6,
-            assist_turn: 1.8,
-            brake_accel: 2.0,
-            brake_spin: 1.2,
-            brake_fuel: 1.0,
-            reverse_accel: 0.8,
-            reverse_max: 1.2,
+            assist_thrust: fx!(0.6),
+            assist_linear_damping: fx!(0.05),
+            assist_angular_damping: fx!(0.35),
+            stabilizer: fx!(0.6),
+            assist_turn: fx!(1.8),
+            brake_accel: fx!(2.0),
+            brake_spin: fx!(1.2),
+            brake_fuel: fx!(1.0),
+            reverse_accel: fx!(0.8),
+            reverse_max: fx!(1.2),
         }
     }
 }
@@ -875,7 +876,7 @@ pub enum EffectKind {
 pub struct EffectSave {
     pub kind: EffectKind,
     pub station: String,
-    pub left: f32,
+    pub left: Fx,
 }
 
 // ---------------------------------------------------------------------------
@@ -903,29 +904,29 @@ pub struct ServiceItem {
 
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub enum UpgradeEffect {
-    ThrustMul(f32),
-    MaxHull(f32),
-    MaxShield(f32),
-    Cargo(f32),
-    Gyro(f32),
+    ThrustMul(Fx),
+    MaxHull(Fx),
+    MaxShield(Fx),
+    Cargo(Fx),
+    Gyro(Fx),
     MaxAmmo(u32),
-    CraneRange(f32),
-    DrillRate(f32),
+    CraneRange(Fx),
+    DrillRate(Fx),
     /// Tank vergrößern (Anteil).
-    FuelTank(f32),
+    FuelTank(Fx),
     /// Scanner-Reichweite (Faktor).
-    ScanRange(f32),
+    ScanRange(Fx),
     /// Reparaturdrohnen: Hülle flickt sich im Flug (Punkte pro Sekunde).
-    RepairDrones(f32),
+    RepairDrones(Fx),
     /// Treibstoffverbrauch (Faktor).
-    FuelBurn(f32),
+    FuelBurn(Fx),
     /// Kanone: Nachladezeit (Faktor, < 1 = schneller) und Schaden (Faktor).
-    CannonRate(f32),
-    CannonDamage(f32),
+    CannonRate(Fx),
+    CannonDamage(Fx),
     /// Kran: Tragkraft – das Seil hält mehr aus (Faktor).
-    CraneLoad(f32),
+    CraneLoad(Fx),
     /// Bremsdüsen: Bremskraft und Rückwärtsgang (Faktor).
-    Brake(f32),
+    Brake(Fx),
 }
 
 /// Welches Schiffsteil ein Upgrade betrifft (dort sitzt auch die Zusatzmasse).
@@ -977,12 +978,12 @@ pub struct UpgradeDef {
     pub tier: u8,
     /// Nachteil: Zusatzmasse pro betroffenem Teil (t), dazu ein kurzer Text.
     #[serde(default)]
-    pub mass: f32,
+    pub mass: Fx,
     #[serde(default)]
     pub drawback: String,
     /// Kosten außer Credits: Material aus dem Crew-Lager, Bauteile, ein Artefakt.
     #[serde(default)]
-    pub materials: Vec<(Ore, f32)>,
+    pub materials: Vec<(Ore, Fx)>,
     #[serde(default)]
     pub parts: u32,
     #[serde(default)]
@@ -1020,7 +1021,7 @@ pub struct ShopDef {
     #[serde(default)]
     pub gear: Vec<GearDef>,
     /// Bergungskosten nach Zerstörung: fester Betrag + Anteil der Kasse (höchstens die Kasse).
-    pub respawn_fee: f32,
+    pub respawn_fee: Fx,
     #[serde(default)]
     pub salvage_base: u32,
     pub services: Vec<ServiceItem>,
@@ -1052,45 +1053,45 @@ pub struct FinanceDef {
     /// Dockgebühr in Credits (mal Ortsfaktor `prices.dock`, minus 20 % pro Rufstufe).
     pub dock_fee: u32,
     /// Wer innerhalb dieser Zeit wieder an derselben Station andockt, zahlt nicht noch einmal.
-    pub dock_grace: f32,
+    pub dock_grace: Fx,
     /// Versicherung: Anteil jeder Auftragsbelohnung (mindestens `premium_min`), übernimmt
     /// `coverage` der Bergungskosten.
-    pub premium_share: f32,
+    pub premium_share: Fx,
     pub premium_min: u32,
-    pub coverage: f32,
+    pub coverage: Fx,
     /// Schiffskredit: Anzahlung (Anteil), Zinsen auf den Rest, Zahl der Raten.
-    pub down_payment: f32,
-    pub interest: f32,
+    pub down_payment: Fx,
+    pub interest: Fx,
     pub installments: u32,
     /// Markt: Preisrückgang pro verkaufter Tonne, Untergrenze, Erholungszeit (s, exponentiell).
-    pub drop_per_t: f32,
-    pub floor: f32,
-    pub recovery: f32,
+    pub drop_per_t: Fx,
+    pub floor: Fx,
+    pub recovery: Fx,
     /// Nachfrage: Abstand zwischen zwei Nachfragen (s, von–bis), Preisfaktor, Dauer, Anstieg (s).
-    pub demand_interval: (f32, f32),
-    pub demand_factor: f32,
-    pub demand_seconds: f32,
-    pub demand_rise: f32,
+    pub demand_interval: (Fx, Fx),
+    pub demand_factor: Fx,
+    pub demand_seconds: Fx,
+    pub demand_rise: Fx,
 }
 
 impl Default for FinanceDef {
     fn default() -> Self {
         FinanceDef {
             dock_fee: 12,
-            dock_grace: 120.0,
-            premium_share: 0.08,
+            dock_grace: fx!(120.0),
+            premium_share: fx!(0.08),
             premium_min: 10,
-            coverage: 0.7,
-            down_payment: 0.25,
-            interest: 0.12,
+            coverage: fx!(0.7),
+            down_payment: fx!(0.25),
+            interest: fx!(0.12),
             installments: 8,
-            drop_per_t: 0.035,
-            floor: 0.55,
-            recovery: 150.0,
-            demand_interval: (240.0, 420.0),
-            demand_factor: 1.35,
-            demand_seconds: 300.0,
-            demand_rise: 20.0,
+            drop_per_t: fx!(0.035),
+            floor: fx!(0.55),
+            recovery: fx!(150.0),
+            demand_interval: (fx!(240.0), fx!(420.0)),
+            demand_factor: fx!(1.35),
+            demand_seconds: fx!(300.0),
+            demand_rise: fx!(20.0),
         }
     }
 }
@@ -1116,7 +1117,7 @@ impl ShopDef {
 #[derive(Deserialize, Clone, Debug)]
 pub struct CargoTemplate {
     pub name: String,
-    pub mass: f32,
+    pub mass: Fx,
     pub reward: u32,
     /// Zu schwer für den Frachtraum: wird als Kiste am Kran geschleppt.
     #[serde(default)]
@@ -1162,7 +1163,7 @@ impl CargoTrait {
 pub struct MiningTemplate {
     pub ore: Ore,
     pub amount: P,
-    pub reward_per_t: f32,
+    pub reward_per_t: Fx,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -1173,7 +1174,7 @@ pub struct MissionsDef {
     pub offers_per_outpost: u32,
     /// Belohnung pro Tonne für Lieferungen von Außenposten.
     #[serde(default)]
-    pub shipment_per_t: f32,
+    pub shipment_per_t: Fx,
     /// Für welche Crewgröße eine Auftragsart gedacht ist (von, bis).
     #[serde(default)]
     pub crew: Vec<(MissionType, (u8, u8))>,
@@ -1181,12 +1182,12 @@ pub struct MissionsDef {
     #[serde(default = "default_passengers")]
     pub passengers: (u32, u32),
     #[serde(default = "default_fare")]
-    pub fare_per_person: f32,
+    pub fare_per_person: Fx,
     /// Bonus für Abschluss innerhalb der Richtzeit und für sauberes Fliegen (Anteil der Belohnung).
     #[serde(default = "default_time_bonus")]
-    pub time_bonus: f32,
+    pub time_bonus: Fx,
     #[serde(default = "default_clean_bonus")]
-    pub clean_bonus: f32,
+    pub clean_bonus: Fx,
     /// Sperrige Bergungsobjekte.
     #[serde(default)]
     pub bulky: Vec<BulkyTemplate>,
@@ -1205,7 +1206,7 @@ pub struct MissionsDef {
     pub bonus: BonusDef,
     pub distress_offers: u32,
     pub delivery_cargo: Vec<CargoTemplate>,
-    pub reward_per_distance: f32,
+    pub reward_per_distance: Fx,
     pub mining: Vec<MiningTemplate>,
     pub tow_reward: P,
     pub capsule_reward: P,
@@ -1218,18 +1219,18 @@ pub struct MissionsDef {
 #[serde(default)]
 pub struct SurveyDef {
     pub fields: (u32, u32),
-    pub seconds: f32,
-    pub max_speed: f32,
-    pub reward_per_field: f32,
+    pub seconds: Fx,
+    pub max_speed: Fx,
+    pub reward_per_field: Fx,
 }
 
 impl Default for SurveyDef {
     fn default() -> Self {
         SurveyDef {
             fields: (1, 2),
-            seconds: 6.0,
-            max_speed: 0.6,
-            reward_per_field: 140.0,
+            seconds: fx!(6.0),
+            max_speed: fx!(0.6),
+            reward_per_field: fx!(140.0),
         }
     }
 }
@@ -1238,14 +1239,14 @@ impl Default for SurveyDef {
 #[derive(Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct EscortDef {
-    pub reward: f32,
+    pub reward: Fx,
     pub names: Vec<String>,
 }
 
 impl Default for EscortDef {
     fn default() -> Self {
         EscortDef {
-            reward: 320.0,
+            reward: fx!(320.0),
             names: vec!["Frachter".into()],
         }
     }
@@ -1258,11 +1259,11 @@ pub struct RescueDef {
     pub ships: Vec<String>,
     pub captains: Vec<String>,
     pub crew: (u32, u32),
-    pub reward_per_person: f32,
+    pub reward_per_person: Fx,
     /// Dank, wenn sich die Geretteten später melden ({ship}, {captain}).
     pub thanks: Vec<String>,
     /// Sekunden bis zur Meldung, Geschenk (Credits, Bauteile).
-    pub thanks_after: f32,
+    pub thanks_after: Fx,
     pub gift_credits: u32,
     pub gift_parts: u32,
 }
@@ -1273,11 +1274,11 @@ impl Default for RescueDef {
             ships: vec!["Kutter Ilse".into()],
             captains: vec!["Kapitänin Ilse Brandt".into()],
             crew: (2, 4),
-            reward_per_person: 90.0,
+            reward_per_person: fx!(90.0),
             thanks: vec![
                 "Hier {captain} von der {ship}. Ohne euch wären wir noch da draußen.".into(),
             ],
-            thanks_after: 240.0,
+            thanks_after: fx!(240.0),
             gift_credits: 150,
             gift_parts: 2,
         }
@@ -1288,21 +1289,21 @@ impl Default for RescueDef {
 #[derive(Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct BonusDef {
-    pub chance: f32,
+    pub chance: Fx,
     pub names: Vec<String>,
     pub mass: P,
     pub value: (u32, u32),
-    pub unstable_chance: f32,
+    pub unstable_chance: Fx,
 }
 
 impl Default for BonusDef {
     fn default() -> Self {
         BonusDef {
-            chance: 0.5,
+            chance: fx!(0.5),
             names: vec!["Energiezelle".into()],
-            mass: (2.0, 4.0),
+            mass: (fx!(2.0), fx!(4.0)),
             value: (260, 480),
-            unstable_chance: 0.4,
+            unstable_chance: fx!(0.4),
         }
     }
 }
@@ -1313,19 +1314,19 @@ impl Default for BonusDef {
 pub struct SmuggleDef {
     pub cargo: Vec<String>,
     pub mass: P,
-    pub reward: f32,
+    pub reward: Fx,
     pub fine: u32,
-    pub scan_time: f32,
+    pub scan_time: Fx,
 }
 
 impl Default for SmuggleDef {
     fn default() -> Self {
         SmuggleDef {
             cargo: Vec::new(),
-            mass: (1.0, 3.0),
-            reward: 380.0,
+            mass: (fx!(1.0), fx!(3.0)),
+            reward: fx!(380.0),
             fine: 250,
-            scan_time: 3.5,
+            scan_time: fx!(3.5),
         }
     }
 }
@@ -1333,14 +1334,14 @@ impl Default for SmuggleDef {
 fn default_passengers() -> (u32, u32) {
     (2, 6)
 }
-fn default_fare() -> f32 {
-    45.0
+fn default_fare() -> Fx {
+    fx!(45.0)
 }
-fn default_time_bonus() -> f32 {
-    0.15
+fn default_time_bonus() -> Fx {
+    fx!(0.15)
 }
-fn default_clean_bonus() -> f32 {
-    0.10
+fn default_clean_bonus() -> Fx {
+    fx!(0.10)
 }
 
 // ---------------------------------------------------------------------------
@@ -1379,26 +1380,26 @@ pub struct CoursesDef {
     pub survey_sites: Vec<SurveySiteDef>,
     /// Strafsekunden pro Kollision.
     #[serde(default = "default_collision_penalty")]
-    pub collision_penalty: f32,
+    pub collision_penalty: Fx,
     /// Präzisionsandocken: Strafsekunden pro Meter Versatz und pro m/s Aufsetzgeschwindigkeit.
     #[serde(default = "default_dock_penalty")]
-    pub dock_penalty: (f32, f32),
+    pub dock_penalty: (Fx, Fx),
     /// So weit darf sich das Schiff vom nächsten Ziel entfernen, sonst endet der Lauf.
     #[serde(default = "default_abort_distance")]
-    pub abort_distance: f32,
+    pub abort_distance: Fx,
     /// Preisgeld beim ersten Erreichen von Bronze, Silber, Gold.
     #[serde(default)]
     pub medal_prizes: (u32, u32, u32),
 }
 
-fn default_collision_penalty() -> f32 {
-    2.0
+fn default_collision_penalty() -> Fx {
+    fx!(2.0)
 }
-fn default_dock_penalty() -> (f32, f32) {
-    (1.5, 1.0)
+fn default_dock_penalty() -> (Fx, Fx) {
+    (fx!(1.5), fx!(1.0))
 }
-fn default_abort_distance() -> f32 {
-    450.0
+fn default_abort_distance() -> Fx {
+    fx!(450.0)
 }
 
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -1421,7 +1422,7 @@ pub struct CourseDef {
     pub steps: Vec<CourseStepDef>,
     /// Medaillenzeiten in Sekunden: Gold, Silber, Bronze.
     #[serde(default)]
-    pub medals: Option<(f32, f32, f32)>,
+    pub medals: Option<(Fx, Fx, Fx)>,
     /// Einmalige Belohnung beim ersten Abschluss.
     #[serde(default)]
     pub prize: u32,
@@ -1438,23 +1439,23 @@ pub struct CourseStepDef {
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub enum StepKind {
     /// Durch ein Tor fliegen: Mitte, Flugrichtung in Grad (0 = +x, 90 = +y), Breite.
-    Gate { pos: P, dir: f32, width: f32 },
+    Gate { pos: P, dir: Fx, width: Fx },
     /// Einen Punkt erreichen (z. B. das Innere eines Wrackrings).
-    Pass { pos: P, radius: f32 },
+    Pass { pos: P, radius: Fx },
     /// Nase auf eine Boje richten und die Ausrichtung halten.
     Face {
         pos: P,
         #[serde(default = "default_face_tolerance")]
-        tolerance: f32,
+        tolerance: Fx,
         #[serde(default = "default_face_seconds")]
-        seconds: f32,
+        seconds: Fx,
     },
     /// Im Messfeld zur Ruhe kommen und stillhalten.
     Hold {
         pos: P,
-        radius: f32,
-        seconds: f32,
-        max_speed: f32,
+        radius: Fx,
+        seconds: Fx,
+        max_speed: Fx,
     },
     /// Andocken; `near` wählt die Plattform der Station, die diesem Punkt am nächsten
     /// liegt – ohne Angabe zählt jede Plattform der Station.
@@ -1465,18 +1466,18 @@ pub enum StepKind {
     },
 }
 
-fn default_face_tolerance() -> f32 {
-    10.0
+fn default_face_tolerance() -> Fx {
+    fx!(10.0)
 }
-fn default_face_seconds() -> f32 {
-    1.0
+fn default_face_seconds() -> Fx {
+    fx!(1.0)
 }
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct SurveySiteDef {
     pub name: String,
     pub pos: P,
-    pub radius: f32,
+    pub radius: Fx,
 }
 
 // ---------------------------------------------------------------------------
@@ -1522,7 +1523,7 @@ pub struct TraderDef {
 pub struct NestDef {
     pub name: String,
     pub center: P,
-    pub radius: f32,
+    pub radius: Fx,
     pub count: u32,
 }
 
@@ -1539,7 +1540,7 @@ pub struct MinerDef {
 pub struct CheckpointDef {
     pub name: String,
     pub pos: P,
-    pub radius: f32,
+    pub radius: Fx,
 }
 
 /// Wiederkehrende Händlerin mit eigenem Schiff und Spezialsortiment.
@@ -1558,7 +1559,7 @@ pub struct GoodsDef {
     pub price: u32,
     /// Material ins Crew-Lager (Sorte, t) und/oder Bauteile.
     #[serde(default)]
-    pub material: Option<(Ore, f32)>,
+    pub material: Option<(Ore, Fx)>,
     #[serde(default)]
     pub parts: u32,
 }
@@ -1593,7 +1594,7 @@ pub struct ArtifactDef {
     pub id: String,
     pub name: String,
     pub description: String,
-    pub mass: f32,
+    pub mass: Fx,
     #[serde(default)]
     pub effect: ArtifactEffect,
     pub color: String,
@@ -1607,13 +1608,13 @@ pub enum ArtifactEffect {
     #[default]
     None,
     /// Stört Radar und Scanner (Anteil 0..1).
-    Jam(f32),
+    Jam(Fx),
     /// Zieht Piraten an (Nester reagieren auf größere Entfernung, Drohnen greifen früher an).
     Lure,
     /// Wärmt sich auf: Treibstoffverbrauch (Faktor).
-    Heat(f32),
+    Heat(Fx),
     /// Unruhig: kleine Drehstöße (rad/s² Spitze).
-    Spin(f32),
+    Spin(Fx),
 }
 
 impl ArtifactEffect {
@@ -1625,7 +1626,7 @@ impl ArtifactEffect {
             ArtifactEffect::Heat(f) => {
                 format!(
                     "heizt den Frachtraum auf: +{:.0} % Treibstoff",
-                    (f - 1.0) * 100.0
+                    (f - fx!(1.0)) * fx!(100.0)
                 )
             }
             ArtifactEffect::Spin(_) => "bringt das Schiff ins Trudeln".into(),
@@ -1649,7 +1650,7 @@ pub enum LogSource {
     /// Bordbuch in einem Wrack (Name aus world.ron), mit dem Scanner ausgelesen.
     Wreck(String),
     /// Funkfetzen an einem Ort, mit dem Scanner aufgefangen.
-    Echo { pos: P, radius: f32 },
+    Echo { pos: P, radius: Fx },
     /// Beim Bergen eines Artefakts.
     Artifact(String),
     /// Beim Abschluss eines Kapitels.
@@ -1695,7 +1696,7 @@ pub struct ChapterDef {
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub enum ChapterGoal {
     /// Mit dem Scanner in der Nähe eines Ortes auffangen.
-    Scan { pos: P, radius: f32 },
+    Scan { pos: P, radius: Fx },
     /// So viele Artefakte in der Sammlung.
     Artifacts(u32),
     /// Ein Monument wecken (Kennung).
@@ -1709,7 +1710,7 @@ pub struct MonumentDef {
     pub id: String,
     pub name: String,
     pub pos: P,
-    pub cell: f32,
+    pub cell: Fx,
     pub layout: Vec<String>,
     pub main_color: String,
     pub accent_color: String,
@@ -1755,9 +1756,9 @@ pub enum MissionType {
 #[derive(Deserialize, Clone, Debug)]
 pub struct BulkyTemplate {
     pub name: String,
-    pub half_len: f32,
-    pub thick: f32,
-    pub mass: f32,
+    pub half_len: Fx,
+    pub thick: Fx,
+    pub mass: Fx,
     pub reward: u32,
 }
 
@@ -1791,7 +1792,7 @@ pub struct NpcDef {
 pub struct ProjectSave {
     pub station: String,
     pub stage: u8,
-    pub delivered: Vec<(Ore, f32)>,
+    pub delivered: Vec<(Ore, Fx)>,
     pub parts: u32,
 }
 
@@ -1812,7 +1813,7 @@ pub struct CrewSave {
     pub current_ship: String,
     pub home_station: String,
     pub missions_done: u32,
-    pub ore_sold: f32,
+    pub ore_sold: Fx,
     /// Ruf pro Station (Kennung, Punkte).
     #[serde(default)]
     pub reputation: Vec<(String, u32)>,
@@ -1839,12 +1840,12 @@ pub struct CrewSave {
     #[serde(default)]
     pub loan: Option<LoanSave>,
     #[serde(default)]
-    pub market: Vec<(String, Vec<f32>)>,
+    pub market: Vec<(String, Vec<Fx>)>,
     #[serde(default)]
     pub demand: Option<DemandSave>,
     /// Crew-Lager: Material pro Sorte (t), Bauteile aus Wracks, Artefakte.
     #[serde(default)]
-    pub storage: Vec<(Ore, f32)>,
+    pub storage: Vec<(Ore, Fx)>,
     #[serde(default)]
     pub storage_parts: u32,
     #[serde(default)]
@@ -1868,7 +1869,7 @@ pub struct CrewSave {
     #[serde(default)]
     pub routes: Vec<String>,
     #[serde(default)]
-    pub route_best: Vec<(String, f32)>,
+    pub route_best: Vec<(String, Fx)>,
     /// Schiffsnamen, Plaketten, Tagebuch, Kartenmarkierungen (81, 82).
     #[serde(default)]
     pub journal: crate::sim::journal::Journal,
@@ -1879,22 +1880,22 @@ pub struct CrewSave {
     #[serde(default)]
     pub ammo: Option<u32>,
     #[serde(default)]
-    pub shield: Option<f32>,
+    pub shield: Option<Fx>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct DroppedSave {
     pub kind: crate::sim::ship::CargoKind,
-    pub mass: f32,
+    pub mass: Fx,
     #[serde(default)]
     pub traits: CargoTrait,
     #[serde(default = "one")]
-    pub cond: f32,
+    pub cond: Fx,
     pub pos: P,
 }
 
-fn one() -> f32 {
-    1.0
+fn one() -> Fx {
+    fx!(1.0)
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -1902,7 +1903,7 @@ pub struct RescuedSave {
     pub ship: String,
     pub captain: String,
     /// Sekunden Spielzeit, bis sie sich melden.
-    pub wait: f32,
+    pub wait: Fx,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -1942,7 +1943,7 @@ pub struct DemandSave {
     /// Station oder Planet (Kennung), Erz, verbleibende Sekunden.
     pub at: String,
     pub ore: Ore,
-    pub left: f32,
+    pub left: Fx,
 }
 
 /// Bestenliste eines Parcours: die besten Läufe und die beste erreichte Medaille.
@@ -1961,8 +1962,8 @@ pub struct CourseRecord {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct RecordEntry {
     /// Wertung in Sekunden (Flugzeit plus Strafzeit).
-    pub total: f32,
-    pub penalty: f32,
+    pub total: Fx,
+    pub penalty: Fx,
     pub ship: String,
     pub crew: u8,
     /// Laufende Nummer des Laufs (zum Wiedererkennen in der Liste).
@@ -1980,7 +1981,7 @@ impl CrewSave {
             current_ship: data.ships[0].id.clone(),
             home_station: data.world.start_station.clone(),
             missions_done: 0,
-            ore_sold: 0.0,
+            ore_sold: fx!(0.0),
             reputation: Vec::new(),
             explored: String::new(),
             liveries: Vec::new(),
@@ -2075,7 +2076,6 @@ impl GameData {
     }
 
     /// Nur die eingebetteten Daten (für Tests, unabhängig vom Arbeitsverzeichnis).
-    #[cfg(test)]
     pub fn embedded() -> Result<Self, String> {
         let data = GameData {
             ships: parse("ships.ron", SHIPS_RON)?,
@@ -2190,7 +2190,7 @@ impl GameData {
                 pos: m.pos,
                 size: md.size,
                 mass: md.mass,
-                dir: 0.0,
+                dir: fx!(0.0),
                 shape: md.shape,
                 fixed: true,
             });

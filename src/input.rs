@@ -231,7 +231,8 @@ impl Crew {
 
     /// Slot in der Simulation für einen belegten Claim.
     pub fn resolve(&self, def: &ShipDef) -> Vec<ActiveBinding> {
-        let thruster_x: Vec<f32> = def.thruster_parts().map(|(_, p, _)| p.pos.0).collect();
+        let thruster_x: Vec<crate::sim::fx::Fx> =
+            def.thruster_parts().map(|(_, p, _)| p.pos.0).collect();
         let mut claimed_thrusters: Vec<usize> = self
             .bindings
             .iter()
@@ -418,14 +419,15 @@ fn send_pings(
         return;
     }
     let ship = &sim.0.ship;
-    let ahead = ship.pos + crate::sim::geom::rot(Vec2::Y, ship.angle) * 30.0;
+    let ahead = ship.pos
+        + crate::sim::geom::rot(crate::sim::fx::Vec2::from_bevy(Vec2::Y), ship.angle) * 30.0;
     let player_of = |d: Device| crew.players.iter().position(|p| p.device == d);
     if keys.just_pressed(PING_KEY)
         && let Some(p) = player_of(Device::Keyboard)
     {
         pending.0.push(crate::sim::Command::Ping {
             player: p as u8,
-            pos: cursor.0.unwrap_or(ahead),
+            pos: crate::sim::fx::Vec2::from_bevy(cursor.0.unwrap_or(ahead)),
         });
     }
     for (e, g, _) in &pads {
@@ -444,7 +446,7 @@ fn send_pings(
         };
         pending.0.push(crate::sim::Command::Ping {
             player: p as u8,
-            pos,
+            pos: crate::sim::fx::Vec2::from_bevy(pos),
         });
     }
 }
@@ -611,7 +613,11 @@ pub fn build_tick_input(
     }
     TickInput {
         slots,
-        aims: aims.0.clone(),
+        aims: aims
+            .0
+            .iter()
+            .map(|a| crate::sim::fx::Fx::from_f32(*a))
+            .collect(),
         commands: Vec::new(),
         brake,
     }

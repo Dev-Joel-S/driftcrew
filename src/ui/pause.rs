@@ -1,5 +1,6 @@
 //! Pausemenü (Esc / Start): weiter, Slots neu verteilen, Hilfe, speichern, beenden.
 
+use crate::fx;
 use bevy::prelude::*;
 
 use super::title::HELP_TEXT;
@@ -67,7 +68,7 @@ fn items(sim: &SimState) -> Vec<Item<PauseAct>> {
         )),
         Item::new("Ladeplan", PauseAct::CargoPlan).detail(format!(
             "Fracht umladen oder abwerfen · {:.1} / {:.1} t an Bord",
-            sim.ship.cargo_mass().max(0.0),
+            sim.ship.cargo_mass().max(fx!(0.0)),
             sim.ship.cargo_capacity()
         )),
         Item::new("Schiff taufen", PauseAct::NameShip).detail(match sim.ship_name() {

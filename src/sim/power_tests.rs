@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use bevy::math::Vec2;
+use crate::sim::fx::Vec2;
 
 use super::data::{CrewSave, GameData};
 use super::power::{COOL_OFF, OVERDRIVE_MUL};
@@ -16,10 +16,10 @@ fn sim() -> SimState {
     let mut s = SimState::new(data, &save, Loadout::full(&def), 2);
     // Frei im Raum an einer ruhigen Stelle.
     s.ship.docked = None;
-    s.ship.pos = Vec2::new(-900.0, -900.0);
+    s.ship.pos = Vec2::new(-fx!(900.0), -fx!(900.0));
     s.ship.prev_pos = s.ship.pos;
     s.ship.vel = Vec2::ZERO;
-    s.ship.angle = 0.0;
+    s.ship.angle = fx!(0.0);
     s
 }
 
@@ -55,11 +55,11 @@ fn long_press_never_overdrives_but_double_tap_does() {
     assert!(t.ship.thrusters.iter().all(|t| t.overdrive));
     let v_od = t.ship.vel.length();
     assert!(
-        v_od > v_normal * 1.35,
+        v_od > v_normal * fx!(1.35),
         "übersteuert schneller: {v_od} gegen {v_normal}"
     );
     assert!(
-        t.ship.thrusters.iter().all(|th| th.heat > 0.2),
+        t.ship.thrusters.iter().all(|th| th.heat > fx!(0.2)),
         "und heißer"
     );
     assert!(t.ship.energy < t.ship.max_energy, "zieht Zusatzenergie");
@@ -94,20 +94,23 @@ fn each_thruster_heats_up_warns_and_shuts_down() {
                 _ => {}
             }
         }
-        if s.ship.thrusters[0].cool_off > 0.0 {
+        if s.ship.thrusters[0].cool_off > fx!(0.0) {
             break;
         }
     }
     assert!(warned >= 2, "zwei Warnstufen vor der Abschaltung");
     assert!(alarm);
     let t0 = &s.ship.thrusters[0];
-    assert!(t0.cool_off > COOL_OFF - 0.5, "Notabschaltung");
+    assert!(t0.cool_off > COOL_OFF - fx!(0.5), "Notabschaltung");
     assert!(!t0.firing && !t0.overdrive);
-    assert!(s.ship.thrusters[1].heat < 0.01, "das andere bleibt kalt");
+    assert!(
+        s.ship.thrusters[1].heat < fx!(0.01),
+        "das andere bleibt kalt"
+    );
     // Während der Pause zündet es nicht, danach wieder.
     press(&mut s, 0b01, 60);
     assert!(!s.ship.thrusters[0].firing);
-    press(&mut s, 0, (COOL_OFF * 60.0) as u32);
+    press(&mut s, 0, (COOL_OFF * fx!(60.0)).to_u32());
     press(&mut s, 0b01, 2);
     assert!(s.ship.thrusters[0].firing);
 }
@@ -116,35 +119,35 @@ fn each_thruster_heats_up_warns_and_shuts_down() {
 fn empty_energy_only_removes_the_bonus() {
     let mut s = sim();
     let all = (1u32 << s.ship.thrusters.len()) - 1;
-    s.ship.energy = 0.0;
+    s.ship.energy = fx!(0.0);
     double_tap_hold(&mut s, all, 60);
     assert!(
         s.ship.thrusters.iter().all(|t| t.firing),
         "Triebwerke schieben normal"
     );
     assert!(
-        s.ship.thrusters.iter().all(|t| t.heat < 1e-4),
+        s.ship.thrusters.iter().all(|t| t.heat < fx!(1e-4)),
         "ohne Energie kein Übersteuern, also keine Hitze"
     );
     let v = s.ship.vel.length();
     let mut n = sim();
     press(&mut n, all, 70);
     assert!(
-        (v - n.ship.vel.length()).abs() < 0.6,
+        (v - n.ship.vel.length()).abs() < fx!(0.6),
         "{v} vs {}",
         n.ship.vel.length()
     );
     // Der Schild lädt nicht von selbst – auch nicht aus der Zusatzenergie (Phase 19).
     let mut a = sim();
-    a.ship.shield = 0.0;
-    a.ship.since_hit = 100.0;
+    a.ship.shield = fx!(0.0);
+    a.ship.since_hit = fx!(100.0);
     press(&mut a, 0, 120);
-    assert_eq!(a.ship.shield, 0.0, "Schildladung gibt es an Stationen");
+    assert_eq!(a.ship.shield, fx!(0.0), "Schildladung gibt es an Stationen");
     // Energie lädt, wenn nichts zieht.
     let mut c = sim();
-    c.ship.energy = 10.0;
+    c.ship.energy = fx!(10.0);
     press(&mut c, 0, 120);
-    assert!(c.ship.energy > 20.0);
+    assert!(c.ship.energy > fx!(20.0));
 }
 
 #[test]
@@ -181,7 +184,7 @@ fn callouts_show_for_everyone_and_fade() {
     });
     assert_eq!(s.callouts.len(), 2);
     assert!(s.callouts.iter().any(|c| c.call == Call::ThrustOff));
-    press(&mut s, 0, (CALLOUT_SECONDS * 60.0) as u32 + 2);
+    press(&mut s, 0, (CALLOUT_SECONDS * fx!(60.0)).to_u32() + 2);
     assert!(s.callouts.is_empty());
     for c in [
         Call::Brake,

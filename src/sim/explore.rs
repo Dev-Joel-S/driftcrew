@@ -1,27 +1,27 @@
 //! Fog of War: ein grobes Raster über die Welt, das beim Fliegen aufgedeckt wird.
 //! Wird im Spielstand als Hex-Bitfeld gespeichert.
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 /// Kantenlänge einer Rasterzelle in Metern.
-pub const CELL: f32 = 100.0;
+pub const CELL: Fx = fx!(100.0);
 /// So weit reicht die Sicht der Crew beim Erkunden.
-pub const SIGHT: f32 = 380.0;
+pub const SIGHT: Fx = fx!(380.0);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Exploration {
     /// Zellen pro Kante; das Raster deckt [-half, half]² ab.
     pub n: usize,
-    pub half: f32,
+    pub half: Fx,
     bits: Vec<u64>,
     /// Zählt Änderungen (für die Anzeige: Karte nur neu zeichnen, wenn sich etwas tat).
     pub version: u32,
 }
 
 impl Exploration {
-    pub fn new(world_radius: f32) -> Exploration {
+    pub fn new(world_radius: Fx) -> Exploration {
         let half = world_radius + CELL;
-        let n = ((2.0 * half) / CELL).ceil() as usize;
+        let n = ((fx!(2.0) * half) / CELL).ceil_int() as usize;
         Exploration {
             n,
             half,
@@ -33,10 +33,10 @@ impl Exploration {
     fn cell_of(&self, p: Vec2) -> Option<(usize, usize)> {
         let x = ((p.x + self.half) / CELL).floor();
         let y = ((p.y + self.half) / CELL).floor();
-        if x < 0.0 || y < 0.0 || x >= self.n as f32 || y >= self.n as f32 {
+        if x < fx!(0.0) || y < fx!(0.0) || x >= Fx::from(self.n) || y >= Fx::from(self.n) {
             return None;
         }
-        Some((x as usize, y as usize))
+        Some(((x).to_usize(), (y).to_usize()))
     }
 
     pub fn get(&self, x: usize, y: usize) -> bool {
@@ -59,17 +59,18 @@ impl Exploration {
     /// Mittelpunkt einer Zelle in Weltkoordinaten.
     pub fn cell_center(&self, x: usize, y: usize) -> Vec2 {
         Vec2::new(
-            -self.half + (x as f32 + 0.5) * CELL,
-            -self.half + (y as f32 + 0.5) * CELL,
+            -self.half + (Fx::from(x) + fx!(0.5)) * CELL,
+            -self.half + (Fx::from(y) + fx!(0.5)) * CELL,
         )
     }
 
     /// Alle Zellen aufdecken, deren Mitte im Kreis liegt. Gibt die Zahl neuer Zellen zurück.
-    pub fn reveal(&mut self, p: Vec2, radius: f32) -> u32 {
-        let r = (radius / CELL).ceil() as i32 + 1;
-        let Some((cx, cy)) =
-            self.cell_of(p.clamp(Vec2::splat(-self.half + 1.0), Vec2::splat(self.half - 1.0)))
-        else {
+    pub fn reveal(&mut self, p: Vec2, radius: Fx) -> u32 {
+        let r = (radius / CELL).ceil_int() as i32 + 1;
+        let Some((cx, cy)) = self.cell_of(p.clamp(
+            Vec2::splat(-self.half + fx!(1.0)),
+            Vec2::splat(self.half - fx!(1.0)),
+        )) else {
             return 0;
         };
         let mut new = 0;
@@ -92,9 +93,9 @@ impl Exploration {
     }
 
     /// Anteil der aufgedeckten Fläche (0..1).
-    pub fn fraction(&self) -> f32 {
+    pub fn fraction(&self) -> Fx {
         let set: u32 = self.bits.iter().map(|b| b.count_ones()).sum();
-        set as f32 / (self.n * self.n) as f32
+        Fx::from(set) / Fx::from(self.n * self.n)
     }
 
     pub fn to_hex(&self) -> String {
@@ -122,15 +123,15 @@ mod tests {
 
     #[test]
     fn reveal_and_roundtrip() {
-        let mut e = Exploration::new(2600.0);
+        let mut e = Exploration::new(fx!(2600.0));
         assert!(!e.is_explored(Vec2::ZERO));
-        e.reveal(Vec2::new(100.0, -50.0), SIGHT);
-        assert!(e.is_explored(Vec2::new(100.0, -50.0)));
-        assert!(e.is_explored(Vec2::new(300.0, -50.0)));
-        assert!(!e.is_explored(Vec2::new(900.0, 0.0)));
-        let mut f = Exploration::new(2600.0);
+        e.reveal(Vec2::new(fx!(100.0), -fx!(50.0)), SIGHT);
+        assert!(e.is_explored(Vec2::new(fx!(100.0), -fx!(50.0))));
+        assert!(e.is_explored(Vec2::new(fx!(300.0), -fx!(50.0))));
+        assert!(!e.is_explored(Vec2::new(fx!(900.0), fx!(0.0))));
+        let mut f = Exploration::new(fx!(2600.0));
         f.load_hex(&e.to_hex());
         assert_eq!(e.bits, f.bits);
-        assert!(f.fraction() > 0.0 && f.fraction() < 0.05);
+        assert!(f.fraction() > fx!(0.0) && f.fraction() < fx!(0.05));
     }
 }

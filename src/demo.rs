@@ -3,6 +3,7 @@
 //! beendet sich danach. `DRIFTCREW_SCENE=tour|ui|systems|progress|coop|sectors|rules|rebuild|
 //! courses|finance|minigames|workshop|traffic|story` wählt das Skript.
 
+use crate::fx;
 use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
@@ -160,12 +161,16 @@ fn keyboard_crew(c: &mut Ctx, with_pad: bool) {
 fn teleport(c: &mut Ctx, center: Vec2, dist: f32, angle: f32) {
     let s = &mut c.sim.0;
     s.ship.docked = None;
-    let p = center + rot(Vec2::X, angle) * dist;
-    s.ship.pos = p;
-    s.ship.prev_pos = p;
-    s.ship.vel = Vec2::ZERO;
-    s.ship.ang_vel = 0.0;
-    s.ship.invulnerable = 5.0;
+    let p = center
+        + rot(
+            crate::sim::fx::Vec2::from_bevy(Vec2::X),
+            crate::sim::fx::Fx::from_f32(angle),
+        ) * dist;
+    s.ship.pos = crate::sim::fx::Vec2::from_bevy(p);
+    s.ship.prev_pos = crate::sim::fx::Vec2::from_bevy(p);
+    s.ship.vel = crate::sim::fx::Vec2::from_bevy(Vec2::ZERO);
+    s.ship.ang_vel = fx!(0.0);
+    s.ship.invulnerable = fx!(5.0);
     // Nichts im Weg lassen (nur für Vorführungen).
     s.bodies.retain(|b| (b.pos - p).length() > b.radius + 6.0);
 }
@@ -205,10 +210,11 @@ fn land_on(c: &mut Ctx, pad: usize) {
     let p = s.world.pads[pad].clone();
     s.ship.angle = p.ship_angle();
     s.ship.prev_angle = s.ship.angle;
-    s.ship.pos = p.center + p.normal * (s.ship.rest_height() + 0.02);
+    s.ship.pos =
+        crate::sim::fx::Vec2::from_bevy(p.center + p.normal * (s.ship.rest_height() + 0.02));
     s.ship.prev_pos = s.ship.pos;
-    s.ship.vel = Vec2::ZERO;
-    s.ship.ang_vel = 0.0;
+    s.ship.vel = crate::sim::fx::Vec2::from_bevy(Vec2::ZERO);
+    s.ship.ang_vel = fx!(0.0);
     s.ship.docked = Some(pad);
 }
 
@@ -225,9 +231,9 @@ fn systems_scene() -> Vec<(f32, Act)> {
         }),
         (2.5, |c| {
             let s = &mut c.sim.0;
-            s.ship.thrusters[0].health = 0.0;
-            s.ship.thrusters[3].health = 0.35;
-            s.ship.fuel = s.ship.max_fuel * 0.12;
+            s.ship.thrusters[0].health = fx!(0.0);
+            s.ship.thrusters[3].health = fx!(0.35);
+            s.ship.fuel = crate::sim::fx::Fx::from_f32(s.ship.max_fuel * 0.12);
             c.slots.0 = 0b11111;
         }),
         (3.6, |c| c.slots.0 = 0b10110),
@@ -243,7 +249,7 @@ fn systems_scene() -> Vec<(f32, Act)> {
                 .find(|a| a.is_black_hole())
                 .unwrap()
                 .pos;
-            teleport(c, bh, 34.0, 0.4);
+            teleport(c, (bh).to_bevy(), 34.0, 0.4);
         }),
         (7.4, |c| shot(c, "schwarzes_loch")),
         (10.4, |c| {
@@ -256,8 +262,8 @@ fn systems_scene() -> Vec<(f32, Act)> {
                 .find(|a| a.is_black_hole())
                 .unwrap()
                 .pos;
-            teleport(c, bh, 4.0, 0.4);
-            c.sim.0.ship.invulnerable = 0.0;
+            teleport(c, (bh).to_bevy(), 4.0, 0.4);
+            c.sim.0.ship.invulnerable = fx!(0.0);
         }),
         (12.2, |c| shot(c, "rettungskapsel")),
         (17.5, |c| {
@@ -268,8 +274,8 @@ fn systems_scene() -> Vec<(f32, Act)> {
         (21.5, |c| {
             teleport(c, Vec2::new(-300.0, 300.0), 0.0, 0.0);
             let s = &mut c.sim.0;
-            s.ship.angle = 0.3;
-            s.ship.vel = Vec2::new(2.0, 0.5);
+            s.ship.angle = fx!(0.3);
+            s.ship.vel = crate::sim::fx::Vec2::from_bevy(Vec2::new(2.0, 0.5));
             let ci = s
                 .ship
                 .tools
@@ -285,22 +291,22 @@ fn systems_scene() -> Vec<(f32, Act)> {
                     mission: 0,
                     name: "Druckkessel".into(),
                 },
-                pos,
-                vel: Vec2::new(2.0, 0.5),
-                angle: 0.2,
-                ang_vel: 0.1,
-                radius: 1.5,
-                mass: 9.0,
-                prev_pos: pos,
-                prev_angle: 0.2,
+                pos: crate::sim::fx::Vec2::from_bevy(pos),
+                vel: crate::sim::fx::Vec2::from_bevy(Vec2::new(2.0, 0.5)),
+                angle: fx!(0.2),
+                ang_vel: fx!(0.1),
+                radius: fx!(1.5),
+                mass: fx!(9.0),
+                prev_pos: crate::sim::fx::Vec2::from_bevy(pos),
+                prev_angle: fx!(0.2),
                 alive: true,
                 seed: 3,
-                age: 0.0,
+                age: fx!(0.0),
             });
             s.ship.tools[ci].crane = crate::sim::ship::CraneState::Attached {
                 body: id,
-                rope: 9.0,
-                local: Vec2::ZERO,
+                rope: fx!(9.0),
+                local: crate::sim::fx::Vec2::from_bevy(Vec2::ZERO),
             };
         }),
         (23.0, |c| shot(c, "seil_schlaff")),
@@ -381,7 +387,7 @@ fn progress_scene() -> Vec<(f32, Act)> {
         (13.5, |c| shot(c, "auswertung")),
         (15.5, |c| {
             teleport(c, Vec2::new(-1240.0, 1560.0), 16.0, 0.3);
-            c.sim.0.ship.angle = 1.9;
+            c.sim.0.ship.angle = fx!(1.9);
         }),
         (17.5, |c| shot(c, "wracks")),
         (19.5, |c| {
@@ -407,9 +413,9 @@ fn progress_scene() -> Vec<(f32, Act)> {
                 s.ship.tools[ci].crane = crate::sim::ship::CraneState::Attached {
                     body: id,
                     rope,
-                    local: Vec2::ZERO,
+                    local: crate::sim::fx::Vec2::from_bevy(Vec2::ZERO),
                 };
-                s.ship.vel = (mount - wpos).normalize() * 5.0;
+                s.ship.vel = crate::sim::fx::Vec2::from_bevy((mount - wpos).normalize() * 5.0);
             }
         }),
         (20.6, |c| shot(c, "bauteil")),
@@ -436,7 +442,7 @@ fn coop_scene() -> Vec<(f32, Act)> {
             let p = c.sim.0.ship.pos;
             c.pending.0.push(Command::Ping {
                 player: 0,
-                pos: p + Vec2::new(14.0, 9.0),
+                pos: crate::sim::fx::Vec2::from_bevy(p + Vec2::new(14.0, 9.0)),
             });
             let kepler = c.sim.0.world.stations[1].pos;
             c.pending.0.push(Command::Ping {
@@ -462,7 +468,7 @@ fn region_center(c: &Ctx, name: &str) -> Vec2 {
         .regions
         .iter()
         .find(|r| r.name == name)
-        .map(|r| Vec2::new(r.center.0, r.center.1))
+        .map(|r| Vec2::new((r.center.0).to_f32(), (r.center.1).to_f32()))
         .unwrap_or(Vec2::ZERO)
 }
 
@@ -498,9 +504,9 @@ fn sectors_scene() -> Vec<(f32, Act)> {
         (20.5, |c| {
             c.sim.0.event = Some(crate::sim::sector::WorldEvent {
                 kind: crate::sim::sector::EventKind::SolarFlare,
-                time_left: 20.0,
-                dir: Vec2::ZERO,
-                spawn_timer: 0.0,
+                time_left: fx!(20.0),
+                dir: crate::sim::fx::Vec2::from_bevy(Vec2::ZERO),
+                spawn_timer: fx!(0.0),
             });
         }),
         (22.5, |c| shot(c, "sonneneruption")),
@@ -530,7 +536,7 @@ fn rules_scene() -> Vec<(f32, Act)> {
                 from: nova,
                 to: kepler,
                 count: 5,
-                comfort: 1.0,
+                comfort: fx!(1.0),
                 aboard: false,
             };
             let par = s.par_time(&kind);
@@ -542,7 +548,7 @@ fn rules_scene() -> Vec<(f32, Act)> {
                 origin: Some(crate::sim::world::Owner::Station(nova)),
                 giver: None,
                 start: None,
-                top_speed: 0.0,
+                top_speed: fx!(0.0),
                 max_strain: None,
                 par,
             });
@@ -563,10 +569,11 @@ fn rules_scene() -> Vec<(f32, Act)> {
             s.ship.docked = None;
             s.ship.angle = p.ship_angle();
             s.ship.prev_angle = s.ship.angle;
-            s.ship.pos = p.center + p.normal * (s.ship.rest_height() + 6.0);
+            s.ship.pos =
+                crate::sim::fx::Vec2::from_bevy(p.center + p.normal * (s.ship.rest_height() + 6.0));
             s.ship.prev_pos = s.ship.pos;
-            s.ship.vel = -p.normal * 1.2;
-            s.ship.ang_vel = 0.0;
+            s.ship.vel = crate::sim::fx::Vec2::from_bevy(-p.normal * 1.2);
+            s.ship.ang_vel = fx!(0.0);
         }),
         (13.0, |c| shot(c, "anflug_andocken")),
         (15.0, |_| {}),
@@ -574,7 +581,10 @@ fn rules_scene() -> Vec<(f32, Act)> {
 }
 
 fn give_ore(c: &mut Ctx, ore: crate::sim::data::Ore, t: f32) {
-    c.sim.0.ship.store(crate::sim::ship::CargoKind::Ore(ore), t);
+    c.sim.0.ship.store(
+        crate::sim::ship::CargoKind::Ore(ore),
+        crate::sim::fx::Fx::from_f32(t),
+    );
 }
 
 fn give_parts(c: &mut Ctx, n: u32) {
@@ -584,7 +594,7 @@ fn give_parts(c: &mut Ctx, n: u32) {
                 name: "Funkmodul".into(),
                 value: 60,
             },
-            1.5,
+            fx!(1.5),
         );
     }
 }
@@ -645,25 +655,25 @@ fn rebuild_scene() -> Vec<(f32, Act)> {
                 kind: crate::sim::BodyKind::Bulky {
                     mission: 0,
                     name: "Antennenmast".into(),
-                    half_len: 4.6,
-                    thick: 0.45,
+                    half_len: fx!(4.6),
+                    thick: fx!(0.45),
                 },
-                pos,
-                vel: Vec2::ZERO,
-                angle: 0.4,
-                ang_vel: 0.0,
-                radius: 5.05,
-                mass: 7.0,
-                prev_pos: pos,
-                prev_angle: 0.4,
+                pos: crate::sim::fx::Vec2::from_bevy(pos),
+                vel: crate::sim::fx::Vec2::from_bevy(Vec2::ZERO),
+                angle: fx!(0.4),
+                ang_vel: fx!(0.0),
+                radius: fx!(5.05),
+                mass: fx!(7.0),
+                prev_pos: crate::sim::fx::Vec2::from_bevy(pos),
+                prev_angle: fx!(0.4),
                 alive: true,
                 seed: 5,
-                age: 0.0,
+                age: fx!(0.0),
             });
             s.ship.tools[ci].crane = crate::sim::ship::CraneState::Attached {
                 body: id,
-                rope: 6.0,
-                local: Vec2::new(-4.6, 0.0),
+                rope: fx!(6.0),
+                local: crate::sim::fx::Vec2::from_bevy(Vec2::new(-4.6, 0.0)),
             };
             c.slots.0 = 0b11111;
         }),
@@ -680,26 +690,27 @@ fn rebuild_scene() -> Vec<(f32, Act)> {
                 if let crate::sim::BodyKind::Asteroid { vein, .. } = &mut s.bodies[bi].kind {
                     *vein = true;
                 }
-                s.bodies[bi].vel = Vec2::ZERO;
-                s.bodies[bi].ang_vel = 0.0;
+                s.bodies[bi].vel = crate::sim::fx::Vec2::from_bevy(Vec2::ZERO);
+                s.bodies[bi].ang_vel = fx!(0.0);
                 let id = s.bodies[bi].id;
                 let target = crate::sim::precision::precision_target(&s.bodies[bi])
                     .unwrap()
                     .0;
                 let out = (target - s.bodies[bi].pos).normalize();
                 s.ship.docked = None;
-                s.ship.angle = (-out).to_angle() - std::f32::consts::FRAC_PI_2;
+                s.ship.angle =
+                    crate::sim::fx::Fx::from_f32((-out).to_angle() - std::f32::consts::FRAC_PI_2);
                 s.ship.prev_angle = s.ship.angle;
-                s.ship.pos = target + out * 5.0;
+                s.ship.pos = crate::sim::fx::Vec2::from_bevy(target + out * 5.0);
                 s.ship.prev_pos = s.ship.pos;
-                s.ship.vel = Vec2::ZERO;
-                s.ship.ang_vel = 0.0;
+                s.ship.vel = crate::sim::fx::Vec2::from_bevy(Vec2::ZERO);
+                s.ship.ang_vel = fx!(0.0);
                 s.precision = Some(crate::sim::precision::Precision {
                     body: id,
                     kind: crate::sim::precision::PrecisionKind::Vein,
-                    progress: 0.62,
-                    offset: 0.3,
-                    idle: -100.0,
+                    progress: fx!(0.62),
+                    offset: fx!(0.3),
+                    idle: fx!(-100.0),
                 });
             }
         }),
@@ -726,11 +737,14 @@ fn approach_gate(c: &mut Ctx, course: usize, step: usize, back: f32, speed: f32)
     else {
         return;
     };
-    let d = Vec2::new(dir.to_radians().cos(), dir.to_radians().sin());
+    let d = Vec2::new(
+        (dir.to_radians().cos()).to_f32(),
+        (dir.to_radians().sin()).to_f32(),
+    );
     teleport(c, v(pos) - d * back, 0.0, 0.0);
     let s = &mut c.sim.0;
-    s.ship.vel = d * speed;
-    s.ship.angle = f32::atan2(-d.x, d.y);
+    s.ship.vel = crate::sim::fx::Vec2::from_bevy(d * speed);
+    s.ship.angle = crate::sim::fx::Fx::from_f32(f32::atan2(-d.x, d.y));
     s.ship.prev_angle = s.ship.angle;
 }
 
@@ -758,8 +772,8 @@ fn courses_scene() -> Vec<(f32, Act)> {
             .enumerate()
             {
                 rec.entries.push(RecordEntry {
-                    total: t,
-                    penalty: if i == 1 { 4.0 } else { 0.0 },
+                    total: crate::sim::fx::Fx::from_f32(t),
+                    penalty: if i == 1 { fx!(4.0) } else { fx!(0.0) },
                     ship: ship.into(),
                     crew,
                     run: i as u32 + 1,
@@ -782,12 +796,12 @@ fn courses_scene() -> Vec<(f32, Act)> {
         (7.0, |c| {
             // Nach dem Starttor: Boje anpeilen, Nase noch etwas daneben.
             let s = &mut c.sim.0;
-            s.ship.vel = Vec2::new(0.0, -1.0);
-            s.ship.ang_vel = 0.0;
-            s.ship.angle = 1.1;
-            s.ship.prev_angle = 1.1;
+            s.ship.vel = crate::sim::fx::Vec2::from_bevy(Vec2::new(0.0, -1.0));
+            s.ship.ang_vel = fx!(0.0);
+            s.ship.angle = fx!(1.1);
+            s.ship.prev_angle = fx!(1.1);
             if let Some(r) = s.course.as_mut() {
-                r.progress = 0.0;
+                r.progress = fx!(0.0);
             }
         }),
         (8.4, |c| shot(c, "training_drehen")),
@@ -799,12 +813,12 @@ fn courses_scene() -> Vec<(f32, Act)> {
             };
             teleport(c, v(pos) + Vec2::new(-3.0, 2.0), 0.0, 0.0);
             let s = &mut c.sim.0;
-            s.ship.angle = 2.0;
-            s.ship.prev_angle = 2.0;
+            s.ship.angle = fx!(2.0);
+            s.ship.prev_angle = fx!(2.0);
             if let Some(r) = s.course.as_mut() {
                 r.step = 3;
-                r.time = 38.6;
-                r.progress = 0.4;
+                r.time = fx!(38.6);
+                r.progress = fx!(0.4);
             }
         }),
         (10.4, |c| shot(c, "training_bremsen")),
@@ -819,7 +833,7 @@ fn courses_scene() -> Vec<(f32, Act)> {
             let s = &mut c.sim.0;
             if let Some(r) = s.course.as_mut() {
                 r.step = 3;
-                r.time = 21.4;
+                r.time = fx!(21.4);
             }
         }),
         (13.0, |c| shot(c, "nova_ring")),
@@ -835,14 +849,14 @@ fn courses_scene() -> Vec<(f32, Act)> {
                 .sim
                 .0
                 .step_target(ci, 1)
-                .unwrap_or(Vec2::new(-1050.0, 1400.0));
+                .unwrap_or(crate::sim::fx::Vec2::from_bevy(Vec2::new(-1050.0, 1400.0)));
             teleport(c, center + Vec2::new(-34.0, 0.0), 0.0, 0.0);
             let s = &mut c.sim.0;
-            s.ship.vel = Vec2::new(2.0, 0.0);
-            s.ship.angle = -std::f32::consts::FRAC_PI_2;
+            s.ship.vel = crate::sim::fx::Vec2::from_bevy(Vec2::new(2.0, 0.0));
+            s.ship.angle = crate::sim::fx::Fx::from_f32(-std::f32::consts::FRAC_PI_2);
             s.ship.prev_angle = s.ship.angle;
             if let Some(r) = s.course.as_mut() {
-                r.time = 6.8;
+                r.time = fx!(6.8);
             }
         }),
         (16.6, |c| shot(c, "wrackring")),
@@ -866,20 +880,20 @@ fn courses_scene() -> Vec<(f32, Act)> {
                 kind: MissionKind::Survey {
                     sites: vec![site, 0],
                     done: 0,
-                    hold: 3.4,
+                    hold: fx!(3.4),
                 },
                 reward: 380,
                 origin: Some(crate::sim::world::Owner::Station(0)),
                 giver: None,
                 start: Some(Box::new(s.stats.clone())),
-                top_speed: 0.0,
+                top_speed: fx!(0.0),
                 max_strain: None,
-                par: 420.0,
+                par: fx!(420.0),
             });
             let p = crate::sim::data::v(s.data.courses.survey_sites[site].pos);
             teleport(c, p + Vec2::new(1.5, -1.0), 0.0, 0.0);
             let s = &mut c.sim.0;
-            s.ship.angle = -2.6;
+            s.ship.angle = fx!(-2.6);
             s.ship.prev_angle = s.ship.angle;
         }),
         (18.4, |c| shot(c, "messflug")),
@@ -894,7 +908,7 @@ fn courses_scene() -> Vec<(f32, Act)> {
             let ship_at = sock.center + sock.open * 16.0 + Vec2::new(0.0, 4.0);
             teleport(c, ship_at, 0.0, 0.0);
             let s = &mut c.sim.0;
-            s.ship.angle = std::f32::consts::FRAC_PI_2;
+            s.ship.angle = crate::sim::fx::Fx::from_f32(std::f32::consts::FRAC_PI_2);
             s.ship.prev_angle = s.ship.angle;
             let mid = s.next_id();
             let bid = s.next_id();
@@ -905,17 +919,17 @@ fn courses_scene() -> Vec<(f32, Act)> {
                     mission: mid,
                     name: "Druckkessel".into(),
                 },
-                pos: crate_at,
-                vel: Vec2::ZERO,
-                angle: 0.2,
-                ang_vel: 0.0,
+                pos: crate::sim::fx::Vec2::from_bevy(crate_at),
+                vel: crate::sim::fx::Vec2::from_bevy(Vec2::ZERO),
+                angle: fx!(0.2),
+                ang_vel: fx!(0.0),
                 radius: crate::sim::missions::CRATE_RADIUS,
-                mass: 9.0,
-                prev_pos: crate_at,
-                prev_angle: 0.2,
+                mass: fx!(9.0),
+                prev_pos: crate::sim::fx::Vec2::from_bevy(crate_at),
+                prev_angle: fx!(0.2),
                 alive: true,
                 seed: 3,
-                age: 0.0,
+                age: fx!(0.0),
             });
             s.active.push(Mission {
                 id: mid,
@@ -923,17 +937,17 @@ fn courses_scene() -> Vec<(f32, Act)> {
                     from: 0,
                     to: kepler,
                     cargo: "Druckkessel".into(),
-                    mass: 9.0,
+                    mass: fx!(9.0),
                     body: Some(bid),
-                    settle: 0.0,
+                    settle: fx!(0.0),
                 },
                 reward: 340,
                 origin: Some(crate::sim::world::Owner::Station(0)),
                 giver: None,
                 start: Some(Box::new(s.stats.clone())),
-                top_speed: 0.0,
+                top_speed: fx!(0.0),
                 max_strain: None,
-                par: 300.0,
+                par: fx!(300.0),
             });
             let ci = s
                 .ship
@@ -944,8 +958,8 @@ fn courses_scene() -> Vec<(f32, Act)> {
             let mount = s.ship.tool_world_pos(ci);
             s.ship.tools[ci].crane = crate::sim::ship::CraneState::Attached {
                 body: bid,
-                rope: (crate_at - mount).length(),
-                local: Vec2::ZERO,
+                rope: crate::sim::fx::Fx::from_f32((crate_at - mount).length()),
+                local: crate::sim::fx::Vec2::from_bevy(Vec2::ZERO),
             };
         }),
         (21.0, |c| shot(c, "lastaufnahme")),
@@ -970,7 +984,7 @@ fn courses_scene() -> Vec<(f32, Act)> {
             let last = c.sim.0.data.courses.courses[ci].steps.len() - 1;
             if let Some(r) = c.sim.0.course.as_mut() {
                 r.step = last;
-                r.time = 55.6;
+                r.time = fx!(55.6);
             }
             approach_gate(c, ci, last, 6.0, 14.0);
         }),
@@ -1017,14 +1031,14 @@ fn finance_scene() -> Vec<(f32, Act)> {
             });
             s.crew.insured = true;
             let kepler = s.data.station_index("kepler").unwrap_or(0);
-            s.note_sale(Owner::Station(kepler), Ore::Kobalt, 9.0);
+            s.note_sale(Owner::Station(kepler), Ore::Kobalt, fx!(9.0));
             s.demand = Some(crate::sim::finance::Demand {
                 owner: Owner::Station(kepler),
                 ore: Ore::Ionit,
-                left: 240.0,
+                left: fx!(240.0),
             });
             let slot = s.market_slot(Owner::Station(kepler));
-            s.market[slot][3] = 1.28;
+            s.market[slot][3] = fx!(1.28);
             s.ship.docked = None;
             s.dock_at_station(kepler);
         }),
@@ -1055,16 +1069,16 @@ fn finance_scene() -> Vec<(f32, Act)> {
                     from: Owner::Station(kepler),
                     to: nova,
                     cargo: "Ersatzteile".into(),
-                    mass: 4.0,
+                    mass: fx!(4.0),
                     traits: Default::default(),
                 },
                 reward: 420,
                 origin: Some(Owner::Station(kepler)),
                 giver: None,
                 start: Some(Box::new(start)),
-                top_speed: 0.0,
+                top_speed: fx!(0.0),
                 max_strain: None,
-                par: 220.0,
+                par: fx!(220.0),
             });
             let pad = s.world.stations[nova].pads[2];
             s.time += 500.0;
@@ -1087,28 +1101,29 @@ fn minigame_scene() -> Vec<(f32, Act)> {
         (2.0, |c| {
             teleport(c, Vec2::new(-300.0, -260.0), 0.0, 0.0);
             let s = &mut c.sim.0;
-            s.ship.thrusters[0].health = 0.0;
-            s.repair.thrusters = vec![0.0; s.ship.thrusters.len()];
-            s.repair.thrusters[0] = 3.0 / crate::sim::minigame::PATCH_HITS;
+            s.ship.thrusters[0].health = fx!(0.0);
+            s.repair.thrusters = vec![fx!(0.0); s.ship.thrusters.len()];
+            s.repair.thrusters[0] =
+                crate::sim::fx::Fx::from_f32(3.0 / crate::sim::minigame::PATCH_HITS);
             let slot = s.ship.thrusters[0].slot;
             s.repair.beats = vec![
                 crate::sim::minigame::Beat {
                     slot,
                     hit: true,
-                    age: 0.2,
+                    age: fx!(0.2),
                 },
                 crate::sim::minigame::Beat {
                     slot,
                     hit: false,
-                    age: 0.5,
+                    age: fx!(0.5),
                 },
                 crate::sim::minigame::Beat {
                     slot,
                     hit: true,
-                    age: 0.9,
+                    age: fx!(0.9),
                 },
             ];
-            s.ship.vel = Vec2::new(0.8, 0.2);
+            s.ship.vel = crate::sim::fx::Vec2::from_bevy(Vec2::new(0.8, 0.2));
         }),
         (4.8, |c| {
             let s = &mut c.sim.0;
@@ -1117,17 +1132,17 @@ fn minigame_scene() -> Vec<(f32, Act)> {
                 crate::sim::minigame::Beat {
                     slot,
                     hit: true,
-                    age: 0.6,
+                    age: fx!(0.6),
                 },
                 crate::sim::minigame::Beat {
                     slot,
                     hit: false,
-                    age: 0.4,
+                    age: fx!(0.4),
                 },
                 crate::sim::minigame::Beat {
                     slot,
                     hit: true,
-                    age: 0.1,
+                    age: fx!(0.1),
                 },
             ];
         }),
@@ -1136,10 +1151,10 @@ fn minigame_scene() -> Vec<(f32, Act)> {
             // Notreparatur: Hülle angeschlagen, Schiff ruht, die Crew tippt im Takt.
             teleport(c, Vec2::new(-300.0, -260.0), 0.0, 0.0);
             let s = &mut c.sim.0;
-            s.ship.thrusters[0].health = 1.0;
-            s.ship.hull = s.ship.max_hull * 0.38;
+            s.ship.thrusters[0].health = fx!(1.0);
+            s.ship.hull = crate::sim::fx::Fx::from_f32(s.ship.max_hull * 0.38);
             s.repair.active = true;
-            s.repair.held = vec![0.0; crate::sim::MAX_SLOTS];
+            s.repair.held = vec![fx!(0.0); crate::sim::MAX_SLOTS];
             let a = s.ship.thrusters[1].slot;
             let b = s.ship.thrusters[3].slot;
             let t = s.ship.tools[0].slot;
@@ -1147,22 +1162,22 @@ fn minigame_scene() -> Vec<(f32, Act)> {
                 crate::sim::minigame::Beat {
                     slot: a,
                     hit: true,
-                    age: 0.1,
+                    age: fx!(0.1),
                 },
                 crate::sim::minigame::Beat {
                     slot: b,
                     hit: true,
-                    age: 0.3,
+                    age: fx!(0.3),
                 },
                 crate::sim::minigame::Beat {
                     slot: t,
                     hit: false,
-                    age: 0.6,
+                    age: fx!(0.6),
                 },
                 crate::sim::minigame::Beat {
                     slot: a,
                     hit: true,
-                    age: 0.8,
+                    age: fx!(0.8),
                 },
             ];
         }),
@@ -1175,22 +1190,22 @@ fn minigame_scene() -> Vec<(f32, Act)> {
                 crate::sim::minigame::Beat {
                     slot: a,
                     hit: true,
-                    age: 0.7,
+                    age: fx!(0.7),
                 },
                 crate::sim::minigame::Beat {
                     slot: b,
                     hit: true,
-                    age: 0.5,
+                    age: fx!(0.5),
                 },
                 crate::sim::minigame::Beat {
                     slot: t,
                     hit: false,
-                    age: 0.3,
+                    age: fx!(0.3),
                 },
                 crate::sim::minigame::Beat {
                     slot: a,
                     hit: true,
-                    age: 0.1,
+                    age: fx!(0.1),
                 },
             ];
         }),
@@ -1206,12 +1221,12 @@ fn minigame_scene() -> Vec<(f32, Act)> {
             let s = &mut c.sim.0;
             s.ship.angle = p.ship_angle();
             s.ship.prev_angle = s.ship.angle;
-            s.explored.reveal(s.ship.pos, 300.0);
+            s.explored.reveal(s.ship.pos, fx!(300.0));
         }),
         (8.4, |c| {
             if let Some(h) = c.sim.0.hack.as_mut() {
                 h.done = 2;
-                h.left = h.total * 0.55;
+                h.left = crate::sim::fx::Fx::from_f32(h.total * 0.55);
             }
         }),
         (9.2, |c| shot(c, "port_hacken")),
@@ -1220,13 +1235,13 @@ fn minigame_scene() -> Vec<(f32, Act)> {
             c.sim.0.hack = None;
             teleport(c, Vec2::new(-300.0, -260.0), 0.0, 0.0);
             let s = &mut c.sim.0;
-            s.ship.thrusters[4].health = 0.0;
+            s.ship.thrusters[4].health = fx!(0.0);
             s.ship.store(
                 crate::sim::ship::CargoKind::Salvage {
                     name: "Kühlrippe".into(),
                     value: 40,
                 },
-                0.5,
+                fx!(0.5),
             );
             let crane = s
                 .ship
@@ -1236,7 +1251,7 @@ fn minigame_scene() -> Vec<(f32, Act)> {
                 .unwrap_or(0);
             s.ship.tools[crane].crane = crate::sim::ship::CraneState::Patching {
                 thruster: 4,
-                progress: 0.55,
+                progress: fx!(0.55),
             };
         }),
         (10.05, |c| {
@@ -1270,7 +1285,7 @@ fn workshop_scene() -> Vec<(f32, Act)> {
             let orion = station(c, "werft");
             let s = &mut c.sim.0;
             s.crew.credits = 2400;
-            s.crew.storage = [18.0, 6.0, 3.0, 2.0, 5.0];
+            s.crew.storage = [fx!(18.0), fx!(6.0), fx!(3.0), fx!(2.0), fx!(5.0)];
             s.crew.storage_parts = 3;
             s.ship.docked = None;
             s.dock_at_station(orion);
@@ -1303,12 +1318,12 @@ fn workshop_scene() -> Vec<(f32, Act)> {
 fn put_npc(c: &mut Ctx, name: &str, pos: Vec2, angle: f32, nav: crate::sim::npc::Nav) {
     let s = &mut c.sim.0;
     if let Some(n) = s.npcs.iter_mut().find(|n| n.name == name) {
-        n.ship.pos = pos;
-        n.ship.prev_pos = pos;
-        n.ship.angle = angle;
-        n.ship.prev_angle = angle;
-        n.ship.vel = Vec2::ZERO;
-        n.ship.ang_vel = 0.0;
+        n.ship.pos = crate::sim::fx::Vec2::from_bevy(pos);
+        n.ship.prev_pos = crate::sim::fx::Vec2::from_bevy(pos);
+        n.ship.angle = crate::sim::fx::Fx::from_f32(angle);
+        n.ship.prev_angle = crate::sim::fx::Fx::from_f32(angle);
+        n.ship.vel = crate::sim::fx::Vec2::from_bevy(Vec2::ZERO);
+        n.ship.ang_vel = fx!(0.0);
         n.nav = nav;
     }
 }
@@ -1336,7 +1351,7 @@ fn traffic_scene() -> Vec<(f32, Act)> {
                 0.15,
                 Nav::Landing {
                     pad: pad4,
-                    timer: 0.0,
+                    timer: fx!(0.0),
                 },
             );
             put_npc(
@@ -1345,7 +1360,7 @@ fn traffic_scene() -> Vec<(f32, Act)> {
                 st + Vec2::new(-30.0, 45.0),
                 0.6,
                 Nav::Hold {
-                    target: st + Vec2::new(-140.0, 90.0),
+                    target: crate::sim::fx::Vec2::from_bevy(st + Vec2::new(-140.0, 90.0)),
                 },
             );
         }),
@@ -1353,13 +1368,19 @@ fn traffic_scene() -> Vec<(f32, Act)> {
         // Piratennest: Drohnen greifen an.
         (5.4, |c| {
             let n = &c.sim.0.data.traffic.nests[0];
-            let nest = Vec2::new(n.center.0, n.center.1);
+            let nest = Vec2::new((n.center.0).to_f32(), (n.center.1).to_f32());
             teleport(c, nest, 70.0, 1.2);
             let me = c.sim.0.ship.pos;
-            c.sim.0.ship.invulnerable = 20.0;
+            c.sim.0.ship.invulnerable = fx!(20.0);
             for k in 0..3 {
-                let at = me + rot(Vec2::X, 0.3 + k as f32 * 1.2) * 18.0;
-                c.sim.0.spawn_drone(at, Some(0), None);
+                let at = me
+                    + rot(
+                        crate::sim::fx::Vec2::from_bevy(Vec2::X),
+                        crate::sim::fx::Fx::from_f32(0.3 + k as f32 * 1.2),
+                    ) * 18.0;
+                c.sim
+                    .0
+                    .spawn_drone(crate::sim::fx::Vec2::from_bevy(at), Some(0), None);
             }
         }),
         (8.2, |c| shot(c, "piraten")),
@@ -1383,9 +1404,9 @@ fn traffic_scene() -> Vec<(f32, Act)> {
                 origin: Some(crate::sim::world::Owner::Station(0)),
                 giver: None,
                 start: None,
-                top_speed: 0.0,
+                top_speed: fx!(0.0),
                 max_strain: None,
-                par: 300.0,
+                par: fx!(300.0),
             });
             let mid = Vec2::new(640.0, -110.0);
             if let Some(n) = s.npcs.iter_mut().find(|n| n.id == convoy) {
@@ -1394,23 +1415,29 @@ fn traffic_scene() -> Vec<(f32, Act)> {
                     to: kepler,
                     departed: true,
                 };
-                n.ship.pos = mid;
-                n.ship.prev_pos = mid;
-                n.ship.angle = -1.75;
+                n.ship.pos = crate::sim::fx::Vec2::from_bevy(mid);
+                n.ship.prev_pos = crate::sim::fx::Vec2::from_bevy(mid);
+                n.ship.angle = fx!(-1.75);
                 n.ship.prev_angle = n.ship.angle;
-                n.ship.hull *= 0.72;
+                n.ship.hull *= fx!(0.72);
                 n.nav = Nav::Path {
-                    points: vec![mid + Vec2::new(300.0, -60.0)],
+                    points: vec![crate::sim::fx::Vec2::from_bevy(
+                        mid + Vec2::new(300.0, -60.0),
+                    )],
                     idx: 0,
                     land: None,
                 };
             }
             for k in 0..3 {
-                let at = mid + rot(Vec2::X, 0.4 + k as f32 * 2.1) * 20.0;
-                s.spawn_drone(at, None, Some(convoy));
+                let at = mid
+                    + rot(
+                        crate::sim::fx::Vec2::from_bevy(Vec2::X),
+                        crate::sim::fx::Fx::from_f32(0.4 + k as f32 * 2.1),
+                    ) * 20.0;
+                s.spawn_drone(crate::sim::fx::Vec2::from_bevy(at), None, Some(convoy));
             }
             teleport(c, mid + Vec2::new(26.0, -8.0), 0.0, 0.0);
-            c.sim.0.ship.invulnerable = 20.0;
+            c.sim.0.ship.invulnerable = fx!(20.0);
         }),
         (11.6, |c| shot(c, "geleitschutz")),
         // Schmuggel: mit Ware im Radius der Zollboje bei Kepler.
@@ -1428,25 +1455,25 @@ fn traffic_scene() -> Vec<(f32, Act)> {
                     from: neb,
                     to: kepler,
                     cargo: "Nebelperlen".into(),
-                    mass: 2.0,
+                    mass: fx!(2.0),
                 },
                 reward: 610,
                 origin: Some(crate::sim::world::Owner::Station(neb)),
                 giver: None,
                 start: None,
-                top_speed: 0.0,
+                top_speed: fx!(0.0),
                 max_strain: None,
-                par: 300.0,
+                par: fx!(300.0),
             });
             s.ship.store(
                 crate::sim::ship::CargoKind::Container {
                     mission: id,
                     name: "Nebelperlen".into(),
                 },
-                2.0,
+                fx!(2.0),
             );
             let cp = &s.data.traffic.checkpoints[1];
-            let buoy = Vec2::new(cp.pos.0, cp.pos.1);
+            let buoy = Vec2::new((cp.pos.0).to_f32(), (cp.pos.1).to_f32());
             teleport(c, buoy, 22.0, 2.4);
         }),
         (14.2, |c| shot(c, "zollscan")),
@@ -1462,13 +1489,13 @@ fn traffic_scene() -> Vec<(f32, Act)> {
             let p = s.world.pads[pad4].clone();
             if let Some(n) = s.npcs.iter_mut().find(|n| n.name == "Juno") {
                 let rest = n.ship.rest_height();
-                n.ship.pos = p.center + p.normal * (rest + 0.02);
+                n.ship.pos = crate::sim::fx::Vec2::from_bevy(p.center + p.normal * (rest + 0.02));
                 n.ship.prev_pos = n.ship.pos;
                 n.ship.angle = p.ship_angle();
                 n.ship.prev_angle = n.ship.angle;
                 n.nav = Nav::Docked {
                     pad: pad4,
-                    wait: 120.0,
+                    wait: fx!(120.0),
                 };
             }
             s.crew.credits = 1800;
@@ -1495,14 +1522,15 @@ fn take_artifact(c: &mut Ctx, id: &str) {
 }
 
 fn monument_pos(c: &Ctx, id: &str) -> Vec2 {
-    c.sim
+    (c.sim
         .0
         .world
         .monuments
         .iter()
         .find(|m| m.id == id)
         .map(|m| m.pos)
-        .unwrap_or_default()
+        .unwrap_or_default())
+    .to_bevy()
 }
 
 /// Phase 13: Artefakte, Signalturm, Tor, Funk, Karte und Logbuch.
@@ -1523,10 +1551,10 @@ fn story_scene() -> Vec<(f32, Act)> {
                 })
                 .map(|b| b.pos)
                 .unwrap_or_default();
-            teleport(c, p, 14.0, 2.6);
+            teleport(c, (p).to_bevy(), 14.0, 2.6);
             let me = c.sim.0.ship.pos;
             c.sim.0.start_scan(me);
-            c.sim.0.ship.invulnerable = 30.0;
+            c.sim.0.ship.invulnerable = fx!(30.0);
         }),
         (4.8, |c| shot(c, "artefakt_signal")),
         // Signalturm: Kapitel „Resonanz“ beginnt, Artefakte an Bord lassen ihn glimmen.
@@ -1543,8 +1571,8 @@ fn story_scene() -> Vec<(f32, Act)> {
             s.story.started = false;
             let p = monument_pos(c, "signalturm");
             teleport(c, p, 18.4, 0.22);
-            c.sim.0.ship.invulnerable = 30.0;
-            c.sim.0.ship.angle = 0.5;
+            c.sim.0.ship.invulnerable = fx!(30.0);
+            c.sim.0.ship.angle = fx!(0.5);
         }),
         (8.6, |c| shot(c, "signalturm_resonanz")),
         // Scanner per Slot auslösen (Taste H), damit Funk und Meldungen durch die Simulation laufen.
@@ -1568,8 +1596,8 @@ fn story_scene() -> Vec<(f32, Act)> {
             s.crew.reputation[0] = 11;
             let p = monument_pos(c, "tor");
             teleport(c, p, 34.0, std::f32::consts::PI);
-            c.sim.0.ship.invulnerable = 30.0;
-            c.sim.0.ship.angle = -std::f32::consts::FRAC_PI_2;
+            c.sim.0.ship.invulnerable = fx!(30.0);
+            c.sim.0.ship.angle = crate::sim::fx::Fx::from_f32(-std::f32::consts::FRAC_PI_2);
         }),
         (14.4, |c| {
             c.sim.0.scan = None;

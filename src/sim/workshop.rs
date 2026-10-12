@@ -4,6 +4,7 @@
 use super::data::{CrewSave, Ore, ShipDef};
 use super::ship::CargoKind;
 use super::{SimState, ToastKind};
+use crate::sim::fx::Fx;
 
 fn ore_index(ore: Ore) -> usize {
     Ore::ALL.iter().position(|o| *o == ore).unwrap_or(0)
@@ -15,7 +16,7 @@ fn ore_index(ore: Ore) -> usize {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Cost {
     pub credits: u32,
-    pub materials: Vec<(Ore, f32)>,
+    pub materials: Vec<(Ore, Fx)>,
     pub parts: u32,
     pub key: Option<String>,
 }
@@ -57,12 +58,12 @@ impl Cost {
 
 impl SimState {
     /// Material einer Sorte im Crew-Lager.
-    pub fn stored(&self, ore: Ore) -> f32 {
+    pub fn stored(&self, ore: Ore) -> Fx {
         self.crew.storage[ore_index(ore)]
     }
 
     /// Material direkt ins Crew-Lager legen (Händlerin, Belohnungen).
-    pub(crate) fn store_material(&mut self, ore: Ore, t: f32) {
+    pub(crate) fn store_material(&mut self, ore: Ore, t: Fx) {
         self.crew.storage[ore_index(ore)] += t;
     }
 
@@ -72,7 +73,7 @@ impl SimState {
             return Err(format!("Zu wenig Credits ({})", cost.credits));
         }
         for (o, t) in &cost.materials {
-            if self.stored(*o) + 1e-3 < *t {
+            if self.stored(*o) + fx!(1e-3) < *t {
                 return Err(format!(
                     "Im Crew-Lager fehlt {} ({:.1}/{t:.0} t)",
                     o.label(),
@@ -105,7 +106,7 @@ impl SimState {
     pub(crate) fn pay_materials(&mut self, cost: &Cost) {
         for (o, t) in &cost.materials {
             let s = &mut self.crew.storage[ore_index(*o)];
-            *s = (*s - t).max(0.0);
+            *s = (*s - t).max(fx!(0.0));
         }
         self.crew.storage_parts = self.crew.storage_parts.saturating_sub(cost.parts);
     }
@@ -150,9 +151,9 @@ impl SimState {
             self.toast("Einlagern geht nur an Stationen", ToastKind::Warn);
             return;
         }
-        let mut stored_t = 0.0;
+        let mut stored_t = fx!(0.0);
         for ore in Ore::ALL {
-            let reserved: f32 = self
+            let reserved: Fx = self
                 .active
                 .iter()
                 .filter_map(|m| match m.kind {
@@ -162,8 +163,8 @@ impl SimState {
                     _ => None,
                 })
                 .sum();
-            let free = (self.ship.ore_amount(ore) - reserved).max(0.0);
-            if free < 0.05 {
+            let free = (self.ship.ore_amount(ore) - reserved).max(fx!(0.0));
+            if free < fx!(0.05) {
                 continue;
             }
             let taken = self.ship.take_ore(ore, free);
@@ -175,11 +176,11 @@ impl SimState {
             .remove_cargo(|k| matches!(k, CargoKind::Salvage { .. }))
             .len() as u32;
         self.crew.storage_parts += parts;
-        if stored_t < 0.05 && parts == 0 {
+        if stored_t < fx!(0.05) && parts == 0 {
             self.toast("Nichts zum Einlagern an Bord", ToastKind::Info);
             return;
         }
-        let what = match (stored_t > 0.05, parts) {
+        let what = match (stored_t > fx!(0.05), parts) {
             (true, 0) => format!("{stored_t:.1} t Material"),
             (false, n) => format!("{n} Bauteile"),
             (true, n) => format!("{stored_t:.1} t Material und {n} Bauteile"),
@@ -191,7 +192,7 @@ impl SimState {
     }
 
     pub(crate) fn load_workshop(&mut self, save: &CrewSave) {
-        let mut storage = [0.0f32; 5];
+        let mut storage = [fx!(0.0); 5];
         for (o, t) in &save.storage {
             storage[ore_index(*o)] += *t;
         }
@@ -205,7 +206,7 @@ impl SimState {
         save.storage = Ore::ALL
             .iter()
             .map(|o| (*o, self.stored(*o)))
-            .filter(|(_, t)| *t > 0.001)
+            .filter(|(_, t)| *t > fx!(0.001))
             .collect();
         save.storage_parts = self.crew.storage_parts;
         save.artifacts = self.crew.artifacts.clone();

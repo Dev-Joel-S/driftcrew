@@ -6,6 +6,7 @@
 //! ↑↓ Frachtstück wählen · ←→ Zielmodul · Enter umladen · ⌫ (Pad: Select) zweimal abwerfen ·
 //! Esc schließen. Pfeiltasten sind nie Slot-Tasten, das Fliegen geht also nebenher weiter.
 
+use crate::fx;
 use bevy::prelude::*;
 
 use super::{
@@ -219,7 +220,7 @@ pub fn item_state(c: &CargoItem, ship: &Ship) -> (String, Color) {
         parts.push(format!(
             "→ {} in {:.1} s",
             ship.pod_label(to),
-            left.max(0.0)
+            left.max(fx!(0.0))
         ));
         col = ACCENT;
     }
@@ -321,7 +322,7 @@ fn spawn_plan(commands: &mut Commands, s: &SimState, plan: &CargoPlan) {
                         format!(
                             "Ziel: {} (frei {:.1} t){}",
                             ship.pod_label(plan.target),
-                            free.max(0.0),
+                            free.max(fx!(0.0)),
                             if fits { "" } else { " – passt nicht" }
                         ),
                         13.0,
@@ -384,8 +385,8 @@ fn spawn_schematic(
     let mut min = Vec2::splat(f32::MAX);
     let mut max = Vec2::splat(f32::MIN);
     for part in &ship.parts {
-        min = min.min(part.pos - part.half);
-        max = max.max(part.pos + part.half);
+        min = min.min((part.pos - part.half).to_bevy());
+        max = max.max((part.pos + part.half).to_bevy());
     }
     if min.x > max.x {
         return;
@@ -428,13 +429,13 @@ fn spawn_schematic(
         for part in &ship.parts {
             rect(
                 box_,
-                part.pos,
-                part.half,
+                (part.pos).to_bevy(),
+                (part.half).to_bevy(),
                 Color::srgba(0.6, 0.65, 0.75, 0.18),
             );
         }
         for (i, pod) in ship.pods.iter().enumerate() {
-            let fill = (ship.pod_load(i) / pod.capacity.max(0.1)).clamp(0.0, 1.0);
+            let fill = (ship.pod_load(i) / pod.capacity.max(fx!(0.1))).clamp(fx!(0.0), fx!(1.0));
             let base = if Some(i) == sel.map(|c| c.pod) {
                 ACCENT
             } else if sel.is_some() && i == target {
@@ -442,10 +443,15 @@ fn spawn_schematic(
             } else {
                 Color::srgb(0.45, 0.55, 0.7)
             };
-            rect(box_, pod.pos, pod.half, base.with_alpha(0.25 + 0.6 * fill));
+            rect(
+                box_,
+                (pod.pos).to_bevy(),
+                (pod.half).to_bevy(),
+                base.with_alpha(0.25 + 0.6 * fill),
+            );
         }
         // Schwerpunkt.
-        let c = to_ui(ship.com);
+        let c = to_ui((ship.com).to_bevy());
         box_.spawn((
             Node {
                 position_type: PositionType::Absolute,

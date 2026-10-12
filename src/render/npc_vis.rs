@@ -1,6 +1,7 @@
 //! NPC-Schiffe (Frachter, Drohnen, Schürfroboter, Händlerin, Rivalen, Konvois) sowie Zollbojen
 //! und Piratennester. Die Modelle entstehen aus denselben Schiffsdaten wie das Crew-Schiff.
 
+use crate::fx;
 use std::collections::HashMap;
 
 use bevy::light::NotShadowCaster;
@@ -34,8 +35,11 @@ fn flame_color(n: &Npc) -> [f32; 3] {
 pub fn npc_pose(n: &Npc, alpha: f32) -> (Vec2, f32) {
     let s = &n.ship;
     let angle = s.prev_angle + angle_diff(s.angle, s.prev_angle) * alpha;
-    let com = s.prev_pos.lerp(s.pos, alpha);
-    (com - rot(s.com, angle), angle)
+    let com = s.prev_pos.lerp(s.pos, crate::sim::fx::Fx::from_f32(alpha));
+    (
+        (com - rot(s.com, crate::sim::fx::Fx::from_f32(angle))).to_bevy(),
+        angle,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -74,8 +78,8 @@ pub fn sync_npcs(
             &n.ship,
             &def,
             ShipModelOpts {
-                hull: Some(n.colors.0),
-                accent: Some(n.colors.1),
+                hull: Some((n.colors.0).map(crate::sim::fx::Fx::to_f32)),
+                accent: Some((n.colors.1).map(crate::sim::fx::Fx::to_f32)),
                 npc: Some((n.id, flame_color(n))),
                 ..default()
             },
@@ -120,7 +124,7 @@ pub fn sync_npcs(
             .iter()
             .find(|p| matches!(p.kind, PartKind::Thruster(_)) && (p.pos - th.pos).length() < 1e-3)
             .map(|p| p.half.y)
-            .unwrap_or(0.2);
+            .unwrap_or(fx!(0.2));
         let tip_y = th.pos.y - half - 0.18 - 0.25;
         t.translation.y = tip_y - t.scale.y * 0.5;
     }
@@ -140,7 +144,7 @@ pub fn spawn_traffic_props(
     let lamp = mats.add(art.emissive_mat(srgb([1.0, 0.7, 0.15]), 14.0));
     let halo = art.glow_mat(&mut mats, srgb([1.0, 0.7, 0.2]), 2.5);
     for cp in &t.checkpoints {
-        let p = Vec2::new(cp.pos.0, cp.pos.1);
+        let p = Vec2::new((cp.pos.0).to_f32(), (cp.pos.1).to_f32());
         commands
             .spawn((
                 Transform::from_translation(p.extend(0.0)),
@@ -191,7 +195,7 @@ pub fn spawn_traffic_props(
     let red = mats.add(art.emissive_mat(srgb([1.0, 0.15, 0.1]), 16.0));
     let red_halo = art.glow_mat(&mut mats, srgb([1.0, 0.2, 0.15]), 2.5);
     for n in &t.nests {
-        let c = Vec2::new(n.center.0, n.center.1);
+        let c = Vec2::new((n.center.0).to_f32(), (n.center.1).to_f32());
         commands
             .spawn((
                 Transform::from_translation(c.extend(-1.0)),

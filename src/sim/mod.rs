@@ -7,9 +7,12 @@
 //!
 //! Die Simulation weiß nicht, wer gedrückt hat – nur welcher Slot.
 
-pub mod autopilot;
+// Keine Fließkommarechnung in der Simulation (siehe `fx.rs` und `float_guard.rs`).
+#![deny(clippy::float_arithmetic)]
+
 #[macro_use]
 pub mod fx;
+pub mod autopilot;
 pub mod cargo;
 #[cfg(test)]
 mod cargo_tests;
@@ -26,6 +29,10 @@ pub mod explore;
 pub mod finance;
 #[cfg(test)]
 mod finance_tests;
+#[cfg(test)]
+mod fixed_point_tests;
+#[cfg(test)]
+mod float_guard;
 pub mod gear;
 #[cfg(test)]
 mod gear_tests;
@@ -54,6 +61,7 @@ pub mod project;
 pub mod replay;
 pub mod rng;
 pub mod sector;
+pub mod selftest;
 pub mod ship;
 pub mod stats;
 pub mod story;
@@ -69,7 +77,7 @@ pub mod world;
 
 use std::sync::Arc;
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use data::{CrewSave, GameData, Livery, Ore};
 use economy::{Purchase, Vote};
@@ -78,8 +86,8 @@ use rng::Rng;
 use ship::{Loadout, Ship};
 use world::World;
 
-pub const TICK_HZ: f64 = 60.0;
-pub const DT: f32 = 1.0 / 60.0;
+pub const TICK_HZ: u32 = 60;
+pub const DT: Fx = Fx::frac(1, 60);
 pub const MAX_SLOTS: usize = 32;
 
 /// Eingabe für genau einen Tick.
@@ -88,7 +96,7 @@ pub struct TickInput {
     /// Bit i = Slot i gedrückt.
     pub slots: u32,
     /// Zielwinkel (Welt, Bogenmaß) pro Slot, nur für Werkzeuge relevant.
-    pub aims: Vec<f32>,
+    pub aims: Vec<Fx>,
     pub commands: Vec<Command>,
     /// Bremsassistent gehalten (feste Taste, gehört allen).
     pub brake: bool,
@@ -196,18 +204,18 @@ pub enum SimEvent {
     Impact {
         pos: Vec2,
         normal: Vec2,
-        strength: f32,
+        strength: Fx,
     },
     ShieldHit {
         pos: Vec2,
     },
     Damage {
-        amount: f32,
+        amount: Fx,
     },
     Explosion {
         pos: Vec2,
-        size: f32,
-        color: [f32; 3],
+        size: Fx,
+        color: [Fx; 3],
     },
     Shot {
         pos: Vec2,
@@ -264,7 +272,7 @@ pub enum SimEvent {
     },
     ScanPulse {
         pos: Vec2,
-        range: f32,
+        range: Fx,
     },
     /// Wiederaufbau: eine Etappe ist fertig.
     StageCompleted {
@@ -369,10 +377,10 @@ impl Call {
 pub struct Callout {
     pub player: u8,
     pub call: Call,
-    pub life: f32,
+    pub life: Fx,
 }
 
-pub const CALLOUT_SECONDS: f32 = 2.5;
+pub const CALLOUT_SECONDS: Fx = fx!(2.5);
 
 /// Markierung eines Crewmitglieds (Ping), verblasst nach [`PING_SECONDS`].
 #[derive(Clone, Debug, PartialEq)]
@@ -381,17 +389,17 @@ pub struct Ping {
     pub pos: Vec2,
     /// Was dort ist („Wrack“, „Kepler-Außenposten“ …), leer = freier Raum.
     pub label: String,
-    pub life: f32,
+    pub life: Fx,
 }
 
-pub const PING_SECONDS: f32 = 6.0;
+pub const PING_SECONDS: Fx = fx!(6.0);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BodyKind {
     Asteroid {
         ore: Option<Ore>,
-        ore_left: f32,
-        hp: f32,
+        ore_left: Fx,
+        hp: Fx,
         field: usize,
         /// Reiche Erzader an einer Stelle der Oberfläche (Präzisionsarbeit).
         vein: bool,
@@ -399,7 +407,7 @@ pub enum BodyKind {
     Meteor,
     OreChunk {
         ore: Ore,
-        amount: f32,
+        amount: Fx,
     },
     Capsule {
         mission: u32,
@@ -416,7 +424,7 @@ pub enum BodyKind {
     /// Wrack zum Ausschlachten (Index in `world.wrecks`).
     Wreck {
         idx: usize,
-        scrap: f32,
+        scrap: Fx,
         parts: u32,
         home: Vec2,
     },
@@ -432,8 +440,8 @@ pub enum BodyKind {
     Bulky {
         mission: u32,
         name: String,
-        half_len: f32,
-        thick: f32,
+        half_len: Fx,
+        thick: Fx,
     },
     /// Artefakt der Vorgänger (Geschichte): einmalig, schwer für seine Größe.
     Artifact {
@@ -449,12 +457,12 @@ pub enum BodyKind {
 /// sperrige eine Kette.
 #[derive(Clone, Copy, Debug)]
 pub struct Circles {
-    pub list: [(Vec2, f32); 9],
+    pub list: [(Vec2, Fx); 9],
     pub n: usize,
 }
 
 impl Circles {
-    pub fn iter(&self) -> impl Iterator<Item = (Vec2, f32)> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = (Vec2, Fx)> + '_ {
         self.list[..self.n].iter().copied()
     }
 }
@@ -465,24 +473,24 @@ pub struct Body {
     pub kind: BodyKind,
     pub pos: Vec2,
     pub vel: Vec2,
-    pub angle: f32,
-    pub ang_vel: f32,
-    pub radius: f32,
-    pub mass: f32,
+    pub angle: Fx,
+    pub ang_vel: Fx,
+    pub radius: Fx,
+    pub mass: Fx,
     pub prev_pos: Vec2,
-    pub prev_angle: f32,
+    pub prev_angle: Fx,
     pub alive: bool,
     pub seed: u32,
-    pub age: f32,
+    pub age: Fx,
 }
 
 impl Body {
-    pub fn inertia(&self) -> f32 {
+    pub fn inertia(&self) -> Fx {
         match self.kind {
             BodyKind::Bulky {
                 half_len, thick, ..
-            } => self.mass * ((2.0 * half_len).powi(2) / 12.0 + 0.5 * thick * thick),
-            _ => 0.5 * self.mass * self.radius * self.radius,
+            } => self.mass * ((fx!(2.0) * half_len).powi(2) / fx!(12.0) + fx!(0.5) * thick * thick),
+            _ => fx!(0.5) * self.mass * self.radius * self.radius,
         }
     }
 
@@ -496,9 +504,9 @@ impl Body {
         } = self.kind
         {
             let axis = Vec2::new(self.angle.cos(), self.angle.sin());
-            let n = ((2.0 * half_len / thick).ceil() as usize + 1).clamp(2, 9);
+            let n = ((fx!(2.0) * half_len / thick).ceil_int() as usize + 1).clamp(2, 9);
             for k in 0..n {
-                let t = -half_len + 2.0 * half_len * k as f32 / (n - 1) as f32;
+                let t = -half_len + fx!(2.0) * half_len * Fx::from(k) / Fx::from(n - 1);
                 c.list[k] = (self.pos + axis * t, thick);
             }
             c.n = n;
@@ -536,7 +544,7 @@ pub struct Projectile {
     pub pos: Vec2,
     pub prev_pos: Vec2,
     pub vel: Vec2,
-    pub life: f32,
+    pub life: Fx,
     /// Von einer Piratendrohne abgefeuert (trifft die Crew und Konvois, nicht Drohnen).
     pub hostile: bool,
 }
@@ -546,10 +554,10 @@ pub struct Projectile {
 pub struct EscapePod {
     pub pos: Vec2,
     pub vel: Vec2,
-    pub angle: f32,
-    pub spin: f32,
+    pub angle: Fx,
+    pub spin: Fx,
     pub prev_pos: Vec2,
-    pub prev_angle: f32,
+    pub prev_angle: Fx,
 }
 
 /// Gemeinsame Kasse und Fortschritt der Crew.
@@ -562,7 +570,7 @@ pub struct Crew {
     pub current_ship: String,
     pub home_station: usize,
     pub missions_done: u32,
-    pub ore_sold: f32,
+    pub ore_sold: Fx,
     /// Rufpunkte pro Station (Index wie `world.stations`).
     pub reputation: Vec<u32>,
     /// Lackierung pro Schiff.
@@ -572,7 +580,7 @@ pub struct Crew {
     /// Laufender Schiffskredit.
     pub loan: Option<finance::Loan>,
     /// Crew-Lager: Material pro Erzsorte (Reihenfolge wie `Ore::ALL`), Bauteile, Artefakte.
-    pub storage: [f32; 5],
+    pub storage: [Fx; 5],
     pub storage_parts: u32,
     pub artifacts: Vec<String>,
     /// Angebaute Module pro Schiff: (Schiff, [(Bauplatz, Modul)]).
@@ -597,7 +605,7 @@ impl Crew {
 pub struct SimState {
     pub data: Arc<GameData>,
     pub tick: u64,
-    pub time: f32,
+    pub time: Fx,
     pub rng: Rng,
     pub world: World,
     pub ship: Ship,
@@ -610,9 +618,9 @@ pub struct SimState {
     pub vote: Option<Vote>,
     pub events: Vec<SimEvent>,
     pub next_id: u32,
-    pub meteor_timers: Vec<f32>,
-    pub field_respawn: Vec<f32>,
-    pub border_warn: f32,
+    pub meteor_timers: Vec<Fx>,
+    pub field_respawn: Vec<Fx>,
+    pub border_warn: Fx,
     pub low_hull_warned: bool,
     /// 0 = Tank ok, 1 = Warnung „knapp“ gezeigt, 2 = Warnung „leer“ gezeigt.
     pub fuel_warned: u8,
@@ -629,7 +637,7 @@ pub struct SimState {
     pub pings: Vec<Ping>,
     /// Laufendes Zufallsereignis und Zeit bis zum nächsten.
     pub event: Option<sector::WorldEvent>,
-    pub event_timer: f32,
+    pub event_timer: Fx,
     /// Scanner: laufender Impuls und gefundene Dinge.
     pub scan: Option<sector::ScanPulse>,
     pub blips: Vec<sector::ScanBlip>,
@@ -647,44 +655,44 @@ pub struct SimState {
     pub course_result: Option<course::CourseResult>,
     pub records: Vec<data::CourseRecord>,
     /// Markt: Preisfaktor pro Ort (Stationen, dann Planeten) und Erzsorte; laufende Nachfrage.
-    pub market: Vec<[f32; 5]>,
+    pub market: Vec<[Fx; 5]>,
     pub demand: Option<finance::Demand>,
-    pub demand_timer: f32,
+    pub demand_timer: Fx,
     /// Wo und wann zuletzt Dockgebühr gezahlt wurde.
-    pub last_dock_fee: Option<(usize, f32)>,
+    pub last_dock_fee: Option<(usize, Fx)>,
     /// Minispiele: Slot-Tasten im letzten Tick, Notreparatur, laufender Hack, bis wann ein
     /// gesicherter Port offen ist und bis wann er nach einem Fehler gesperrt bleibt.
     pub prev_slots: u32,
     pub repair: minigame::Repair,
     pub hack: Option<minigame::Hack>,
-    pub unlocked: Vec<f32>,
-    pub hack_lockout: Vec<f32>,
+    pub unlocked: Vec<Fx>,
+    pub hack_lockout: Vec<Fx>,
     /// NPC-Schiffe mit eigener Physik, ihre Andockplätze, Punkte der Rivalen-Crew,
     /// Abklingzeit der Piratennester, laufender Zollscan.
     pub npcs: Vec<npc::Npc>,
     pub npc_docks: Vec<npc::NpcDock>,
     pub rival_score: u32,
-    pub nest_cooldown: Vec<f32>,
+    pub nest_cooldown: Vec<Fx>,
     pub customs: Option<npc::CustomsScan>,
     /// Geschichte: Kapitel, Logbuch, Fundorte der Artefakte.
     pub story: story::Story,
     /// Fracht: Geschwindigkeit im letzten Flug-Tick (für Stöße und Schwappen), Fortschritt
     /// beim Hinüberholen Geretteter, Pause zwischen Frachtwarnungen.
     pub cargo_vel: Option<Vec2>,
-    pub rescue_timer: f32,
-    pub cargo_warn: f32,
+    pub rescue_timer: Fx,
+    pub cargo_warn: Fx,
     /// Die Welt reagiert (76, 79): Wirkungen erledigter Aufträge, entdeckte Routen, Bestzeiten,
     /// laufender Routenflug.
     pub effects: Vec<effects::Effect>,
     pub routes_known: Vec<String>,
-    pub route_best: Vec<(String, f32)>,
+    pub route_best: Vec<(String, Fx)>,
     pub route_run: Option<effects::RouteRun>,
     /// Gerade beendete Route: startet erst wieder, wenn das Schiff die Enden verlassen hat.
     pub route_rest: Option<usize>,
     /// Schiffsname, Plaketten, Tagebuch, Kartenmarkierungen (81, 82).
     pub journal: journal::Journal,
     /// Zusammenarbeit (69, 70, 73): Energiebedarf dieses Ticks, Warnung „leer“ gezeigt, Zurufe.
-    pub power_draw: f32,
+    pub power_draw: Fx,
     pub energy_warned: bool,
     pub callouts: Vec<Callout>,
     /// Flugassistenz an (Standard) und ob der Bremsassistent gerade bremst.
@@ -718,7 +726,7 @@ impl SimState {
         // Bekannte Stationen sind von Anfang an aufgedeckt.
         for (st, sd) in world.stations.iter().zip(&data.world.stations) {
             if sd.known {
-                explored.reveal(st.pos, 260.0);
+                explored.reveal(st.pos, fx!(260.0));
             }
         }
         let crew = Crew {
@@ -734,7 +742,7 @@ impl SimState {
             liveries: save.liveries.clone(),
             insured: false,
             loan: None,
-            storage: [0.0; 5],
+            storage: [fx!(0.0); 5],
             storage_parts: 0,
             artifacts: Vec::new(),
             builds: save.builds.clone(),
@@ -757,7 +765,7 @@ impl SimState {
         let mut s = SimState {
             data,
             tick: 0,
-            time: 0.0,
+            time: fx!(0.0),
             rng,
             world,
             ship,
@@ -770,9 +778,9 @@ impl SimState {
             vote: None,
             events: Vec::new(),
             next_id: 1,
-            meteor_timers: vec![0.0; n_zones],
-            field_respawn: vec![0.0; n_fields],
-            border_warn: 0.0,
+            meteor_timers: vec![fx!(0.0); n_zones],
+            field_respawn: vec![fx!(0.0); n_fields],
+            border_warn: fx!(0.0),
             low_hull_warned: false,
             fuel_warned: 0,
             escape: None,
@@ -796,13 +804,13 @@ impl SimState {
             records: Vec::new(),
             market: Vec::new(),
             demand: None,
-            demand_timer: 0.0,
+            demand_timer: fx!(0.0),
             last_dock_fee: None,
             prev_slots: 0,
             repair: minigame::Repair::default(),
             hack: None,
-            unlocked: vec![0.0; n_stations],
-            hack_lockout: vec![0.0; n_stations],
+            unlocked: vec![fx!(0.0); n_stations],
+            hack_lockout: vec![fx!(0.0); n_stations],
             npcs: Vec::new(),
             npc_docks: Vec::new(),
             rival_score: 0,
@@ -810,15 +818,15 @@ impl SimState {
             customs: None,
             story: story::Story::default(),
             cargo_vel: None,
-            rescue_timer: 0.0,
-            cargo_warn: 0.0,
+            rescue_timer: fx!(0.0),
+            cargo_warn: fx!(0.0),
             effects: Vec::new(),
             routes_known: Vec::new(),
             route_best: Vec::new(),
             route_run: None,
             route_rest: None,
             journal: journal::Journal::default(),
-            power_draw: 0.0,
+            power_draw: fx!(0.0),
             energy_warned: false,
             callouts: Vec::new(),
             flight_assist: true,
@@ -839,7 +847,7 @@ impl SimState {
         s.populate_wrecks();
         s.refresh_offers();
         s.dock_at_station(home);
-        s.nest_cooldown = vec![0.0; s.data.traffic.nests.len()];
+        s.nest_cooldown = vec![fx!(0.0); s.data.traffic.nests.len()];
         s.spawn_traffic();
         s.events.clear();
         s
@@ -1021,11 +1029,11 @@ impl SimState {
         for c in &mut self.callouts {
             c.life -= DT;
         }
-        self.callouts.retain(|c| c.life > 0.0);
-        self.pings.retain(|p| p.life > 0.0);
+        self.callouts.retain(|c| c.life > fx!(0.0));
+        self.pings.retain(|p| p.life > fx!(0.0));
 
         self.bodies.retain(|b| b.alive);
-        self.projectiles.retain(|p| p.life > 0.0);
+        self.projectiles.retain(|p| p.life > fx!(0.0));
     }
 }
 
@@ -1048,7 +1056,7 @@ impl SimState {
         let body = self
             .bodies
             .iter()
-            .filter(|b| b.alive && (b.pos - p).length() < b.radius + 6.0)
+            .filter(|b| b.alive && (b.pos - p).shorter_than(b.radius + fx!(6.0)))
             .min_by(|a, b| (a.pos - p).length().total_cmp(&(b.pos - p).length()));
         if let Some(b) = body {
             return match &b.kind {
@@ -1071,7 +1079,7 @@ impl SimState {
             .world
             .stations
             .iter()
-            .find(|st| st.bounds.expand(10.0).contains(p))
+            .find(|st| st.bounds.expand(fx!(10.0)).contains(p))
         {
             return st.name.clone();
         }
@@ -1079,7 +1087,7 @@ impl SimState {
             .world
             .planets
             .iter()
-            .find(|pl| (pl.pos - p).length() < pl.radius + 15.0)
+            .find(|pl| (pl.pos - p).shorter_than(pl.radius + fx!(15.0)))
         {
             return pl.name.clone();
         }
@@ -1094,7 +1102,7 @@ impl SimState {
         }
         // Der Schild lädt nicht von selbst: Ladung gibt es an Stationen (Phase 19).
         self.ship.since_hit += DT;
-        if self.ship.hull_regen > 0.0 && self.ship.hull > 0.0 {
+        if self.ship.hull_regen > fx!(0.0) && self.ship.hull > fx!(0.0) {
             self.ship.hull = (self.ship.hull + self.ship.hull_regen * DT).min(self.ship.max_hull);
         }
     }
@@ -1108,7 +1116,7 @@ impl SimState {
             // Im Nebel sieht die Crew weniger weit.
             let fog = self.sector_at(self.ship.pos).nebula;
             self.explored
-                .reveal(self.ship.pos, explore::SIGHT * (1.0 - 0.6 * fog));
+                .reveal(self.ship.pos, explore::SIGHT * (fx!(1.0) - fx!(0.6) * fog));
         }
         let speed = self.ship.vel.length();
         self.stats.time += DT;
@@ -1127,7 +1135,7 @@ impl SimState {
         let spin = self.ship.ang_vel.abs();
         let flying = self.ship.docked.is_none();
         // Seilbelastung pro Auftrag, solange dessen Last am Kran hängt.
-        let hooked: Vec<(u32, f32)> = self
+        let hooked: Vec<(u32, Fx)> = self
             .ship
             .tools
             .iter()
@@ -1145,14 +1153,14 @@ impl SimState {
                 _ => None,
             };
             if let Some(&(_, k)) = body.and_then(|b| hooked.iter().find(|(h, _)| *h == b)) {
-                m.max_strain = Some(m.max_strain.unwrap_or(0.0).max(k));
+                m.max_strain = Some(m.max_strain.unwrap_or(fx!(0.0)).max(k));
             }
             if let missions::MissionKind::Passengers { comfort, .. } = &mut m.kind
                 && flying
             {
-                let loss = (acc - missions::COMFORT_ACCEL).clamp(0.0, 400.0) * 0.004
-                    + (spin - 1.8).max(0.0) * 0.03;
-                *comfort = (*comfort - loss * DT).max(0.0);
+                let loss = (acc - missions::COMFORT_ACCEL).clamp(fx!(0.0), fx!(400.0)) * fx!(0.004)
+                    + (spin - fx!(1.8)).max(fx!(0.0)) * fx!(0.03);
+                *comfort = (*comfort - loss * DT).max(fx!(0.0));
             }
         }
     }
@@ -1213,13 +1221,13 @@ mod tests {
         SimState::new(data, &save, Loadout::full(&def), 1)
     }
 
-    fn fingerprint(s: &SimState) -> (u32, u32, u32, usize) {
+    fn fingerprint(s: &SimState) -> (i64, i64, i64, usize) {
         (
-            s.ship.pos.x.to_bits() ^ s.ship.pos.y.to_bits(),
-            s.ship.angle.to_bits(),
-            s.bodies.iter().fold(0u32, |a, b| {
-                a.wrapping_add(b.pos.x.to_bits()).rotate_left(3)
-            }),
+            s.ship.pos.x.raw() ^ s.ship.pos.y.raw(),
+            s.ship.angle.raw(),
+            s.bodies
+                .iter()
+                .fold(0i64, |a, b| a.wrapping_add(b.pos.x.raw()).rotate_left(3)),
             s.bodies.len(),
         )
     }
@@ -1241,7 +1249,7 @@ mod tests {
         }
         TickInput {
             slots,
-            aims: vec![1.0; MAX_SLOTS],
+            aims: vec![fx!(1.0); MAX_SLOTS],
             commands: vec![],
             brake: false,
         }
@@ -1265,7 +1273,7 @@ mod tests {
         assert!(s.ship.docked.is_some());
         let inp = TickInput {
             slots: 0b11,
-            aims: vec![0.0; MAX_SLOTS],
+            aims: vec![fx!(0.0); MAX_SLOTS],
             commands: vec![],
             brake: false,
         };
@@ -1274,7 +1282,7 @@ mod tests {
         }
         assert!(s.ship.docked.is_none());
         assert!(
-            s.ship.vel.length() > 0.5,
+            s.ship.vel.length() > fx!(0.5),
             "Schiff bewegt sich: {:?}",
             s.ship.vel
         );
@@ -1284,10 +1292,10 @@ mod tests {
     fn single_side_thrust_rotates() {
         let mut s = new_sim();
         s.ship.docked = None;
-        s.ship.pos = Vec2::new(0.0, 300.0); // freier Raum
+        s.ship.pos = Vec2::new(fx!(0.0), fx!(300.0)); // freier Raum
         let left_only = TickInput {
             slots: 0b1,
-            aims: vec![0.0; MAX_SLOTS],
+            aims: vec![fx!(0.0); MAX_SLOTS],
             commands: vec![],
             brake: false,
         };
@@ -1295,7 +1303,7 @@ mod tests {
             s.step(&left_only);
         }
         // Linkes Triebwerk dreht nach rechts (im Uhrzeigersinn → negative Winkelgeschwindigkeit).
-        assert!(s.ship.ang_vel < -0.1, "ang_vel = {}", s.ship.ang_vel);
+        assert!(s.ship.ang_vel < -fx!(0.1), "ang_vel = {}", s.ship.ang_vel);
     }
 
     #[test]
@@ -1304,15 +1312,15 @@ mod tests {
         // Ohne Flugassistenz: keine Reibung, das Schiff treibt ewig weiter.
         s.flight_assist = false;
         s.ship.docked = None;
-        s.ship.pos = Vec2::new(0.0, 300.0);
-        s.ship.vel = Vec2::new(3.0, 0.0);
+        s.ship.pos = Vec2::new(fx!(0.0), fx!(300.0));
+        s.ship.vel = Vec2::new(fx!(3.0), fx!(0.0));
         s.step(&TickInput::default());
         let v0 = s.ship.vel;
         for _ in 0..120 {
             s.step(&TickInput::default());
         }
         assert!(
-            (s.ship.vel - v0).length() < 0.05,
+            (s.ship.vel - v0).shorter_than(fx!(0.05)),
             "Trägheit: {:?} → {:?}",
             v0,
             s.ship.vel
@@ -1324,24 +1332,27 @@ mod tests {
         let mut s = new_sim();
         assert!(s.flight_assist, "Standard: an");
         s.ship.docked = None;
-        s.ship.pos = Vec2::new(0.0, 300.0);
-        s.ship.vel = Vec2::new(3.0, 0.0);
-        s.ship.ang_vel = 1.5;
+        s.ship.pos = Vec2::new(fx!(0.0), fx!(300.0));
+        s.ship.vel = Vec2::new(fx!(3.0), fx!(0.0));
+        s.ship.ang_vel = fx!(1.5);
         for _ in 0..120 {
             s.step(&TickInput::default());
         }
         // Lange, langsam ausklingende Drift (zweiter Spieltest): nach 2 s noch fast volle Fahrt.
         let v = s.ship.vel.length();
-        assert!(v < 3.0 && v > 2.5, "driftet lange weiter: {v}");
+        assert!(v < fx!(3.0) && v > fx!(2.5), "driftet lange weiter: {v}");
         // Kleiner Stabilisator: die Drehung ist gebremst, aber nicht sofort weg.
         let w = s.ship.ang_vel.abs();
-        assert!(w < 0.5 && w > 0.02, "Stabilisator: {w}");
+        assert!(w < fx!(0.5) && w > fx!(0.02), "Stabilisator: {w}");
         for _ in 0..(15 * 60) {
             s.step(&TickInput::default());
         }
         let v = s.ship.vel.length();
-        assert!(v < 1.6 && v > 0.8, "nach ~15 s etwa halbiert: {v}");
-        assert!(s.ship.ang_vel.abs() < 0.01);
+        assert!(
+            v < fx!(1.6) && v > fx!(0.8),
+            "nach ~15 s etwa halbiert: {v}"
+        );
+        assert!(s.ship.ang_vel.abs() < fx!(0.01));
     }
 
     #[test]
@@ -1349,9 +1360,9 @@ mod tests {
         let mut s = new_sim();
         s.flight_assist = false;
         s.ship.docked = None;
-        s.ship.pos = Vec2::new(0.0, 300.0);
-        s.ship.vel = Vec2::new(12.0, 5.0);
-        s.ship.ang_vel = 2.0;
+        s.ship.pos = Vec2::new(fx!(0.0), fx!(300.0));
+        s.ship.vel = Vec2::new(fx!(12.0), fx!(5.0));
+        s.ship.ang_vel = fx!(2.0);
         let fuel = s.ship.fuel;
         let brake = TickInput {
             brake: true,
@@ -1372,7 +1383,7 @@ mod tests {
         }
         assert!(stopped, "steht irgendwann: {:?}", s.ship.vel);
         assert!(ticks > 5 * 60, "aber nicht sofort: {ticks}");
-        assert!(s.ship.ang_vel.abs() < 0.3);
+        assert!(s.ship.ang_vel.abs() < fx!(0.3));
         assert!(s.ship.fuel < fuel, "kostet Treibstoff");
         assert!(s.ship.thrusters.iter().all(|t| !t.firing));
         // Angedockt: die Bremse dockt nicht ab.
@@ -1391,8 +1402,8 @@ mod tests {
             s.rebuild_ship(loadout);
             s.flight_assist = false;
             s.ship.docked = None;
-            s.ship.pos = Vec2::new(0.0, 300.0);
-            s.ship.vel = Vec2::new(10.0, 0.0);
+            s.ship.pos = Vec2::new(fx!(0.0), fx!(300.0));
+            s.ship.vel = Vec2::new(fx!(10.0), fx!(0.0));
             let brake = TickInput {
                 brake: true,
                 ..Default::default()
@@ -1416,7 +1427,7 @@ mod tests {
         let loadout = s.loadout.clone();
         s.rebuild_ship(loadout);
         s.ship.docked = None;
-        s.ship.pos = Vec2::new(0.0, 300.0);
+        s.ship.pos = Vec2::new(fx!(0.0), fx!(300.0));
         let brake = TickInput {
             brake: true,
             ..Default::default()
@@ -1425,7 +1436,7 @@ mod tests {
             s.step(&brake);
         }
         assert!(
-            s.reversing && s.ship.vel.length() < 2.5,
+            s.reversing && s.ship.vel.length() < fx!(2.5),
             "{}",
             s.ship.vel.length()
         );
@@ -1435,9 +1446,9 @@ mod tests {
     fn holding_brake_after_stopping_reverses_slowly() {
         let mut s = new_sim();
         s.ship.docked = None;
-        s.ship.pos = Vec2::new(0.0, 300.0);
+        s.ship.pos = Vec2::new(fx!(0.0), fx!(300.0));
         s.ship.vel = Vec2::ZERO;
-        s.ship.angle = 0.7;
+        s.ship.angle = fx!(0.7);
         let brake = TickInput {
             brake: true,
             ..Default::default()
@@ -1450,11 +1461,11 @@ mod tests {
         let along = s.ship.vel.dot(back);
         let max = s.data.world.flight.reverse_max;
         assert!(
-            along > max * 0.8 && along <= max + 0.01,
+            along > max * fx!(0.8) && along <= max + fx!(0.01),
             "rückwärts {along}"
         );
         assert!(
-            (s.ship.vel - back * along).length() < 0.05,
+            (s.ship.vel - back * along).shorter_than(fx!(0.05)),
             "kein Seitendrift"
         );
         // Loslassen: Rückwärtsgang aus.
@@ -1471,11 +1482,11 @@ mod tests {
         s.ship.docked = None;
         s.ship.angle = p.ship_angle();
         s.ship.prev_angle = s.ship.angle;
-        s.ship.pos = p.center + p.normal * (s.ship.rest_height() + 6.0);
+        s.ship.pos = p.center + p.normal * (s.ship.rest_height() + fx!(6.0));
         s.ship.prev_pos = s.ship.pos;
         s.ship.vel = Vec2::ZERO;
-        s.ship.ang_vel = 0.0;
-        s.ship.dock_cooldown = 0.0;
+        s.ship.ang_vel = fx!(0.0);
+        s.ship.dock_cooldown = fx!(0.0);
         let brake = TickInput {
             brake: true,
             ..Default::default()
@@ -1493,6 +1504,6 @@ mod tests {
             "aufgesetzt: pos {:?} vel {:?}",
             s.ship.pos, s.ship.vel
         );
-        assert!(s.ship.hull >= s.ship.max_hull - 0.5, "ohne Schaden");
+        assert!(s.ship.hull >= s.ship.max_hull - fx!(0.5), "ohne Schaden");
     }
 }

@@ -3,7 +3,7 @@
 //! Pfeilrichtung durch das Starttor fliegt. Tore, Bojen und Messfelder sind nur Prüfungen auf
 //! dem Schiffszustand – geflogen wird mit derselben Physik wie überall.
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::data::{CourseKind, CourseRecord, CrewSave, RecordEntry, StepKind, v};
 use super::geom::{forward, segments_cross};
@@ -14,30 +14,30 @@ use super::{DT, SimEvent, SimState, ToastKind};
 pub const BOARD_SIZE: usize = 5;
 /// Ein Starttor startet nur, wenn die Flugrichtung dazu passt (Kosinus der Abweichung) –
 /// sonst würde jeder Vorbeiflug einen Lauf beginnen.
-const START_ALIGN: f32 = 0.85;
+const START_ALIGN: Fx = fx!(0.85);
 /// Höchstdauer eines Laufs.
-const MAX_RUN: f32 = 900.0;
+const MAX_RUN: Fx = fx!(900.0);
 /// Ein gewählter, noch nicht begonnener Parcours verfällt so weit vom Starttor entfernt.
-const ARMED_RANGE: f32 = 1800.0;
+const ARMED_RANGE: Fx = fx!(1800.0);
 /// Stillhalten: höchstens so schnell drehen (rad/s).
-pub const HOLD_MAX_SPIN: f32 = 0.5;
+pub const HOLD_MAX_SPIN: Fx = fx!(0.5);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CourseRun {
     pub course: usize,
     /// Nächster Schritt. 0 = Starttor: der Parcours ist gewählt, die Zeit läuft noch nicht.
     pub step: usize,
-    pub time: f32,
+    pub time: Fx,
     /// Fortschritt bei Halte-Schritten (Sekunden).
-    pub progress: f32,
+    pub progress: Fx,
     /// Strafzeit bisher (Kollisionen, Präzisionsandocken).
-    pub penalty: f32,
+    pub penalty: Fx,
     pub collisions: u32,
     collisions_start: u32,
     /// Zwischenzeiten an jedem geschafften Schritt.
-    pub splits: Vec<f32>,
+    pub splits: Vec<Fx>,
     /// Präzisionsandocken: Versatz (m) und Aufsetzgeschwindigkeit (m/s).
-    pub dock: Option<(f32, f32)>,
+    pub dock: Option<(Fx, Fx)>,
 }
 
 impl CourseRun {
@@ -51,9 +51,9 @@ pub struct CourseResult {
     pub course: usize,
     /// Wievielter Abschluss dieses Parcours (zum Wiedererkennen in der Bestenliste).
     pub run: u32,
-    pub time: f32,
-    pub penalty: f32,
-    pub total: f32,
+    pub time: Fx,
+    pub penalty: Fx,
+    pub total: Fx,
     pub collisions: u32,
     /// Platz in der Bestenliste (0 = bester), falls eingetragen.
     pub rank: Option<usize>,
@@ -61,16 +61,16 @@ pub struct CourseResult {
     pub medal: u8,
     pub new_medal: bool,
     pub prize: u32,
-    pub dock: Option<(f32, f32)>,
+    pub dock: Option<(Fx, Fx)>,
 }
 
 pub const MEDAL_NAMES: [&str; 4] = ["–", "Bronze", "Silber", "Gold"];
 
 /// Zeit als „m:ss.s“.
-pub fn fmt_time(t: f32) -> String {
-    let t = t.max(0.0);
-    let m = (t / 60.0).floor() as u32;
-    format!("{m}:{:04.1}", t - m as f32 * 60.0)
+pub fn fmt_time(t: Fx) -> String {
+    let t = t.max(fx!(0.0));
+    let m = (t / fx!(60.0)).floor_int() as u32;
+    format!("{m}:{:04.1}", t - Fx::from(m) * fx!(60.0))
 }
 
 impl SimState {
@@ -103,7 +103,7 @@ impl SimState {
     }
 
     /// Plattformen, die für einen Andock-Schritt zählen.
-    pub fn dock_pads(&self, station: &str, near: Option<(f32, f32)>) -> Vec<usize> {
+    pub fn dock_pads(&self, station: &str, near: Option<(Fx, Fx)>) -> Vec<usize> {
         let Some(si) = self.data.station_index(station) else {
             return Vec::new();
         };
@@ -171,7 +171,7 @@ impl SimState {
     }
 
     /// Steht das Schiff ruhig in diesem Feld? (Messfelder und Halte-Schritte)
-    pub fn holding_still(&self, pos: Vec2, radius: f32, max_speed: f32) -> bool {
+    pub fn holding_still(&self, pos: Vec2, radius: Fx, max_speed: Fx) -> bool {
         !self.ship.destroyed
             && self.ship.docked.is_none()
             && (self.ship.pos - pos).length() <= radius
@@ -180,11 +180,11 @@ impl SimState {
     }
 
     /// Ist das Schiff in diesem Tick in Pfeilrichtung durch das Tor geflogen?
-    fn crossed_gate(&self, pos: Vec2, dir_deg: f32, width: f32, align: f32) -> bool {
+    fn crossed_gate(&self, pos: Vec2, dir_deg: Fx, width: Fx, align: Fx) -> bool {
         let dir = Vec2::new(dir_deg.to_radians().cos(), dir_deg.to_radians().sin());
-        let side = Vec2::new(-dir.y, dir.x) * (width * 0.5);
+        let side = Vec2::new(-dir.y, dir.x) * (width * fx!(0.5));
         let (a, b) = (self.ship.prev_pos, self.ship.pos);
-        if (b - a).dot(dir) <= 0.0 {
+        if (b - a).dot(dir) <= fx!(0.0) {
             return false;
         }
         let moving = (b - a).normalize_or_zero();
@@ -203,9 +203,9 @@ impl SimState {
         self.course = Some(CourseRun {
             course,
             step: 0,
-            time: 0.0,
-            progress: 0.0,
-            penalty: 0.0,
+            time: fx!(0.0),
+            progress: fx!(0.0),
+            penalty: fx!(0.0),
             collisions: 0,
             collisions_start: 0,
             splits: Vec::new(),
@@ -226,9 +226,9 @@ impl SimState {
         self.course = Some(CourseRun {
             course,
             step: 1,
-            time: 0.0,
-            progress: 0.0,
-            penalty: 0.0,
+            time: fx!(0.0),
+            progress: fx!(0.0),
+            penalty: fx!(0.0),
             collisions: 0,
             collisions_start: self.collisions_total(),
             splits: Vec::new(),
@@ -289,7 +289,7 @@ impl SimState {
         let course = self.data.courses.courses[run.course].clone();
         if !run.started() {
             if let Some(t) = self.step_target(run.course, 0)
-                && (t - self.ship.pos).length() > ARMED_RANGE
+                && (t - self.ship.pos).longer_than(ARMED_RANGE)
             {
                 self.course = None;
             }
@@ -298,10 +298,10 @@ impl SimState {
         run.time += DT;
         run.collisions = self.collisions_total().saturating_sub(run.collisions_start);
         let (per_m, per_speed) = self.data.courses.dock_penalty;
-        run.penalty = run.collisions as f32 * self.data.courses.collision_penalty
+        run.penalty = Fx::from(run.collisions) * self.data.courses.collision_penalty
             + run
                 .dock
-                .map_or(0.0, |(off, sp)| off * per_m + sp * per_speed);
+                .map_or(fx!(0.0), |(off, sp)| off * per_m + sp * per_speed);
         let Some(target) = self.step_target(run.course, run.step) else {
             self.course = None;
             return;
@@ -310,7 +310,7 @@ impl SimState {
             self.abort_course("Zeit abgelaufen");
             return;
         }
-        if (target - self.ship.pos).length() > self.data.courses.abort_distance {
+        if (target - self.ship.pos).longer_than(self.data.courses.abort_distance) {
             self.abort_course("zu weit vom Kurs");
             return;
         }
@@ -320,13 +320,16 @@ impl SimState {
             return;
         }
         let done = match step {
-            StepKind::Gate { pos, dir, width } => self.crossed_gate(v(*pos), *dir, *width, 0.0),
+            StepKind::Gate { pos, dir, width } => {
+                self.crossed_gate(v(*pos), *dir, *width, fx!(0.0))
+            }
             StepKind::Pass { pos, radius } => {
                 // Auch bei hoher Geschwindigkeit: Abstand der Flugstrecke dieses Ticks.
                 let (a, b) = (self.ship.prev_pos, self.ship.pos);
                 let p = v(*pos);
                 let ab = b - a;
-                let t = ((p - a).dot(ab) / ab.length_squared().max(1e-9)).clamp(0.0, 1.0);
+                let t = ((p - a).dot(ab) / ab.length_squared().max(fx!(1e-9)))
+                    .clamp(fx!(0.0), fx!(1.0));
                 (a + ab * t - p).length() <= *radius
             }
             StepKind::Face {
@@ -335,13 +338,13 @@ impl SimState {
                 seconds,
             } => {
                 let to = v(*pos) - self.ship.pos;
-                let want = f32::atan2(-to.x, to.y);
+                let want = Fx::atan2(-to.x, to.y);
                 let off = angle_diff(want, self.ship.angle).abs().to_degrees();
                 let ok = off <= *tolerance && self.ship.ang_vel.abs() <= HOLD_MAX_SPIN;
                 run.progress = if ok {
                     run.progress + DT
                 } else {
-                    (run.progress - 2.0 * DT).max(0.0)
+                    (run.progress - fx!(2.0) * DT).max(fx!(0.0))
                 };
                 run.progress >= *seconds
             }
@@ -354,7 +357,7 @@ impl SimState {
                 run.progress = if self.holding_still(v(*pos), *radius, *max_speed) {
                     run.progress + DT
                 } else {
-                    (run.progress - 2.0 * DT).max(0.0)
+                    (run.progress - fx!(2.0) * DT).max(fx!(0.0))
                 };
                 run.progress >= *seconds
             }
@@ -381,7 +384,7 @@ impl SimState {
         if done {
             run.splits.push(run.time);
             run.step += 1;
-            run.progress = 0.0;
+            run.progress = fx!(0.0);
             self.events.push(SimEvent::CourseCheckpoint {
                 course: run.course,
                 step: run.step,
@@ -468,12 +471,12 @@ impl SimState {
     }
 
     /// Fortschritt des laufenden Halte-Schritts (0..1), falls einer läuft.
-    pub fn course_hold_fraction(&self) -> Option<f32> {
+    pub fn course_hold_fraction(&self) -> Option<Fx> {
         let r = self.course.as_ref().filter(|r| r.started())?;
         let st = self.data.courses.courses[r.course].steps.get(r.step)?;
         match st.kind {
             StepKind::Face { seconds, .. } | StepKind::Hold { seconds, .. } => {
-                Some((r.progress / seconds.max(0.01)).clamp(0.0, 1.0))
+                Some((r.progress / seconds.max(fx!(0.01))).clamp(fx!(0.0), fx!(1.0)))
             }
             _ => None,
         }

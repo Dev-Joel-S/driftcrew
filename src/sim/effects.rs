@@ -8,7 +8,7 @@
 //!   Gerücht beim Andocken oder reparierten Sender; danach auf der Karte und im Logbuch. Wer eine
 //!   Route am Stück abfliegt, bekommt eine Zeit (Bestzeit pro Route).
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::data::{CrewSave, EffectKind, EffectSave, v};
 use super::missions::MissionKind;
@@ -16,18 +16,18 @@ use super::world::Owner;
 use super::{DT, SimEvent, SimState, ToastKind};
 
 /// Wie lange eine Wirkung anhält (Sekunden Spielzeit).
-pub const EFFECT_SECONDS: f32 = 600.0;
+pub const EFFECT_SECONDS: Fx = fx!(600.0);
 /// Reichweite um die Station (geräumt, Sender).
-pub const EFFECT_RADIUS: f32 = 1400.0;
+pub const EFFECT_RADIUS: Fx = fx!(1400.0);
 /// Routenflug: so nah muss man an einen Wegpunkt, so lange darf man zwischen zweien brauchen.
-pub const ROUTE_REACH: f32 = 45.0;
-const ROUTE_TIMEOUT: f32 = 150.0;
+pub const ROUTE_REACH: Fx = fx!(45.0);
+const ROUTE_TIMEOUT: Fx = fx!(150.0);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Effect {
     pub kind: EffectKind,
     pub station: usize,
-    pub left: f32,
+    pub left: Fx,
 }
 
 /// Laufender Flug entlang einer entdeckten Route.
@@ -38,8 +38,8 @@ pub struct RouteRun {
     pub next: usize,
     /// Rückwärts geflogen (vom letzten zum ersten Punkt)?
     pub reverse: bool,
-    pub time: f32,
-    pub since_point: f32,
+    pub time: Fx,
+    pub since_point: Fx,
 }
 
 pub fn effect_text(kind: EffectKind, station: &str) -> String {
@@ -109,7 +109,7 @@ impl SimState {
             EffectKind::Cleared => self.clear_debris_near(station),
             EffectKind::Beacon => {
                 let at = self.world.stations[station].pos;
-                self.explored.reveal(at, 900.0);
+                self.explored.reveal(at, fx!(900.0));
                 self.reveal_routes_near(at, EFFECT_RADIUS, "Navigationsdaten des Senders");
             }
             EffectKind::Supplied => {}
@@ -127,7 +127,7 @@ impl SimState {
     /// Wirkt etwas in der Nähe dieses Ortes (geräumt, Sender)?
     pub fn effect_near(&self, kind: EffectKind, p: Vec2) -> bool {
         self.effects.iter().any(|e| {
-            e.kind == kind && (self.world.stations[e.station].pos - p).length() < EFFECT_RADIUS
+            e.kind == kind && (self.world.stations[e.station].pos - p).shorter_than(EFFECT_RADIUS)
         })
     }
 
@@ -141,7 +141,7 @@ impl SimState {
         let at = self.world.stations[station].pos;
         for b in &mut self.bodies {
             if matches!(b.kind, super::BodyKind::Debris | super::BodyKind::Meteor)
-                && (b.pos - at).length() < EFFECT_RADIUS
+                && (b.pos - at).shorter_than(EFFECT_RADIUS)
             {
                 b.alive = false;
             }
@@ -153,11 +153,11 @@ impl SimState {
         let mut ended = Vec::new();
         for e in &mut self.effects {
             e.left -= DT;
-            if e.left <= 0.0 {
+            if e.left <= fx!(0.0) {
                 ended.push((e.kind, e.station));
             }
         }
-        self.effects.retain(|e| e.left > 0.0);
+        self.effects.retain(|e| e.left > fx!(0.0));
         for (k, si) in ended {
             let name = self.world.stations[si].name.clone();
             let what = match k {
@@ -201,12 +201,12 @@ impl SimState {
         );
     }
 
-    pub(crate) fn reveal_routes_near(&mut self, at: Vec2, radius: f32, how: &str) {
+    pub(crate) fn reveal_routes_near(&mut self, at: Vec2, radius: Fx, how: &str) {
         for ri in 0..self.data.world.routes.len() {
             if self
                 .route_points(ri)
                 .iter()
-                .any(|p| (*p - at).length() < radius)
+                .any(|p| (*p - at).shorter_than(radius))
             {
                 self.discover_route(ri, how);
             }
@@ -214,7 +214,7 @@ impl SimState {
     }
 
     /// Scanner: der Ring erfasst einen Wegpunkt.
-    pub(crate) fn scan_routes(&mut self, origin: Vec2, r0: f32, r1: f32) {
+    pub(crate) fn scan_routes(&mut self, origin: Vec2, r0: Fx, r1: Fx) {
         for ri in 0..self.data.world.routes.len() {
             let hit = self.route_points(ri).iter().any(|p| {
                 let d = (*p - origin).length();
@@ -252,9 +252,9 @@ impl SimState {
             } else {
                 run.next
             };
-            if (pts[idx] - pos).length() < ROUTE_REACH {
+            if (pts[idx] - pos).shorter_than(ROUTE_REACH) {
                 run.next += 1;
-                run.since_point = 0.0;
+                run.since_point = fx!(0.0);
                 if run.next >= pts.len() {
                     self.finish_route(run.route, run.time);
                     self.route_rest = Some(run.route);
@@ -276,16 +276,16 @@ impl SimState {
                 continue;
             };
             if self.route_rest == Some(ri) {
-                let away = (*first - pos).length() > ROUTE_REACH * 2.0
-                    && (*last - pos).length() > ROUTE_REACH * 2.0;
+                let away = (*first - pos).longer_than(ROUTE_REACH * fx!(2.0))
+                    && (*last - pos).longer_than(ROUTE_REACH * fx!(2.0));
                 if away {
                     self.route_rest = None;
                 }
                 continue;
             }
-            let reverse = if (*first - pos).length() < ROUTE_REACH {
+            let reverse = if (*first - pos).shorter_than(ROUTE_REACH) {
                 false
-            } else if (*last - pos).length() < ROUTE_REACH {
+            } else if (*last - pos).shorter_than(ROUTE_REACH) {
                 true
             } else {
                 continue;
@@ -295,8 +295,8 @@ impl SimState {
                 route: ri,
                 next: 1,
                 reverse,
-                time: 0.0,
-                since_point: 0.0,
+                time: fx!(0.0),
+                since_point: fx!(0.0),
             });
             self.toast(
                 format!("Route {name}: Zeit läuft – alle Wegpunkte der Reihe nach"),
@@ -306,7 +306,7 @@ impl SimState {
         }
     }
 
-    fn finish_route(&mut self, ri: usize, time: f32) {
+    fn finish_route(&mut self, ri: usize, time: Fx) {
         let r = self.data.world.routes[ri].clone();
         let best = self.route_best.iter_mut().find(|(id, _)| *id == r.id);
         let msg = match best {

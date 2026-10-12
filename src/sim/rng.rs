@@ -1,5 +1,7 @@
 //! Deterministischer Zufall (PCG32). Kein Zufall ohne Seed – wichtig für späteres Rollback.
 
+use super::fx::Fx;
+
 #[derive(Clone, Debug)]
 pub struct Rng {
     state: u64,
@@ -28,13 +30,13 @@ impl Rng {
         xorshifted.rotate_right(rot)
     }
 
-    /// Gleichverteilt in [0, 1).
-    pub fn f32(&mut self) -> f32 {
-        (self.next_u32() >> 8) as f32 / (1u32 << 24) as f32
+    /// Gleichverteilt in [0, 1): die 32 Zufallsbits sind genau die Nachkommastellen.
+    pub fn unit(&mut self) -> Fx {
+        Fx::from_raw(self.next_u32() as i64)
     }
 
-    pub fn range(&mut self, lo: f32, hi: f32) -> f32 {
-        lo + (hi - lo) * self.f32()
+    pub fn range(&mut self, lo: Fx, hi: Fx) -> Fx {
+        lo + (hi - lo) * self.unit()
     }
 
     pub fn range_u32(&mut self, lo: u32, hi_inclusive: u32) -> u32 {
@@ -52,8 +54,8 @@ impl Rng {
         }
     }
 
-    pub fn chance(&mut self, p: f32) -> bool {
-        self.f32() < p
+    pub fn chance(&mut self, p: Fx) -> bool {
+        self.unit() < p
     }
 }
 
@@ -84,8 +86,8 @@ mod tests {
     fn f32_in_unit_range() {
         let mut r = Rng::new(7);
         for _ in 0..10_000 {
-            let x = r.f32();
-            assert!((0.0..1.0).contains(&x));
+            let x = r.unit();
+            assert!((fx!(0.0)..fx!(1.0)).contains(&x));
         }
     }
 }

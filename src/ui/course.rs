@@ -2,6 +2,7 @@
 //! Fortschritt beim Stillhalten), nach dem Ziel eine Tafel mit Wertung und Bestenliste.
 //! Reine Anzeige – der Lauf selbst steckt in der Simulation.
 
+use crate::fx;
 use bevy::prelude::*;
 
 use super::{ACCENT, BG, BORDER, GOOD, MUTED, Signature, TEXT, WARN, text};
@@ -260,7 +261,7 @@ fn update_panel(
         let dist = s
             .step_target(r.course, 0)
             .map(|t| (t - s.ship.pos).length())
-            .unwrap_or(0.0);
+            .unwrap_or(fx!(0.0));
         (
             format!("{kind}{}  ·  bereit", c.name),
             String::new(),

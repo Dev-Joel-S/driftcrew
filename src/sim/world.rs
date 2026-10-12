@@ -1,6 +1,6 @@
 //! Statische Welt: Stationen aus Rastern, Planeten, Landeplattformen, Rotoren, Anomalien.
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::data::{AnomalyKind, GameData, Ore, Prices, Service, SpinnerShape, StationKind, v};
 use super::geom::{Aabb, Poly, rot};
@@ -38,7 +38,7 @@ pub fn is_slope(ch: char) -> bool {
 }
 
 /// Umriss (gegen den Uhrzeigersinn) einer Schrägen-Zelle, zentriert.
-pub fn slope_outline(ch: char, h: f32) -> Vec<Vec2> {
+pub fn slope_outline(ch: char, h: Fx) -> Vec<Vec2> {
     match ch {
         '/' => vec![Vec2::new(-h, -h), Vec2::new(h, -h), Vec2::new(h, h)],
         '\\' => vec![Vec2::new(-h, -h), Vec2::new(h, -h), Vec2::new(-h, h)],
@@ -114,7 +114,7 @@ pub struct Pad {
     pub center: Vec2,
     /// Richtung, in die die Plattform zeigt (Schiffsnase beim Andocken).
     pub normal: Vec2,
-    pub half_width: f32,
+    pub half_width: Fx,
     /// Freie Landezone auf einem Planeten (kein Menü, Werkzeuge bleiben aktiv).
     pub zone: bool,
     /// Wiederaufbau: Plattform gibt es erst ab dieser Etappe.
@@ -127,15 +127,16 @@ impl Pad {
         Vec2::new(self.normal.y, -self.normal.x)
     }
     /// Winkel, den ein Schiff angedockt hat (Nase entlang der Normale).
-    pub fn ship_angle(&self) -> f32 {
-        f32::atan2(-self.normal.x, self.normal.y)
+    pub fn ship_angle(&self) -> Fx {
+        Fx::atan2(-self.normal.x, self.normal.y)
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum Shape {
     Poly(Poly),
-    Circle { c: Vec2, r: f32 },
+    Circle { c: Vec2, r: Fx },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -166,13 +167,13 @@ pub struct Station {
     pub name: String,
     pub kind: StationKind,
     pub pos: Vec2,
-    pub cell: f32,
+    pub cell: Fx,
     pub cells: Vec<Cell>,
     pub pads: Vec<usize>,
     pub services: Vec<Service>,
     pub bounds: Aabb,
-    pub main_color: [f32; 3],
-    pub accent_color: [f32; 3],
+    pub main_color: [Fx; 3],
+    pub accent_color: [Fx; 3],
     pub prices: Prices,
     pub ships_for_sale: Vec<String>,
     /// Erreichte Wiederaufbau-Etappe und die Dienste, die die Station von Anfang an hat.
@@ -190,9 +191,9 @@ impl Station {
 
 #[derive(Clone, Debug)]
 pub struct Deposit {
-    pub angle: f32,
-    pub amount: f32,
-    pub max: f32,
+    pub angle: Fx,
+    pub amount: Fx,
+    pub max: Fx,
 }
 
 #[derive(Clone, Debug)]
@@ -201,7 +202,7 @@ pub struct Deposit {
 pub struct Planet {
     pub name: String,
     pub pos: Vec2,
-    pub radius: f32,
+    pub radius: Fx,
     pub ore: Ore,
     pub deposits: Vec<Deposit>,
     /// Außenposten mit Erzannahme.
@@ -213,27 +214,27 @@ pub struct Planet {
 
 impl Planet {
     /// Halbe Winkelbreite eines Erzvorkommens.
-    pub fn deposit_half_angle(&self) -> f32 {
-        (4.5 / self.radius).min(0.35)
+    pub fn deposit_half_angle(&self) -> Fx {
+        (fx!(4.5) / self.radius).min(fx!(0.35))
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Spinner {
     pub pos: Vec2,
-    pub arm_length: f32,
-    pub arm_width: f32,
+    pub arm_length: Fx,
+    pub arm_width: Fx,
     pub arms: u32,
-    pub speed: f32,
-    pub angle: f32,
-    pub prev_angle: f32,
-    pub color: [f32; 3],
+    pub speed: Fx,
+    pub angle: Fx,
+    pub prev_angle: Fx,
+    pub color: [Fx; 3],
     pub shape: SpinnerShape,
 }
 
 impl Spinner {
     /// Größter Abstand eines Teils von der Drehachse (für die Grobprüfung).
-    pub fn reach(&self) -> f32 {
+    pub fn reach(&self) -> Fx {
         match self.shape {
             SpinnerShape::Arms => self.arm_length,
             SpinnerShape::Ring { radius, .. } => radius + self.arm_width,
@@ -242,7 +243,7 @@ impl Spinner {
 
     /// Ringsegmente in lokalen Koordinaten (Mitte, Winkel), ohne die Öffnungen.
     /// Bei Armen leer.
-    pub fn ring_segments(&self) -> Vec<(Vec2, f32)> {
+    pub fn ring_segments(&self) -> Vec<(Vec2, Fx)> {
         let SpinnerShape::Ring {
             radius,
             segments,
@@ -257,19 +258,19 @@ impl Spinner {
         (0..n)
             .filter(|i| openings == 0 || i % period >= gap)
             .map(|i| {
-                let a = std::f32::consts::TAU * (i as f32 + 0.5) / n as f32;
+                let a = Fx::TAU * (Fx::from(i) + fx!(0.5)) / Fx::from(n);
                 (Vec2::new(a.cos(), a.sin()) * radius, a)
             })
             .collect()
     }
 
     /// Länge eines Ringsegments (Sehne plus etwas Überlappung).
-    pub fn segment_length(&self) -> f32 {
+    pub fn segment_length(&self) -> Fx {
         match self.shape {
             SpinnerShape::Ring {
                 radius, segments, ..
-            } => 2.0 * radius * (std::f32::consts::PI / segments.max(3) as f32).sin() + 0.3,
-            SpinnerShape::Arms => 0.0,
+            } => fx!(2.0) * radius * (Fx::PI / Fx::from(segments.max(3))).sin() + fx!(0.3),
+            SpinnerShape::Arms => fx!(0.0),
         }
     }
 
@@ -277,23 +278,23 @@ impl Spinner {
         match self.shape {
             SpinnerShape::Arms => (0..self.arms)
                 .map(|i| {
-                    let a = self.angle + std::f32::consts::PI * i as f32 / self.arms as f32;
+                    let a = self.angle + Fx::PI * Fx::from(i) / Fx::from(self.arms);
                     Poly::obb(
                         self.pos,
-                        Vec2::new(self.arm_length, self.arm_width * 0.5),
+                        Vec2::new(self.arm_length, self.arm_width * fx!(0.5)),
                         a,
                     )
                 })
                 .collect(),
             SpinnerShape::Ring { .. } => {
-                let half = Vec2::new(self.segment_length() * 0.5, self.arm_width * 0.5);
+                let half = Vec2::new(self.segment_length() * fx!(0.5), self.arm_width * fx!(0.5));
                 self.ring_segments()
                     .into_iter()
                     .map(|(c, a)| {
                         Poly::obb(
                             self.pos + rot(c, self.angle),
                             half,
-                            a + self.angle + std::f32::consts::FRAC_PI_2,
+                            a + self.angle + Fx::HALF_PI,
                         )
                     })
                     .collect()
@@ -313,9 +314,9 @@ pub struct Socket {
 }
 
 /// Innenmaße der Lastaufnahme (halbe Breite quer zur Öffnung, halbe Tiefe) und Wandstärke.
-pub const SOCKET_HALF_WIDTH: f32 = 2.3;
-pub const SOCKET_HALF_DEPTH: f32 = 1.9;
-pub const SOCKET_WALL: f32 = 0.6;
+pub const SOCKET_HALF_WIDTH: Fx = fx!(2.3);
+pub const SOCKET_HALF_DEPTH: Fx = fx!(1.9);
+pub const SOCKET_WALL: Fx = fx!(0.6);
 
 impl Socket {
     /// Steckt ein Körper mit dieser Mitte weit genug in der Halterung?
@@ -323,30 +324,30 @@ impl Socket {
         let d = p - self.center;
         let side = Vec2::new(-self.open.y, self.open.x);
         let depth = d.dot(self.open);
-        (-SOCKET_HALF_DEPTH..=SOCKET_HALF_DEPTH - 0.9).contains(&depth)
+        (-SOCKET_HALF_DEPTH..=SOCKET_HALF_DEPTH - fx!(0.9)).contains(&depth)
             && d.dot(side).abs() <= SOCKET_HALF_WIDTH
     }
 
     /// Die drei Wände als Quader: Boden (gegenüber der Öffnung) und zwei Seiten.
     pub fn walls(&self) -> [Poly; 3] {
         let side = Vec2::new(-self.open.y, self.open.x);
-        let angle = f32::atan2(self.open.y, self.open.x);
-        let back = self.center - self.open * (SOCKET_HALF_DEPTH + SOCKET_WALL * 0.5);
-        let half_side = Vec2::new(SOCKET_HALF_DEPTH + SOCKET_WALL, SOCKET_WALL * 0.5);
-        let side_off = SOCKET_HALF_WIDTH + SOCKET_WALL * 0.5;
+        let angle = Fx::atan2(self.open.y, self.open.x);
+        let back = self.center - self.open * (SOCKET_HALF_DEPTH + SOCKET_WALL * fx!(0.5));
+        let half_side = Vec2::new(SOCKET_HALF_DEPTH + SOCKET_WALL, SOCKET_WALL * fx!(0.5));
+        let side_off = SOCKET_HALF_WIDTH + SOCKET_WALL * fx!(0.5);
         [
             Poly::obb(
                 back,
-                Vec2::new(SOCKET_WALL * 0.5, SOCKET_HALF_WIDTH + SOCKET_WALL),
+                Vec2::new(SOCKET_WALL * fx!(0.5), SOCKET_HALF_WIDTH + SOCKET_WALL),
                 angle,
             ),
             Poly::obb(
-                self.center + side * side_off - self.open * (SOCKET_WALL * 0.5),
+                self.center + side * side_off - self.open * (SOCKET_WALL * fx!(0.5)),
                 half_side,
                 angle,
             ),
             Poly::obb(
-                self.center - side * side_off - self.open * (SOCKET_WALL * 0.5),
+                self.center - side * side_off - self.open * (SOCKET_WALL * fx!(0.5)),
                 half_side,
                 angle,
             ),
@@ -359,25 +360,28 @@ pub struct Anomaly {
     pub name: String,
     pub kind: AnomalyKind,
     pub pos: Vec2,
-    pub radius: f32,
+    pub radius: Fx,
     /// Kern der Anomalie bzw. Ereignishorizont des Schwarzen Lochs.
-    pub core_radius: f32,
-    pub strength: f32,
+    pub core_radius: Fx,
+    pub strength: Fx,
 }
 
 impl Anomaly {
     pub fn accel(&self, p: Vec2) -> Vec2 {
         let d = self.pos - p;
         let dist = d.length();
-        if dist >= self.radius || dist < 1e-3 {
+        if dist >= self.radius || dist < fx!(1e-3) {
             return Vec2::ZERO;
         }
-        let k = 1.0 - dist / self.radius;
+        let k = fx!(1.0) - dist / self.radius;
         let a = match self.kind {
             AnomalyKind::Anomaly => self.strength * k * k,
             // Zum Horizont hin steiler: ab einem gewissen Abstand reicht kein Schub mehr.
             AnomalyKind::BlackHole => {
-                self.strength * k * k * (1.0 + 2.0 * self.core_radius / dist.max(self.core_radius))
+                self.strength
+                    * k
+                    * k
+                    * (fx!(1.0) + fx!(2.0) * self.core_radius / dist.max(self.core_radius))
             }
         };
         d / dist * a
@@ -388,14 +392,14 @@ impl Anomaly {
 
     /// Abstand, innerhalb dessen der Sog stärker ist als `max_accel` – von dort kommt man
     /// auch mit Vollschub nicht mehr weg. Nur für die Anzeige.
-    pub fn no_return_radius(&self, max_accel: f32) -> f32 {
-        let pull = |d: f32| self.accel(self.pos + Vec2::new(d, 0.0)).length();
+    pub fn no_return_radius(&self, max_accel: Fx) -> Fx {
+        let pull = |d: Fx| self.accel(self.pos + Vec2::new(d, fx!(0.0))).length();
         if pull(self.core_radius) <= max_accel {
             return self.core_radius;
         }
         let (mut lo, mut hi) = (self.core_radius, self.radius);
         for _ in 0..24 {
-            let mid = 0.5 * (lo + hi);
+            let mid = fx!(0.5) * (lo + hi);
             if pull(mid) > max_accel {
                 lo = mid;
             } else {
@@ -412,17 +416,17 @@ pub struct Monument {
     pub id: String,
     pub name: String,
     pub pos: Vec2,
-    pub cell: f32,
+    pub cell: Fx,
     pub cells: Vec<Cell>,
     pub bounds: Aabb,
-    pub main_color: [f32; 3],
-    pub accent_color: [f32; 3],
+    pub main_color: [Fx; 3],
+    pub accent_color: [Fx; 3],
     pub awake: bool,
 }
 
 #[derive(Clone, Debug)]
 pub struct World {
-    pub radius: f32,
+    pub radius: Fx,
     pub stations: Vec<Station>,
     pub monuments: Vec<Monument>,
     pub planets: Vec<Planet>,
@@ -432,11 +436,11 @@ pub struct World {
     pub anomalies: Vec<Anomaly>,
 }
 
-const PAD_THICKNESS: f32 = 0.35;
+const PAD_THICKNESS: Fx = fx!(0.35);
 /// Halbe Breite einer freien Landezone auf Planeten.
-pub const ZONE_HALF: f32 = 2.5;
+pub const ZONE_HALF: Fx = fx!(2.5);
 /// Abstand (Meter entlang der Oberfläche) zwischen Landezone und Erzvorkommen.
-const ZONE_DEPOSIT_OFFSET: f32 = 6.0;
+const ZONE_DEPOSIT_OFFSET: Fx = fx!(6.0);
 
 impl World {
     pub fn build(data: &GameData, rng: &mut Rng) -> World {
@@ -463,8 +467,8 @@ impl World {
             let cell = sd.cell;
             let center_of = |col: i32, row: i32| {
                 pos + Vec2::new(
-                    (col as f32 - (wcols - 1) as f32 * 0.5) * cell,
-                    ((h - 1) as f32 * 0.5 - row as f32) * cell,
+                    (Fx::from(col) - Fx::from(wcols - 1) * fx!(0.5)) * cell,
+                    (Fx::from(h - 1) * fx!(0.5) - Fx::from(row)) * cell,
                 )
             };
             let at = |col: i32, row: i32| -> char {
@@ -486,8 +490,8 @@ impl World {
                 pads: Vec::new(),
                 services: sd.services.clone(),
                 bounds: Aabb {
-                    min: center_of(0, h - 1) - Vec2::splat(cell * 0.5),
-                    max: center_of(wcols - 1, 0) + Vec2::splat(cell * 0.5),
+                    min: center_of(0, h - 1) - Vec2::splat(cell * fx!(0.5)),
+                    max: center_of(wcols - 1, 0) + Vec2::splat(cell * fx!(0.5)),
                 },
                 main_color: super::data::hex(&sd.main_color),
                 accent_color: super::data::hex(&sd.accent_color),
@@ -516,8 +520,8 @@ impl World {
                     };
                     if is_slope(ch) {
                         let c = center_of(col, row);
-                        let pts = slope_outline(ch, cell * 0.5);
-                        w.push_quad(Poly::transformed(&pts, c, 0.0), Surface::Block);
+                        let pts = slope_outline(ch, cell * fx!(0.5));
+                        w.push_quad(Poly::transformed(&pts, c, fx!(0.0)), Surface::Block);
                     }
                     if let Some(k) = kind {
                         station.cells.push(Cell {
@@ -551,9 +555,10 @@ impl World {
                         }
                         let a = center_of(start, row);
                         let b = center_of(col - 1, row);
-                        let c = (a + b) * 0.5;
-                        let half = Vec2::new((b.x - a.x) * 0.5 + cell * 0.5, cell * 0.5);
-                        w.push_staged(Poly::obb(c, half, 0.0), Surface::Block, si, stage);
+                        let c = (a + b) * fx!(0.5);
+                        let half =
+                            Vec2::new((b.x - a.x) * fx!(0.5) + cell * fx!(0.5), cell * fx!(0.5));
+                        w.push_staged(Poly::obb(c, half, fx!(0.0)), Surface::Block, si, stage);
                         continue;
                     }
                     col += 1;
@@ -577,30 +582,30 @@ impl World {
                         // Vertikale Plattformen ('<', '>') sind eine Zelle groß.
                         let a = center_of(start, row);
                         let b = center_of(col - 1, row);
-                        let mid = (a + b) * 0.5;
-                        let span = (b - a).length() * 0.5 + cell * 0.5;
+                        let mid = (a + b) * fx!(0.5);
+                        let span = (b - a).length() * fx!(0.5) + cell * fx!(0.5);
                         let normal = match ch {
                             '^' | 'a' | 'b' | 'c' => Vec2::Y,
                             'v' => -Vec2::Y,
                             '<' => -Vec2::X,
                             _ => Vec2::X,
                         };
-                        let surface_center = mid - normal * (cell * 0.5 - PAD_THICKNESS);
+                        let surface_center = mid - normal * (cell * fx!(0.5) - PAD_THICKNESS);
                         let pad_idx = w.pads.len();
                         w.pads.push(Pad {
                             owner: Owner::Station(si),
                             center: surface_center,
                             normal,
-                            half_width: span * 0.92,
+                            half_width: span * fx!(0.92),
                             zone: false,
                             stage,
                             enabled: stage == 0,
                         });
                         station.pads.push(pad_idx);
-                        let plate_c = surface_center - normal * (PAD_THICKNESS * 0.5);
-                        let angle = f32::atan2(-normal.x, normal.y);
+                        let plate_c = surface_center - normal * (PAD_THICKNESS * fx!(0.5));
+                        let angle = Fx::atan2(-normal.x, normal.y);
                         w.push_staged(
-                            Poly::obb(plate_c, Vec2::new(span, PAD_THICKNESS * 0.5), angle),
+                            Poly::obb(plate_c, Vec2::new(span, PAD_THICKNESS * fx!(0.5)), angle),
                             Surface::Pad(pad_idx),
                             si,
                             stage,
@@ -651,30 +656,33 @@ impl World {
                     owner: Owner::Planet(pi),
                     center: surface_center,
                     normal: n,
-                    half_width: 2.6,
+                    half_width: fx!(2.6),
                     zone: false,
                     stage: 0,
                     enabled: true,
                 });
                 planet.pad = Some(pad_idx);
-                let angle = f32::atan2(-n.x, n.y);
+                let angle = Fx::atan2(-n.x, n.y);
                 // Plattform + zwei Stützblöcke links/rechts.
                 w.push_quad(
                     Poly::obb(
-                        pos + n * (pd.radius + PAD_THICKNESS * 0.5 - 0.3),
-                        Vec2::new(3.0, PAD_THICKNESS * 0.5 + 0.3),
+                        pos + n * (pd.radius + PAD_THICKNESS * fx!(0.5) - fx!(0.3)),
+                        Vec2::new(fx!(3.0), PAD_THICKNESS * fx!(0.5) + fx!(0.3)),
                         angle,
                     ),
                     Surface::Pad(pad_idx),
                 );
-                for side in [-1.0f32, 1.0] {
+                for side in [-fx!(1.0), fx!(1.0)] {
                     let t = Vec2::new(n.y, -n.x);
-                    let c = pos + n * (pd.radius + 0.8) + t * side * 4.2;
-                    w.push_quad(Poly::obb(c, Vec2::new(1.1, 1.6), angle), Surface::Structure);
+                    let c = pos + n * (pd.radius + fx!(0.8)) + t * side * fx!(4.2);
+                    w.push_quad(
+                        Poly::obb(c, Vec2::new(fx!(1.1), fx!(1.6)), angle),
+                        Surface::Structure,
+                    );
                 }
             }
             // Freie Landezonen: schmale Plattform, daneben ein Erzvorkommen in Bohrreichweite.
-            let zone_angles: Vec<f32> = pd.landing_zones.iter().map(|a| a.to_radians()).collect();
+            let zone_angles: Vec<Fx> = pd.landing_zones.iter().map(|a| a.to_radians()).collect();
             for (zi, &a) in zone_angles.iter().enumerate() {
                 let n = Vec2::new(a.cos(), a.sin());
                 let pad_idx = w.pads.len();
@@ -682,44 +690,47 @@ impl World {
                     owner: Owner::Planet(pi),
                     center: pos + n * (pd.radius + PAD_THICKNESS),
                     normal: n,
-                    half_width: ZONE_HALF * 0.92,
+                    half_width: ZONE_HALF * fx!(0.92),
                     zone: true,
                     stage: 0,
                     enabled: true,
                 });
                 planet.zones.push(pad_idx);
-                let angle = f32::atan2(-n.x, n.y);
+                let angle = Fx::atan2(-n.x, n.y);
                 w.push_quad(
                     Poly::obb(
-                        pos + n * (pd.radius + PAD_THICKNESS * 0.5 - 0.3),
-                        Vec2::new(ZONE_HALF, PAD_THICKNESS * 0.5 + 0.3),
+                        pos + n * (pd.radius + PAD_THICKNESS * fx!(0.5) - fx!(0.3)),
+                        Vec2::new(ZONE_HALF, PAD_THICKNESS * fx!(0.5) + fx!(0.3)),
                         angle,
                     ),
                     Surface::Pad(pad_idx),
                 );
-                let side = if zi % 2 == 0 { 1.0 } else { -1.0 };
+                let side = if zi % 2 == 0 { fx!(1.0) } else { -fx!(1.0) };
                 planet.deposits.push(Deposit {
-                    angle: (a + side * ZONE_DEPOSIT_OFFSET / pd.radius)
-                        .rem_euclid(std::f32::consts::TAU),
+                    angle: (a + side * ZONE_DEPOSIT_OFFSET / pd.radius).rem_euclid(Fx::TAU),
                     amount: pd.deposit_amount,
                     max: pd.deposit_amount,
                 });
             }
             // Übrige Erzvorkommen gleichmäßig verteilt, mit etwas Zufall, abseits der Plattformen.
             let count = pd.deposits.max(1).saturating_sub(zone_angles.len() as u32);
-            let base = rng.range(0.0, std::f32::consts::TAU);
-            let keep_clear: Vec<f32> = outpost.iter().copied().chain(zone_angles).collect();
+            let base = rng.range(fx!(0.0), Fx::TAU);
+            let keep_clear: Vec<Fx> = outpost.iter().copied().chain(zone_angles).collect();
             for i in 0..count {
                 let mut a =
-                    base + std::f32::consts::TAU * i as f32 / count as f32 + rng.range(-0.2, 0.2);
+                    base + Fx::TAU * Fx::from(i) / Fx::from(count) + rng.range(-fx!(0.2), fx!(0.2));
                 for &o in &keep_clear {
                     let diff = angle_diff(a, o);
-                    if diff.abs() < 0.35 {
-                        a = o + if diff >= 0.0 { 0.5 } else { -0.5 };
+                    if diff.abs() < fx!(0.35) {
+                        a = o + if diff >= fx!(0.0) {
+                            fx!(0.5)
+                        } else {
+                            -fx!(0.5)
+                        };
                     }
                 }
                 planet.deposits.push(Deposit {
-                    angle: a.rem_euclid(std::f32::consts::TAU),
+                    angle: a.rem_euclid(Fx::TAU),
                     amount: pd.deposit_amount,
                     max: pd.deposit_amount,
                 });
@@ -734,8 +745,8 @@ impl World {
                 arm_width: sp.arm_width,
                 arms: sp.arms.max(1),
                 speed: sp.speed.to_radians(),
-                angle: 0.0,
-                prev_angle: 0.0,
+                angle: fx!(0.0),
+                prev_angle: fx!(0.0),
                 color: super::data::hex(&sp.color),
                 shape: sp.shape,
             });
@@ -789,8 +800,8 @@ impl World {
             let cell = md.cell;
             let center_of = |col: i32, row: i32| {
                 pos + Vec2::new(
-                    (col as f32 - (wcols - 1) as f32 * 0.5) * cell,
-                    ((h - 1) as f32 * 0.5 - row as f32) * cell,
+                    (Fx::from(col) - Fx::from(wcols - 1) * fx!(0.5)) * cell,
+                    (Fx::from(h - 1) * fx!(0.5) - Fx::from(row)) * cell,
                 )
             };
             let mut m = Monument {
@@ -800,8 +811,8 @@ impl World {
                 cell,
                 cells: Vec::new(),
                 bounds: Aabb {
-                    min: center_of(0, h - 1) - Vec2::splat(cell * 0.5),
-                    max: center_of(wcols - 1, 0) + Vec2::splat(cell * 0.5),
+                    min: center_of(0, h - 1) - Vec2::splat(cell * fx!(0.5)),
+                    max: center_of(wcols - 1, 0) + Vec2::splat(cell * fx!(0.5)),
                 },
                 main_color: super::data::hex(&md.main_color),
                 accent_color: super::data::hex(&md.accent_color),
@@ -829,9 +840,9 @@ impl World {
                     let q = match kind {
                         CellKind::Light => continue,
                         CellKind::Slope(ch) => {
-                            Poly::transformed(&slope_outline(ch, cell * 0.5), c, 0.0)
+                            Poly::transformed(&slope_outline(ch, cell * fx!(0.5)), c, fx!(0.0))
                         }
-                        _ => Poly::obb(c, Vec2::splat(cell * 0.5), 0.0),
+                        _ => Poly::obb(c, Vec2::splat(cell * fx!(0.5)), fx!(0.0)),
                     };
                     self.colliders.push(StaticCollider {
                         shape: Shape::Poly(q),
@@ -905,10 +916,10 @@ impl World {
 }
 
 /// Kleinster vorzeichenbehafteter Winkelabstand a - b in (-PI, PI].
-pub fn angle_diff(a: f32, b: f32) -> f32 {
-    let mut d = (a - b).rem_euclid(std::f32::consts::TAU);
-    if d > std::f32::consts::PI {
-        d -= std::f32::consts::TAU;
+pub fn angle_diff(a: Fx, b: Fx) -> Fx {
+    let mut d = (a - b).rem_euclid(Fx::TAU);
+    if d > Fx::PI {
+        d -= Fx::TAU;
     }
     d
 }

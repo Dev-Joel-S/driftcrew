@@ -29,19 +29,27 @@ pub fn spawn_monuments(
 ) {
     let mut glyph_mats = Vec::new();
     for (mi, m) in sim.0.world.monuments.iter().enumerate() {
-        let stone = mats.add(art.panel_mat(srgb(m.main_color), 0.8, 0.15));
-        let stone_dark = mats.add(art.panel_mat(srgb(m.main_color).darker(0.15), 0.85, 0.1));
+        let stone = mats.add(art.panel_mat(
+            srgb((m.main_color).map(crate::sim::fx::Fx::to_f32)),
+            0.8,
+            0.15,
+        ));
+        let stone_dark = mats.add(art.panel_mat(
+            srgb((m.main_color).map(crate::sim::fx::Fx::to_f32)).darker(0.15),
+            0.85,
+            0.1,
+        ));
         // Glyphen: Akzentfarbe, deren Leuchten das Update-System steuert.
         let glyph = mats.add(StandardMaterial {
-            base_color: srgb(m.accent_color).darker(0.4),
+            base_color: srgb((m.accent_color).map(crate::sim::fx::Fx::to_f32)).darker(0.4),
             emissive: LinearRgba::BLACK,
             perceptual_roughness: 0.3,
             ..default()
         });
         glyph_mats.push(glyph.clone());
         let door = mats.add(StandardMaterial {
-            base_color: srgb(m.main_color).lighter(0.05),
-            emissive: srgb(m.accent_color).to_linear() * 0.6,
+            base_color: srgb((m.main_color).map(crate::sim::fx::Fx::to_f32)).lighter(0.05),
+            emissive: srgb((m.accent_color).map(crate::sim::fx::Fx::to_f32)).to_linear() * 0.6,
             perceptual_roughness: 0.4,
             metallic: 0.6,
             ..default()
@@ -89,8 +97,17 @@ pub fn spawn_monuments(
                         .id(),
                 ),
                 CellKind::Slope(ch) => {
-                    let outline = crate::sim::world::slope_outline(ch, m.cell * 0.5);
-                    let mesh = art.prism(&mut meshes, &outline, m.cell, 0.3, Some((0.3, 0.22)));
+                    let outline = crate::sim::world::slope_outline(
+                        ch,
+                        crate::sim::fx::Fx::from_f32(m.cell * 0.5),
+                    );
+                    let mesh = art.prism(
+                        &mut meshes,
+                        &outline,
+                        (m.cell).to_f32(),
+                        0.3,
+                        Some((0.3, 0.22)),
+                    );
                     Some(
                         commands
                             .spawn((
@@ -102,7 +119,11 @@ pub fn spawn_monuments(
                     )
                 }
                 CellKind::Light => {
-                    let halo = art.glow_mat(&mut mats, srgb(m.accent_color), 2.0);
+                    let halo = art.glow_mat(
+                        &mut mats,
+                        srgb((m.accent_color).map(crate::sim::fx::Fx::to_f32)),
+                        2.0,
+                    );
                     let e = commands
                         .spawn((
                             Transform::from_translation(pos),
@@ -123,7 +144,7 @@ pub fn spawn_monuments(
                             ));
                             c.spawn((
                                 PointLight {
-                                    color: srgb(m.accent_color),
+                                    color: srgb((m.accent_color).map(crate::sim::fx::Fx::to_f32)),
                                     intensity: 0.0,
                                     range: 70.0,
                                     shadow_maps_enabled: false,
@@ -184,7 +205,8 @@ pub fn update_monuments(
             }
             let l = level(mi);
             if let Some(mut m) = mats.get_mut(h) {
-                let c = srgb(s.world.monuments[mi].accent_color).to_linear();
+                let c = srgb((s.world.monuments[mi].accent_color).map(crate::sim::fx::Fx::to_f32))
+                    .to_linear();
                 m.emissive = c * (0.2 + l * 1.8);
             }
         }

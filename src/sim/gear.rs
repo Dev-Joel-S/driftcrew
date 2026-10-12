@@ -35,8 +35,8 @@ impl SimState {
     /// Nach jedem Bau des Schiffs: ohne Schildgenerator kein Schild.
     pub(crate) fn apply_gear(&mut self) {
         if !self.has_gear(Gear::Shield) {
-            self.ship.max_shield = 0.0;
-            self.ship.shield = 0.0;
+            self.ship.max_shield = fx!(0.0);
+            self.ship.shield = fx!(0.0);
         }
     }
 
@@ -47,7 +47,7 @@ impl SimState {
             self.ship.ammo = a.min(self.ship.max_ammo);
         }
         if let Some(sh) = save.shield {
-            self.ship.shield = sh.clamp(0.0, self.ship.max_shield);
+            self.ship.shield = sh.clamp(fx!(0.0), self.ship.max_shield);
         }
     }
 

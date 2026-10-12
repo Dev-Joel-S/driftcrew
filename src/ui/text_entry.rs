@@ -197,7 +197,10 @@ fn entry_input(
             pending.0.push(match entry.purpose.clone() {
                 Purpose::ShipName => Command::NameShip { name: text },
                 Purpose::Note => Command::AddNote { text },
-                Purpose::Mark(pos) => Command::AddMark { pos, text },
+                Purpose::Mark(pos) => Command::AddMark {
+                    pos: crate::sim::fx::Vec2::from_bevy(pos),
+                    text,
+                },
             });
         }
         entry.open = false;

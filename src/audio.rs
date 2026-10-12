@@ -9,9 +9,9 @@ use bevy::prelude::*;
 
 use crate::game::{AppState, MapOpen, Paused, Sim, SimMsg};
 use crate::input::MenuInput;
+use crate::prng::Prng;
 use crate::settings::Settings;
 use crate::sim::SimEvent;
-use crate::sim::rng::Rng;
 
 mod music;
 
@@ -131,7 +131,7 @@ fn lowpass(x: &mut [f32], cutoff: f32) {
     }
 }
 
-fn synth_thrust(rng: &mut Rng) -> Vec<f32> {
+fn synth_thrust(rng: &mut Prng) -> Vec<f32> {
     let n = len(2.0);
     let mut low: Vec<f32> = (0..n).map(|_| rng.range(-1.0, 1.0)).collect();
     let mut hiss = low.clone();
@@ -148,7 +148,7 @@ fn synth_thrust(rng: &mut Rng) -> Vec<f32> {
     out
 }
 
-fn synth_drill(rng: &mut Rng) -> Vec<f32> {
+fn synth_drill(rng: &mut Prng) -> Vec<f32> {
     let n = len(1.0);
     (0..n)
         .map(|i| {
@@ -160,7 +160,7 @@ fn synth_drill(rng: &mut Rng) -> Vec<f32> {
         .collect()
 }
 
-fn synth_shot(rng: &mut Rng) -> Vec<f32> {
+fn synth_shot(rng: &mut Prng) -> Vec<f32> {
     let n = len(0.22);
     let mut phase = 0.0f32;
     (0..n)
@@ -174,7 +174,7 @@ fn synth_shot(rng: &mut Rng) -> Vec<f32> {
         .collect()
 }
 
-fn synth_explosion(rng: &mut Rng) -> Vec<f32> {
+fn synth_explosion(rng: &mut Prng) -> Vec<f32> {
     let n = len(1.3);
     let mut noise: Vec<f32> = (0..n).map(|_| rng.range(-1.0, 1.0)).collect();
     lowpass(&mut noise, 900.0);
@@ -187,7 +187,7 @@ fn synth_explosion(rng: &mut Rng) -> Vec<f32> {
         .collect()
 }
 
-fn synth_impact(rng: &mut Rng) -> Vec<f32> {
+fn synth_impact(rng: &mut Prng) -> Vec<f32> {
     let n = len(0.3);
     let mut noise: Vec<f32> = (0..n).map(|_| rng.range(-1.0, 1.0)).collect();
     lowpass(&mut noise, 600.0);
@@ -257,7 +257,7 @@ fn synth_alarm() -> Vec<f32> {
 }
 
 fn setup_sounds(mut commands: Commands, mut sources: ResMut<Assets<AudioSource>>) {
-    let mut rng = Rng::new(31337);
+    let mut rng = Prng::new(31337);
     commands.insert_resource(Music {
         tracks: [
             sources.add(wav_rate(&music::menu_track(), music::RATE)),
@@ -337,24 +337,26 @@ fn play_event_sounds(
     let mut impacts = 0;
     for SimMsg(e) in events.read() {
         match e {
-            SimEvent::Shot { pos, .. } => one_shot(&mut commands, &s.shot, 0.5 * by_dist(*pos)),
+            SimEvent::Shot { pos, .. } => {
+                one_shot(&mut commands, &s.shot, 0.5 * by_dist((*pos).to_bevy()))
+            }
             SimEvent::CustomsScan { .. } => one_shot(&mut commands, &s.blip, 0.6),
             SimEvent::EmptyGun => one_shot(&mut commands, &s.click, 0.6),
             SimEvent::Explosion { pos, size, .. } => one_shot(
                 &mut commands,
                 &s.explosion,
-                by_dist(*pos) * (0.3 + size * 0.08).min(0.9),
+                by_dist((*pos).to_bevy()) * (0.3 + size * 0.08).min(0.9),
             ),
             SimEvent::Impact { pos, strength, .. } if impacts < 2 => {
                 impacts += 1;
                 one_shot(
                     &mut commands,
                     &s.impact,
-                    by_dist(*pos) * (strength / 10.0).min(0.9),
+                    by_dist((*pos).to_bevy()) * (strength / 10.0).min(0.9),
                 );
             }
             SimEvent::ProjectileHit { pos } => {
-                one_shot(&mut commands, &s.impact, by_dist(*pos) * 0.3)
+                one_shot(&mut commands, &s.impact, by_dist((*pos).to_bevy()) * 0.3)
             }
             SimEvent::Docked { .. } => one_shot(&mut commands, &s.dock, 0.5),
             SimEvent::Ping { .. } => one_shot(&mut commands, &s.blip, 0.6),

@@ -4,7 +4,7 @@
 //! Schürfroboter bauen ab, eine Händlerin reist mit Spezialsortiment, eine Rivalen-Crew jagt
 //! Notrufe, Konvoi-Frachter brauchen Geleitschutz. Alles deterministisch in der Simulation.
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::autopilot::Autopilot;
 use super::data::{hex, v};
@@ -19,24 +19,24 @@ use super::world::angle_diff;
 use super::{Body, BodyKind, DT, Projectile, SimEvent, SimState, ToastKind};
 
 /// Abstand des Anflugpunkts über einer Plattform.
-const APPROACH: f32 = 18.0;
+const APPROACH: Fx = fx!(18.0);
 /// Drohnen: Angriffsabstand, Reichweite, Feuerpause, Geschoss.
-const DRONE_RANGE: f32 = 22.0;
-const DRONE_AGGRO: f32 = 240.0;
-const DRONE_FIRE: f32 = 1.8;
-const DRONE_SHOT_SPEED: f32 = 38.0;
-pub const DRONE_DAMAGE: f32 = 6.0;
+const DRONE_RANGE: Fx = fx!(22.0);
+const DRONE_AGGRO: Fx = fx!(240.0);
+const DRONE_FIRE: Fx = fx!(1.8);
+const DRONE_SHOT_SPEED: Fx = fx!(38.0);
+pub const DRONE_DAMAGE: Fx = fx!(6.0);
 /// Schaden eines Crew-Geschosses an einem NPC-Schiff.
-pub const SHOT_DAMAGE_NPC: f32 = 10.0;
+pub const SHOT_DAMAGE_NPC: Fx = fx!(10.0);
 /// Schürfroboter: Ladung, bis er heimfliegt, und Abbau pro Sekunde.
-const MINER_LOAD: f32 = 6.0;
-const MINER_RATE: f32 = 0.15;
+const MINER_LOAD: Fx = fx!(6.0);
+const MINER_RATE: Fx = fx!(0.15);
 /// Tempo: frei, nahe Stationen, in Asteroidenfeldern.
-const SPEED_FREE: f32 = 16.0;
-const SPEED_STATION: f32 = 6.0;
-const SPEED_FIELD: f32 = 5.0;
+const SPEED_FREE: Fx = fx!(16.0);
+const SPEED_STATION: Fx = fx!(6.0);
+const SPEED_FIELD: Fx = fx!(5.0);
 /// So lange darf ein NPC ohne Fortschritt feststecken, bevor der Bergungsdienst ihn holt.
-const STUCK_SECONDS: f32 = 30.0;
+const STUCK_SECONDS: Fx = fx!(30.0);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Role {
@@ -51,7 +51,7 @@ pub enum Role {
         def: usize,
         field: usize,
         home: usize,
-        cargo: f32,
+        cargo: Fx,
         target: Option<u32>,
     },
     /// Konvoi-Frachter eines Auftrags: fährt los, sobald die Crew dabei ist.
@@ -71,7 +71,7 @@ pub enum Role {
 pub enum Nav {
     Docked {
         pad: usize,
-        wait: f32,
+        wait: Fx,
     },
     /// Im Leitstrahl einer Station: beim Start hoch über die Plattform und den Anflugweg
     /// hinaus (danach `rest` im freien Raum), bei der Ankunft den Anflugweg hinein bis über die
@@ -92,7 +92,7 @@ pub enum Nav {
     },
     Landing {
         pad: usize,
-        timer: f32,
+        timer: Fx,
     },
     /// Zu einem Punkt fliegen und dort bleiben.
     Hold {
@@ -109,25 +109,25 @@ pub struct Npc {
     pub ship: Ship,
     pub nav: Nav,
     /// Rumpf- und Akzentfarbe (sRGB).
-    pub colors: ([f32; 3], [f32; 3]),
+    pub colors: ([Fx; 3], [Fx; 3]),
     pub hostile: bool,
-    pub fire_cd: f32,
+    pub fire_cd: Fx,
     pub alive: bool,
     /// Sekunden bis zum Wiedererscheinen nach einer Zerstörung (< 0 = nie).
-    pub respawn: f32,
+    pub respawn: Fx,
     /// Wen eine Drohne angreift: None = Crew, Some(id) = ein NPC (Konvoi).
     pub prey: Option<u32>,
     /// Bohrt gerade (Schürfroboter) – nur für die Anzeige.
     pub drilling: Option<Vec2>,
     /// Sekunden ohne Fortschritt (für den Bergungsdienst).
-    pub stuck: f32,
+    pub stuck: Fx,
 }
 
 /// Laufender Zollscan: welche Boje, wie weit (0..1).
 #[derive(Clone, Debug, PartialEq)]
 pub struct CustomsScan {
     pub checkpoint: usize,
-    pub progress: f32,
+    pub progress: Fx,
 }
 
 impl Npc {
@@ -301,10 +301,13 @@ impl SimState {
                 continue;
             };
             let c = v(self.data.world.asteroid_fields[field].center);
-            let off = Vec2::new(self.rng.range(-40.0, 40.0), self.rng.range(-40.0, 40.0));
+            let off = Vec2::new(
+                self.rng.range(-fx!(40.0), fx!(40.0)),
+                self.rng.range(-fx!(40.0), fx!(40.0)),
+            );
             let id = self.next_id();
             let mut ship = build_ship(&self.data, "schuerfer");
-            place(&mut ship, c + off, 0.0);
+            place(&mut ship, c + off, fx!(0.0));
             self.npcs.push(Npc {
                 id,
                 name: md.name.clone(),
@@ -313,19 +316,22 @@ impl SimState {
                     def: mi,
                     field,
                     home,
-                    cargo: 0.0,
+                    cargo: fx!(0.0),
                     target: None,
                 },
                 ship,
                 nav: Nav::Hold { target: c + off },
-                colors: ([0.54, 0.48, 0.32], [1.0, 0.7, 0.12]),
+                colors: (
+                    [fx!(0.54), fx!(0.48), fx!(0.32)],
+                    [fx!(1.0), fx!(0.7), fx!(0.12)],
+                ),
                 hostile: false,
-                fire_cd: 0.0,
+                fire_cd: fx!(0.0),
                 alive: true,
-                respawn: 0.0,
+                respawn: fx!(0.0),
                 prey: None,
                 drilling: None,
-                stuck: 0.0,
+                stuck: fx!(0.0),
             });
         }
     }
@@ -335,7 +341,7 @@ impl SimState {
         &mut self,
         name: &str,
         def: &str,
-        colors: ([f32; 3], [f32; 3]),
+        colors: ([Fx; 3], [Fx; 3]),
         role: Role,
         station: usize,
     ) -> Option<u32> {
@@ -346,10 +352,10 @@ impl SimState {
         let rest = ship.rest_height();
         place(
             &mut ship,
-            p.center + p.normal * (rest + 0.02),
+            p.center + p.normal * (rest + fx!(0.02)),
             p.ship_angle(),
         );
-        let wait = self.rng.range(4.0, 18.0);
+        let wait = self.rng.range(fx!(4.0), fx!(18.0));
         self.npcs.push(Npc {
             id,
             name: name.to_string(),
@@ -362,12 +368,12 @@ impl SimState {
             },
             colors,
             hostile: false,
-            fire_cd: 0.0,
+            fire_cd: fx!(0.0),
             alive: true,
-            respawn: 0.0,
+            respawn: fx!(0.0),
             prey: None,
             drilling: None,
-            stuck: 0.0,
+            stuck: fx!(0.0),
         });
         Some(id)
     }
@@ -376,7 +382,10 @@ impl SimState {
     /// vor der Station im freien Raum.
     pub(crate) fn spawn_convoy(&mut self, name: &str, mission: u32, from: usize, to: usize) -> u32 {
         let ship = self.data.traffic.convoy_ship.clone();
-        let colors = ([0.62, 0.64, 0.6], [0.95, 0.75, 0.2]);
+        let colors = (
+            [fx!(0.62), fx!(0.64), fx!(0.6)],
+            [fx!(0.95), fx!(0.75), fx!(0.2)],
+        );
         let role = Role::Convoy {
             mission,
             to,
@@ -389,7 +398,7 @@ impl SimState {
         let toward = self.world.stations[to].pos;
         let spot = self.waiting_spot(from, id, toward);
         let mut s = build_ship(&self.data, &ship);
-        place(&mut s, spot, 0.0);
+        place(&mut s, spot, fx!(0.0));
         self.npcs.push(Npc {
             id,
             name: name.to_string(),
@@ -399,12 +408,12 @@ impl SimState {
             nav: Nav::Hold { target: spot },
             colors,
             hostile: false,
-            fire_cd: 0.0,
+            fire_cd: fx!(0.0),
             alive: true,
-            respawn: 0.0,
+            respawn: fx!(0.0),
             prey: None,
             drilling: None,
-            stuck: 0.0,
+            stuck: fx!(0.0),
         });
         id
     }
@@ -414,10 +423,10 @@ impl SimState {
         let def = self.data.traffic.stranded_ship.clone();
         let id = self.next_id();
         let mut ship = build_ship(&self.data, &def);
-        let a = self.rng.range(0.0, std::f32::consts::TAU);
+        let a = self.rng.range(fx!(0.0), Fx::TAU);
         place(&mut ship, site, a);
-        ship.ang_vel = self.rng.range(-0.12, 0.12);
-        ship.hull = ship.max_hull * 0.35;
+        ship.ang_vel = self.rng.range(-fx!(0.12), fx!(0.12));
+        ship.hull = ship.max_hull * fx!(0.35);
         self.npcs.push(Npc {
             id,
             name: name.to_string(),
@@ -425,14 +434,17 @@ impl SimState {
             role: Role::Stranded { mission },
             ship,
             nav: Nav::Hold { target: site },
-            colors: ([0.5, 0.48, 0.44], [0.9, 0.3, 0.2]),
+            colors: (
+                [fx!(0.5), fx!(0.48), fx!(0.44)],
+                [fx!(0.9), fx!(0.3), fx!(0.2)],
+            ),
             hostile: false,
-            fire_cd: 0.0,
+            fire_cd: fx!(0.0),
             alive: true,
-            respawn: -1.0,
+            respawn: -fx!(1.0),
             prey: None,
             drilling: None,
-            stuck: 0.0,
+            stuck: fx!(0.0),
         });
         id
     }
@@ -442,20 +454,22 @@ impl SimState {
     pub(crate) fn remove_npc(&mut self, id: u32) {
         if let Some(n) = self.npcs.iter_mut().find(|n| n.id == id) {
             n.alive = false;
-            n.respawn = -1.0;
+            n.respawn = -fx!(1.0);
         }
     }
 
     /// Ist die Crew bereit für den Geleitschutz (abgedockt und in der Nähe)?
     fn crew_escorting(&self, at: Vec2) -> bool {
-        self.ship.docked.is_none() && !self.ship.destroyed && (self.ship.pos - at).length() < 200.0
+        self.ship.docked.is_none()
+            && !self.ship.destroyed
+            && (self.ship.pos - at).shorter_than(fx!(200.0))
     }
 
     /// Drohne an einem Ort erzeugen.
     pub(crate) fn spawn_drone(&mut self, at: Vec2, nest: Option<usize>, prey: Option<u32>) -> u32 {
         let id = self.next_id();
         let mut ship = build_ship(&self.data, "drohne");
-        let a = self.rng.range(0.0, std::f32::consts::TAU);
+        let a = self.rng.range(fx!(0.0), Fx::TAU);
         place(&mut ship, at, a);
         self.npcs.push(Npc {
             id,
@@ -464,14 +478,17 @@ impl SimState {
             role: Role::Drone { nest },
             ship,
             nav: Nav::Hold { target: at },
-            colors: ([0.23, 0.17, 0.17], [1.0, 0.23, 0.19]),
+            colors: (
+                [fx!(0.23), fx!(0.17), fx!(0.17)],
+                [fx!(1.0), fx!(0.23), fx!(0.19)],
+            ),
             hostile: true,
-            fire_cd: self.rng.range(0.5, DRONE_FIRE),
+            fire_cd: self.rng.range(fx!(0.5), DRONE_FIRE),
             alive: true,
-            respawn: -1.0,
+            respawn: -fx!(1.0),
             prey,
             drilling: None,
-            stuck: 0.0,
+            stuck: fx!(0.0),
         });
         id
     }
@@ -517,7 +534,7 @@ impl SimState {
     /// kommt, mit Abstand zu Rotoren, je Schiff etwas versetzt.
     fn waiting_spot(&self, station: usize, id: u32, from: Vec2) -> Vec2 {
         let st = &self.world.stations[station];
-        let r = (st.bounds.max - st.bounds.min).length() * 0.5 + 70.0;
+        let r = (st.bounds.max - st.bounds.min).length() * fx!(0.5) + fx!(70.0);
         let base = (from - st.pos).normalize_or(Vec2::Y);
         let mut spot = st.pos + base * r;
         for k in 1..8 {
@@ -525,15 +542,15 @@ impl SimState {
                 .world
                 .spinners
                 .iter()
-                .all(|sp| (sp.pos - spot).length() > sp.reach() + 45.0);
+                .all(|sp| (sp.pos - spot).longer_than(sp.reach() + fx!(45.0)));
             if clear {
                 break;
             }
-            let a = 0.6 * k as f32 * if k % 2 == 0 { 1.0 } else { -1.0 };
+            let a = fx!(0.6) * Fx::from(k) * if k % 2 == 0 { fx!(1.0) } else { -fx!(1.0) };
             spot = st.pos + rot(base, a) * r;
         }
         let side = Vec2::new(-base.y, base.x);
-        spot + side * ((id % 5) as f32 - 2.0) * 14.0
+        spot + side * (Fx::from(id % 5) - fx!(2.0)) * fx!(14.0)
     }
 
     /// Hindernisse für Strecken im freien Raum: Stationen und Rotoren.
@@ -542,15 +559,20 @@ impl SimState {
             .world
             .stations
             .iter()
-            .map(|st| st.bounds.expand(14.0))
+            .map(|st| st.bounds.expand(fx!(14.0)))
             .collect();
         v.extend(
             self.world
                 .spinners
                 .iter()
-                .map(|sp| super::geom::Aabb::around(sp.pos, sp.reach() + 30.0)),
+                .map(|sp| super::geom::Aabb::around(sp.pos, sp.reach() + fx!(30.0))),
         );
-        v.extend(self.world.monuments.iter().map(|m| m.bounds.expand(14.0)));
+        v.extend(
+            self.world
+                .monuments
+                .iter()
+                .map(|m| m.bounds.expand(fx!(14.0))),
+        );
         v
     }
 
@@ -569,8 +591,8 @@ impl SimState {
                     .iter()
                     .filter(|o| blocked(at, p, o))
                     .min_by(|x, y| {
-                        let tx = x.segment_entry(at, p).unwrap_or(1.0);
-                        let ty = y.segment_entry(at, p).unwrap_or(1.0);
+                        let tx = x.segment_entry(at, p).unwrap_or(fx!(1.0));
+                        let ty = y.segment_entry(at, p).unwrap_or(fx!(1.0));
                         tx.total_cmp(&ty)
                     })
                 else {
@@ -580,10 +602,10 @@ impl SimState {
                 // anfliegbar ist.
                 let free = |c: Vec2| !obstacles.iter().any(|o| blocked(at, c, o));
                 let corners: Vec<Vec2> = b
-                    .expand(25.0)
+                    .expand(fx!(25.0))
                     .corners()
                     .into_iter()
-                    .filter(|c| (*c - at).length() > 1.0 && !blocked(at, *c, b))
+                    .filter(|c| (*c - at).longer_than(fx!(1.0)) && !blocked(at, *c, b))
                     .collect();
                 let cost = |c: &Vec2| (*c - at).length() + (p - *c).length();
                 let best = corners
@@ -632,15 +654,15 @@ impl SimState {
     }
 
     /// Erlaubtes Tempo an einem Ort: langsam nahe Stationen und in Asteroidenfeldern.
-    fn speed_limit(&self, pos: Vec2, vel: Vec2) -> f32 {
+    fn speed_limit(&self, pos: Vec2, vel: Vec2) -> Fx {
         // Vorausschauend: rechtzeitig vor der Station bzw. dem Feld bremsen.
-        let ahead = pos + vel.normalize_or_zero() * 70.0;
+        let ahead = pos + vel.normalize_or_zero() * fx!(70.0);
         let near_station = self.world.stations.iter().any(|st| {
-            st.bounds.expand(60.0).contains(pos) || st.bounds.expand(30.0).contains(ahead)
+            st.bounds.expand(fx!(60.0)).contains(pos) || st.bounds.expand(fx!(30.0)).contains(ahead)
         });
         let in_field = self.data.world.asteroid_fields.iter().any(|f| {
-            (v(f.center) - pos).length() < f.radius + 25.0
-                || (v(f.center) - ahead).length() < f.radius
+            (v(f.center) - pos).shorter_than(f.radius + fx!(25.0))
+                || (v(f.center) - ahead).shorter_than(f.radius)
         });
         if near_station {
             SPEED_STATION
@@ -670,7 +692,7 @@ impl SimState {
             npc.ship.prev_angle = npc.ship.angle;
             let ap = Autopilot {
                 max_speed: if npc.hostile {
-                    SPEED_FREE * 1.4
+                    SPEED_FREE * fx!(1.4)
                 } else {
                     self.speed_limit(npc.ship.pos, npc.ship.vel)
                 },
@@ -681,7 +703,7 @@ impl SimState {
             self.npcs[i] = npc;
         }
         // Zerstörte Hinterhalt-Drohnen und Konvois verschwinden ganz.
-        self.npcs.retain(|n| n.alive || n.respawn >= 0.0);
+        self.npcs.retain(|n| n.alive || n.respawn >= fx!(0.0));
     }
 
     /// Entscheiden, was das NPC tut. Ergebnis: Slot-Maske für die Triebwerke.
@@ -709,15 +731,15 @@ impl SimState {
                 // Wie bei der Crew: sanft auf die Plattform ziehen und festhalten.
                 let p = self.world.pads[pad].clone();
                 let rest = npc.ship.rest_height();
-                let target = p.center + p.normal * (rest + 0.02);
+                let target = p.center + p.normal * (rest + fx!(0.02));
                 let s = &mut npc.ship;
-                s.angle += angle_diff(p.ship_angle(), s.angle) * 0.2;
-                s.pos = s.pos.lerp(target, 0.2);
+                s.angle += angle_diff(p.ship_angle(), s.angle) * fx!(0.2);
+                s.pos = s.pos.lerp(target, fx!(0.2));
                 s.vel = Vec2::ZERO;
-                s.ang_vel = 0.0;
+                s.ang_vel = fx!(0.0);
                 let wait = wait - DT;
                 npc.nav = Nav::Docked { pad, wait };
-                if wait <= 0.0 {
+                if wait <= fx!(0.0) {
                     self.depart(npc, pad);
                 }
                 0
@@ -734,9 +756,9 @@ impl SimState {
                 let target = guide.get(idx).copied().unwrap_or(npc.ship.pos);
                 let d = (npc.ship.pos - target).length();
                 let reached = if last && arriving {
-                    d < 2.5 && npc.ship.vel.length() < 2.0
+                    d < fx!(2.5) && npc.ship.vel.length() < fx!(2.0)
                 } else {
-                    d < 4.0
+                    d < fx!(4.0)
                 };
                 if !reached {
                     return 0;
@@ -751,7 +773,10 @@ impl SimState {
                         arriving,
                     }
                 } else if arriving {
-                    Nav::Landing { pad, timer: 0.0 }
+                    Nav::Landing {
+                        pad,
+                        timer: fx!(0.0),
+                    }
                 } else {
                     Nav::Path {
                         points: self.open_path(npc.ship.pos, rest),
@@ -780,9 +805,9 @@ impl SimState {
                 };
                 let last = idx + 1 == points.len();
                 let (tol, vlim) = if last && land.is_none() {
-                    (12.0, 6.0)
+                    (fx!(12.0), fx!(6.0))
                 } else {
-                    (10.0, 8.0)
+                    (fx!(10.0), fx!(8.0))
                 };
                 let d = (npc.ship.pos - target).length();
                 if d < tol && npc.ship.vel.length() < vlim {
@@ -810,19 +835,23 @@ impl SimState {
                 let along = rel.dot(p.normal);
                 let lateral = rel.dot(p.tangent());
                 let ok = lateral.abs() < p.half_width
-                    && along > rest - 0.6
-                    && along < rest + 0.4
-                    && npc.ship.vel.length() < 1.2
+                    && along > rest - fx!(0.6)
+                    && along < rest + fx!(0.4)
+                    && npc.ship.vel.length() < fx!(1.2)
                     && angle_diff(npc.ship.angle, p.ship_angle())
                         .abs()
                         .to_degrees()
                         < super::dock::DOCK_MAX_ANGLE_DEG
                     && npc.ship.ang_vel.abs() < super::dock::DOCK_MAX_SPIN;
-                let timer = if ok && slots == 0 { timer + DT } else { 0.0 };
-                if timer > 0.35 {
+                let timer = if ok && slots == 0 {
+                    timer + DT
+                } else {
+                    fx!(0.0)
+                };
+                if timer > fx!(0.35) {
                     npc.ship.vel = Vec2::ZERO;
-                    npc.ship.ang_vel = 0.0;
-                    let wait = self.rng.range(8.0, 22.0);
+                    npc.ship.ang_vel = fx!(0.0);
+                    let wait = self.rng.range(fx!(8.0), fx!(22.0));
                     npc.nav = Nav::Docked { pad, wait };
                     self.arrived(npc, pad);
                 } else {
@@ -845,7 +874,7 @@ impl SimState {
                 {
                     if !self.active.iter().any(|m| m.id == mission) {
                         npc.alive = false;
-                        npc.respawn = -1.0;
+                        npc.respawn = -fx!(1.0);
                         return 0;
                     }
                     npc.role = Role::Convoy {
@@ -874,7 +903,7 @@ impl SimState {
             Nav::Hold { target } => {
                 // Ohne Ziel (Platz besetzt, Notruf weg): wieder nach Hause bzw. weiter.
                 if let Some(next) = self.next_station(npc)
-                    && (npc.ship.pos - target).length() < 12.0
+                    && (npc.ship.pos - target).shorter_than(fx!(12.0))
                     && let Some(dock) = self.free_dock_for(next, npc.id)
                 {
                     npc.nav = self.route_to(&dock, None, npc.ship.pos);
@@ -906,20 +935,26 @@ impl SimState {
                 mission, departed, ..
             } if departed || !self.active.iter().any(|m| m.id == mission) => {
                 npc.alive = false;
-                npc.respawn = -1.0;
+                npc.respawn = -fx!(1.0);
                 return;
             }
             Role::Convoy { .. } => {
                 // Konvoi wartet, bis die Crew abgedockt und in der Nähe ist.
                 if !self.crew_escorting(npc.ship.pos) {
-                    npc.nav = Nav::Docked { pad, wait: 0.5 };
+                    npc.nav = Nav::Docked {
+                        pad,
+                        wait: fx!(0.5),
+                    };
                     return;
                 }
                 let Role::Convoy { to, .. } = npc.role else {
                     return;
                 };
                 let Some(dock) = self.free_dock_for(to, npc.id) else {
-                    npc.nav = Nav::Docked { pad, wait: 2.0 };
+                    npc.nav = Nav::Docked {
+                        pad,
+                        wait: fx!(2.0),
+                    };
                     return;
                 };
                 if let Role::Convoy { departed, .. } = &mut npc.role {
@@ -952,7 +987,10 @@ impl SimState {
                             .total_cmp(&(*b - p.center).length())
                     });
                 let Some(site) = site else {
-                    npc.nav = Nav::Docked { pad, wait: 10.0 };
+                    npc.nav = Nav::Docked {
+                        pad,
+                        wait: fx!(10.0),
+                    };
                     return;
                 };
                 npc.role = Role::Rival {
@@ -975,7 +1013,7 @@ impl SimState {
                     def,
                     field,
                     home,
-                    cargo: 0.0,
+                    cargo: fx!(0.0),
                     target,
                 };
                 npc.nav = self.launch(pad, vec![c], None);
@@ -984,7 +1022,10 @@ impl SimState {
             _ => {}
         }
         let Some(next) = self.next_station(npc) else {
-            npc.nav = Nav::Docked { pad, wait: 5.0 };
+            npc.nav = Nav::Docked {
+                pad,
+                wait: fx!(5.0),
+            };
             return;
         };
         // Kein Platz frei: trotzdem los und vor der Station warten (sonst blockieren sich
@@ -1006,7 +1047,7 @@ impl SimState {
                 *leg = (*leg + 1) % route.len();
             }
             Role::Miner { cargo, .. } => {
-                *cargo = 0.0;
+                *cargo = fx!(0.0);
             }
             Role::Convoy { mission, .. } => {
                 let mid = *mission;
@@ -1040,14 +1081,16 @@ impl SimState {
         else {
             return;
         };
-        if (npc.ship.pos - site).length() > 30.0 || (at - npc.ship.pos).length() > 30.0 {
+        if (npc.ship.pos - site).longer_than(fx!(30.0))
+            || (at - npc.ship.pos).longer_than(fx!(30.0))
+        {
             return;
         }
         let taken = self.offers.iter().position(|m| {
             m.is_distress()
                 && matches!(&m.kind,
                     super::missions::MissionKind::Tow { site: s, .. }
-                    | super::missions::MissionKind::Capsules { site: s, .. } if (*s - site).length() < 1.0)
+                    | super::missions::MissionKind::Capsules { site: s, .. } if (*s - site).shorter_than(fx!(1.0)))
         });
         if let Some(idx) = taken {
             self.offers.remove(idx);
@@ -1090,7 +1133,7 @@ impl SimState {
         let rock = target
             .and_then(|id| self.bodies.iter().position(|b| b.id == id && b.alive))
             .filter(|&bi| {
-                matches!(self.bodies[bi].kind, BodyKind::Asteroid { ore: Some(_), ore_left, .. } if ore_left > 0.3)
+                matches!(self.bodies[bi].kind, BodyKind::Asteroid { ore: Some(_), ore_left, .. } if ore_left > fx!(0.3))
             });
         let bi = match rock {
             Some(bi) => bi,
@@ -1102,7 +1145,7 @@ impl SimState {
                     .enumerate()
                     .filter(|(_, b)| {
                         b.alive
-                            && matches!(b.kind, BodyKind::Asteroid { ore: Some(_), ore_left, field: f, .. } if ore_left > 0.5 && f == field)
+                            && matches!(b.kind, BodyKind::Asteroid { ore: Some(_), ore_left, field: f, .. } if ore_left > fx!(0.5) && f == field)
                     })
                     .min_by(|a, b| {
                         (a.1.pos - npc.ship.pos)
@@ -1127,13 +1170,14 @@ impl SimState {
         };
         let b = &self.bodies[bi];
         let away = (npc.ship.pos - b.pos).normalize_or(Vec2::Y);
-        let spot = b.pos + away * (b.radius + 3.5);
+        let spot = b.pos + away * (b.radius + fx!(3.5));
         npc.nav = Nav::Hold { target: spot };
-        let close = (npc.ship.pos - spot).length() < 5.0 && npc.ship.vel.length() < 2.0;
+        let close =
+            (npc.ship.pos - spot).shorter_than(fx!(5.0)) && npc.ship.vel.length() < fx!(2.0);
         if close {
             let amount = (MINER_RATE * DT).min(match b.kind {
                 BodyKind::Asteroid { ore_left, .. } => ore_left,
-                _ => 0.0,
+                _ => fx!(0.0),
             });
             let bpos = b.pos;
             if let BodyKind::Asteroid { ore_left, .. } = &mut self.bodies[bi].kind {
@@ -1163,7 +1207,7 @@ impl SimState {
                 let d = (self.ship.pos - npc.ship.pos).length();
                 // Ein Resonanzkern an Bord lockt die Drohnen von weiter her an.
                 let aggro = if self.artifact_lure() {
-                    DRONE_AGGRO * 1.6
+                    DRONE_AGGRO * fx!(1.6)
                 } else {
                     DRONE_AGGRO
                 };
@@ -1180,32 +1224,36 @@ impl SimState {
                 Role::Drone { nest: Some(n) } => v(self.data.traffic.nests[n].center),
                 _ => npc.ship.pos,
             };
-            let a = (self.time * 0.15 + (npc.id % 7) as f32).rem_euclid(std::f32::consts::TAU);
-            let spot = home + Vec2::new(a.cos(), a.sin()) * 60.0;
+            let a = (self.time * fx!(0.15) + Fx::from(npc.id % 7)).rem_euclid(Fx::TAU);
+            let spot = home + Vec2::new(a.cos(), a.sin()) * fx!(60.0);
             npc.nav = Nav::Hold { target: spot };
             return ap.steer_ship(&npc.ship, spot, Vec2::Y, false);
         };
         // Im Abstand bleiben, leicht seitlich versetzt.
-        let side = if npc.id.is_multiple_of(2) { 1.0 } else { -1.0 };
+        let side = if npc.id.is_multiple_of(2) {
+            fx!(1.0)
+        } else {
+            -fx!(1.0)
+        };
         let away = (npc.ship.pos - pp).normalize_or(Vec2::X);
-        let spot = pp + rot(away, 0.35 * side) * DRONE_RANGE;
+        let spot = pp + rot(away, fx!(0.35) * side) * DRONE_RANGE;
         npc.nav = Nav::Hold { target: spot };
         npc.fire_cd -= DT;
         let dist = (pp - npc.ship.pos).length();
-        if npc.fire_cd <= 0.0 && dist < DRONE_RANGE * 1.8 {
+        if npc.fire_cd <= fx!(0.0) && dist < DRONE_RANGE * fx!(1.8) {
             npc.fire_cd = DRONE_FIRE;
             let lead = pp + pv * (dist / DRONE_SHOT_SPEED);
             let dir = (lead - npc.ship.pos).normalize_or(Vec2::X);
-            let spread = self.rng.range(-0.06, 0.06);
+            let spread = self.rng.range(-fx!(0.06), fx!(0.06));
             let dir = rot(dir, spread);
             let id = self.next_id();
-            let pos = npc.ship.pos + dir * (npc.ship.bound_radius() + 0.3);
+            let pos = npc.ship.pos + dir * (npc.ship.bound_radius() + fx!(0.3));
             self.projectiles.push(Projectile {
                 id,
                 pos,
                 prev_pos: pos,
                 vel: npc.ship.vel + dir * DRONE_SHOT_SPEED,
-                life: 1.6,
+                life: fx!(1.6),
                 hostile: true,
             });
             self.events.push(SimEvent::Shot { pos, dir });
@@ -1222,31 +1270,31 @@ impl SimState {
                 pad, guide, idx, ..
             } => guide
                 .get(*idx)
-                .map(|t| (*t, self.world.pads[*pad].ship_angle(), 6.0)),
+                .map(|t| (*t, self.world.pads[*pad].ship_angle(), fx!(6.0))),
             Nav::Landing { pad, .. } => {
                 let p = &self.world.pads[*pad];
                 Some((
-                    p.center + p.normal * (npc.ship.rest_height() - 0.3),
+                    p.center + p.normal * (npc.ship.rest_height() - fx!(0.3)),
                     p.ship_angle(),
-                    2.5,
+                    fx!(2.5),
                 ))
             }
             _ => None,
         };
         let ship = &mut npc.ship;
         let mut force = Vec2::ZERO;
-        let mut torque = 0.0;
+        let mut torque = fx!(0.0);
         for t in &mut ship.thrusters {
             t.firing = !docked && slots >> t.slot & 1 == 1 && thruster_works(t, tick);
-            let target = if t.firing { 1.0 } else { 0.0 };
-            t.level += (target - t.level) * (DT * 16.0).min(1.0);
+            let target = if t.firing { fx!(1.0) } else { fx!(0.0) };
+            t.level += (target - t.level) * (DT * fx!(16.0)).min(fx!(1.0));
         }
         if docked {
             // Angedockt steht das Schiff fest – die Crew prallt trotzdem daran ab.
             if self.ship.docked.is_none()
                 && !self.ship.destroyed
                 && let Some((imp, at)) = collide_two_ships(&mut self.ship, &mut npc.ship)
-                && imp > 1.5
+                && imp > fx!(1.5)
             {
                 self.events.push(SimEvent::Impact {
                     pos: at,
@@ -1271,10 +1319,10 @@ impl SimState {
         }
         ship.vel += (force / ship.mass + self.world.gravity(ship.pos)) * DT;
         ship.ang_vel += torque / ship.inertia * DT;
-        ship.ang_vel *= 1.0 - (ship.ang_damp * DT).min(0.5);
+        ship.ang_vel *= fx!(1.0) - (ship.ang_damp * DT).min(fx!(0.5));
         let d = ship.pos.length();
         if d > self.world.radius {
-            ship.vel -= ship.pos / d * 8.0 * DT;
+            ship.vel -= ship.pos / d * fx!(8.0) * DT;
         }
         ship.pos += ship.vel * DT;
         ship.angle += ship.ang_vel * DT;
@@ -1282,7 +1330,7 @@ impl SimState {
         let contacts = static_contacts(ship, &self.world);
         if !contacts.is_empty() {
             let (imp, at) = resolve_static(ship, &contacts);
-            if imp > 1.5 {
+            if imp > fx!(1.5) {
                 self.events.push(SimEvent::Impact {
                     pos: at.0,
                     normal: at.1,
@@ -1290,7 +1338,7 @@ impl SimState {
                 });
             }
             if imp > SAFE_IMPACT {
-                npc.ship.hull -= (imp - SAFE_IMPACT) * 3.6;
+                npc.ship.hull -= (imp - SAFE_IMPACT) * fx!(3.6);
             }
         }
         // Asteroiden und andere Körper.
@@ -1298,7 +1346,7 @@ impl SimState {
         let reach = npc.ship.bound_radius();
         for bi in 0..self.bodies.len() {
             let b = &self.bodies[bi];
-            if !b.alive || (b.pos - npc.ship.pos).length() > reach + b.radius + 0.5 {
+            if !b.alive || (b.pos - npc.ship.pos).longer_than(reach + b.radius + fx!(0.5)) {
                 continue;
             }
             for (cp, cr) in b.circles().iter() {
@@ -1312,10 +1360,18 @@ impl SimState {
                         pos: b.pos,
                         vel: b.vel,
                         w: b.ang_vel,
-                        inv_m: 1.0 / b.mass,
-                        inv_i: 1.0 / b.inertia(),
+                        inv_m: fx!(1.0) / b.mass,
+                        inv_i: fx!(1.0) / b.inertia(),
                     };
-                    let imp = solve_contact(&mut sd, &mut bd, &c, 0.3, 0.4, Vec2::ZERO, 1.0);
+                    let imp = solve_contact(
+                        &mut sd,
+                        &mut bd,
+                        &c,
+                        fx!(0.3),
+                        fx!(0.4),
+                        Vec2::ZERO,
+                        fx!(1.0),
+                    );
                     npc.ship.pos = sd.pos;
                     npc.ship.vel = sd.vel;
                     npc.ship.ang_vel = sd.w;
@@ -1324,12 +1380,12 @@ impl SimState {
                     b.vel = bd.vel;
                     b.ang_vel = bd.w;
                     if imp > SAFE_IMPACT {
-                        let factor = (b.mass / npc.ship.mass * 1.5).clamp(0.15, 1.0);
-                        npc.ship.hull -= (imp - SAFE_IMPACT) * 3.6 * factor;
+                        let factor = (b.mass / npc.ship.mass * fx!(1.5)).clamp(fx!(0.15), fx!(1.0));
+                        npc.ship.hull -= (imp - SAFE_IMPACT) * fx!(3.6) * factor;
                     }
                     if matches!(self.bodies[bi].kind, BodyKind::Meteor) {
                         self.bodies[bi].alive = false;
-                        npc.ship.hull -= 12.0;
+                        npc.ship.hull -= fx!(12.0);
                     }
                 }
             }
@@ -1339,7 +1395,7 @@ impl SimState {
             && !self.ship.destroyed
             && let Some((imp, at)) = collide_two_ships(&mut self.ship, &mut npc.ship)
         {
-            if imp > 1.5 {
+            if imp > fx!(1.5) {
                 self.events.push(SimEvent::Impact {
                     pos: at,
                     normal: Vec2::Y,
@@ -1348,16 +1404,16 @@ impl SimState {
                 self.count_collision(at);
             }
             if imp > SAFE_IMPACT {
-                let dmg = (imp - SAFE_IMPACT) * 3.6;
+                let dmg = (imp - SAFE_IMPACT) * fx!(3.6);
                 self.ship_damage(
-                    dmg * (npc.ship.mass / self.ship.mass).clamp(0.2, 1.0),
+                    dmg * (npc.ship.mass / self.ship.mass).clamp(fx!(0.2), fx!(1.0)),
                     at,
                     true,
                 );
                 npc.ship.hull -= dmg;
             }
         }
-        if npc.ship.hull <= 0.0 {
+        if npc.ship.hull <= fx!(0.0) {
             self.destroy_npc(npc);
         }
     }
@@ -1365,24 +1421,24 @@ impl SimState {
     /// Festgefahren (verkeilt, abgedrängt)? Nach einer Weile holt der Bergungsdienst das Schiff
     /// zur nächsten Station – aber nie vor den Augen der Crew.
     fn check_stuck(&mut self, npc: &mut Npc) {
-        let moving = npc.ship.vel.length() > 1.0;
+        let moving = npc.ship.vel.length() > fx!(1.0);
         let travelling = matches!(
             npc.nav,
             Nav::Path { .. } | Nav::Guided { .. } | Nav::Landing { .. }
         );
         if !npc.alive || npc.hostile || !travelling {
-            npc.stuck = 0.0;
+            npc.stuck = fx!(0.0);
             return;
         }
         if moving {
-            npc.stuck = (npc.stuck - DT * 0.5).max(0.0);
+            npc.stuck = (npc.stuck - DT * fx!(0.5)).max(fx!(0.0));
             return;
         }
         npc.stuck += DT;
-        if npc.stuck < STUCK_SECONDS || (self.ship.pos - npc.ship.pos).length() < 300.0 {
+        if npc.stuck < STUCK_SECONDS || (self.ship.pos - npc.ship.pos).shorter_than(fx!(300.0)) {
             return;
         }
-        npc.stuck = 0.0;
+        npc.stuck = fx!(0.0);
         let station = match &npc.role {
             Role::Trader { route, leg } | Role::Merchant { route, leg } => {
                 route[*leg % route.len()]
@@ -1397,19 +1453,19 @@ impl SimState {
                 let rest = npc.ship.rest_height();
                 place(
                     &mut npc.ship,
-                    p.center + p.normal * (rest + 0.02),
+                    p.center + p.normal * (rest + fx!(0.02)),
                     p.ship_angle(),
                 );
                 npc.nav = Nav::Docked {
                     pad: dock.pad,
-                    wait: 10.0,
+                    wait: fx!(10.0),
                 };
                 self.arrived(npc, dock.pad);
             }
             None => {
                 // Alles belegt: vor der Station im freien Raum absetzen.
                 let spot = self.waiting_spot(station, npc.id, npc.ship.pos);
-                place(&mut npc.ship, spot, 0.0);
+                place(&mut npc.ship, spot, fx!(0.0));
                 npc.nav = Nav::Hold { target: spot };
             }
         }
@@ -1421,8 +1477,8 @@ impl SimState {
         let pos = npc.ship.pos;
         self.events.push(SimEvent::Explosion {
             pos,
-            size: npc.ship.bound_radius() * 2.5,
-            color: [1.0, 0.5, 0.2],
+            size: npc.ship.bound_radius() * fx!(2.5),
+            color: [fx!(1.0), fx!(0.5), fx!(0.2)],
         });
         // Bauteil zum Bergen, Schürfer verlieren ihre Ladung als Erzbrocken.
         let names = self.data.shop.salvage_names.clone();
@@ -1436,27 +1492,27 @@ impl SimState {
             pos,
             npc.ship.vel,
             BodyKind::Salvage { name, value },
-            0.6,
-            0.7,
+            fx!(0.6),
+            fx!(0.7),
         );
         if let Role::Miner { field, cargo, .. } = npc.role {
             let ore = self.data.world.asteroid_fields[field].ore;
             let mut left = cargo;
-            while left > 0.2 {
-                let amount = left.min(1.5);
+            while left > fx!(0.2) {
+                let amount = left.min(fx!(1.5));
                 left -= amount;
                 self.spawn_loose(
                     pos,
                     npc.ship.vel,
                     BodyKind::OreChunk { ore, amount },
-                    0.5,
-                    amount.max(0.3),
+                    fx!(0.5),
+                    amount.max(fx!(0.3)),
                 );
             }
         }
         npc.respawn = match npc.role {
-            Role::Drone { .. } | Role::Convoy { .. } | Role::Stranded { .. } => -1.0,
-            _ => 90.0,
+            Role::Drone { .. } | Role::Convoy { .. } | Role::Stranded { .. } => -fx!(1.0),
+            _ => fx!(90.0),
         };
         if let Role::Convoy { mission, .. } = npc.role {
             self.fail_mission(mission, "Konvoi zerstört");
@@ -1469,33 +1525,36 @@ impl SimState {
         }
     }
 
-    fn spawn_loose(&mut self, pos: Vec2, vel: Vec2, kind: BodyKind, radius: f32, mass: f32) {
+    fn spawn_loose(&mut self, pos: Vec2, vel: Vec2, kind: BodyKind, radius: Fx, mass: Fx) {
         let id = self.next_id();
-        let jitter = Vec2::new(self.rng.range(-2.0, 2.0), self.rng.range(-2.0, 2.0));
+        let jitter = Vec2::new(
+            self.rng.range(-fx!(2.0), fx!(2.0)),
+            self.rng.range(-fx!(2.0), fx!(2.0)),
+        );
         self.bodies.push(Body {
             id,
             kind,
-            pos: pos + jitter * 0.3,
-            vel: vel * 0.5 + jitter,
-            angle: 0.0,
-            ang_vel: self.rng.range(-1.0, 1.0),
+            pos: pos + jitter * fx!(0.3),
+            vel: vel * fx!(0.5) + jitter,
+            angle: fx!(0.0),
+            ang_vel: self.rng.range(-fx!(1.0), fx!(1.0)),
             radius,
             mass,
             prev_pos: pos,
-            prev_angle: 0.0,
+            prev_angle: fx!(0.0),
             alive: true,
             seed: hash32(id),
-            age: 0.0,
+            age: fx!(0.0),
         });
     }
 
     /// Zerstörte Pendler kommen nach einer Weile an ihrer Station zurück.
     fn tick_respawn(&mut self, i: usize) {
-        if self.npcs[i].respawn < 0.0 {
+        if self.npcs[i].respawn < fx!(0.0) {
             return;
         }
         self.npcs[i].respawn -= DT;
-        if self.npcs[i].respawn > 0.0 {
+        if self.npcs[i].respawn > fx!(0.0) {
             return;
         }
         let npc = self.npcs[i].clone();
@@ -1505,7 +1564,7 @@ impl SimState {
             _ => return,
         };
         let Some(dock) = self.free_dock(station) else {
-            self.npcs[i].respawn = 10.0;
+            self.npcs[i].respawn = fx!(10.0);
             return;
         };
         let mut ship = build_ship(&self.data, &npc.def);
@@ -1513,7 +1572,7 @@ impl SimState {
         let rest = ship.rest_height();
         place(
             &mut ship,
-            p.center + p.normal * (rest + 0.02),
+            p.center + p.normal * (rest + fx!(0.02)),
             p.ship_angle(),
         );
         let n = &mut self.npcs[i];
@@ -1521,10 +1580,10 @@ impl SimState {
         n.alive = true;
         n.nav = Nav::Docked {
             pad: dock.pad,
-            wait: 10.0,
+            wait: fx!(10.0),
         };
         if let Role::Miner { cargo, target, .. } = &mut n.role {
-            *cargo = 0.0;
+            *cargo = fx!(0.0);
             *target = None;
         }
         if let Role::Rival { goal, .. } = &mut n.role {
@@ -1541,8 +1600,8 @@ impl SimState {
         let lure = self.artifact_lure();
         for (ni, n) in nests.iter().enumerate() {
             let c = v(n.center);
-            let reach = n.radius + if lure { 1200.0 } else { 500.0 };
-            if (self.ship.pos - c).length() > reach {
+            let reach = n.radius + if lure { fx!(1200.0) } else { fx!(500.0) };
+            if (self.ship.pos - c).longer_than(reach) {
                 continue;
             }
             let alive = self
@@ -1551,27 +1610,29 @@ impl SimState {
                 .filter(|x| x.alive && x.role == Role::Drone { nest: Some(ni) })
                 .count() as u32;
             let count = n.count + u32::from(lure);
-            if alive >= count || self.nest_cooldown.get(ni).copied().unwrap_or(0.0) > self.time {
+            if alive >= count || self.nest_cooldown.get(ni).copied().unwrap_or(fx!(0.0)) > self.time
+            {
                 continue;
             }
-            let a = self.rng.range(0.0, std::f32::consts::TAU);
-            let at = c + Vec2::new(a.cos(), a.sin()) * self.rng.range(0.0, n.radius * 0.6);
+            let a = self.rng.range(fx!(0.0), Fx::TAU);
+            let at =
+                c + Vec2::new(a.cos(), a.sin()) * self.rng.range(fx!(0.0), n.radius * fx!(0.6));
             self.spawn_drone(at, Some(ni), None);
             if let Some(cd) = self.nest_cooldown.get_mut(ni) {
-                *cd = self.time + 25.0;
+                *cd = self.time + fx!(25.0);
             }
         }
     }
 
     /// Schaden an einem NPC-Schiff (Geschoss).
-    pub(crate) fn damage_npc(&mut self, i: usize, amount: f32) {
+    pub(crate) fn damage_npc(&mut self, i: usize, amount: Fx) {
         let mut npc = self.npcs[i].clone();
         if !npc.alive {
             return;
         }
         npc.ship.hull -= amount;
         // Wer auf Frachter schießt, macht sich Feinde nicht – aber Drohnen merken es.
-        if npc.ship.hull <= 0.0 {
+        if npc.ship.hull <= fx!(0.0) {
             self.destroy_npc(&mut npc);
         }
         self.npcs[i] = npc;
@@ -1596,17 +1657,15 @@ impl SimState {
 
     /// Ziel für Schmuggelware: eine andere Station mit Markt, bevorzugt eine mit Zollboje.
     pub(crate) fn smuggle_target(&mut self, from: usize) -> usize {
-        let guarded: Vec<usize> = (0..self.world.stations.len())
-            .filter(|&i| {
-                i != from
-                    && self
-                        .data
-                        .traffic
-                        .checkpoints
-                        .iter()
-                        .any(|c| (v(c.pos) - self.world.stations[i].pos).length() < 400.0)
-            })
-            .collect();
+        let guarded: Vec<usize> =
+            (0..self.world.stations.len())
+                .filter(|&i| {
+                    i != from
+                        && self.data.traffic.checkpoints.iter().any(|c| {
+                            (v(c.pos) - self.world.stations[i].pos).shorter_than(fx!(400.0))
+                        })
+                })
+                .collect();
         if !guarded.is_empty() {
             return guarded[self.rng.index(guarded.len())];
         }
@@ -1674,17 +1733,18 @@ impl SimState {
                 continue;
             }
             let (a, b) = (self.world.stations[from].pos, self.world.stations[to].pos);
-            let total = (b - a).length().max(1.0);
+            let total = (b - a).length().max(fx!(1.0));
             let left = (b - n.ship.pos).length();
-            if left > total * 0.6 {
+            if left > total * fx!(0.6) {
                 continue;
             }
             let (pos, vel) = (n.ship.pos, n.ship.vel);
             let ahead = vel.normalize_or((b - pos).normalize_or(Vec2::Y));
             let side = Vec2::new(-ahead.y, ahead.x);
             for k in 0..ambush {
-                let s = if k % 2 == 0 { 1.0 } else { -1.0 };
-                let at = pos + ahead * 110.0 + side * s * (70.0 + 15.0 * k as f32);
+                let s = if k % 2 == 0 { fx!(1.0) } else { -fx!(1.0) };
+                let at =
+                    pos + ahead * fx!(110.0) + side * s * (fx!(70.0) + fx!(15.0) * Fx::from(k));
                 self.spawn_drone(at, None, Some(id));
             }
             if let super::missions::MissionKind::Escort { ambushed, .. } = &mut self.active[mi].kind
@@ -1707,7 +1767,7 @@ impl SimState {
         let prey_alive = n
             .prey
             .is_some_and(|id| self.npcs.iter().any(|x| x.id == id && x.alive));
-        !prey_alive && (self.ship.pos - n.ship.pos).length() > DRONE_AGGRO * 1.5
+        !prey_alive && (self.ship.pos - n.ship.pos).longer_than(DRONE_AGGRO * fx!(1.5))
     }
 
     /// Schmuggelware an Bord? (Mission, für die sie gebraucht wird)
@@ -1739,12 +1799,12 @@ impl SimState {
             .traffic
             .checkpoints
             .iter()
-            .position(|c| (v(c.pos) - pos).length() < c.radius);
+            .position(|c| (v(c.pos) - pos).shorter_than(c.radius));
         let Some(ci) = inside else {
             self.customs = None;
             return;
         };
-        let scan = self.data.missions.smuggle.scan_time.max(0.5);
+        let scan = self.data.missions.smuggle.scan_time.max(fx!(0.5));
         let progress = match &self.customs {
             Some(c) if c.checkpoint == ci => c.progress + DT / scan,
             _ => {
@@ -1754,10 +1814,10 @@ impl SimState {
                     format!("{} scannt euch – raus aus dem Radius!", cp.name),
                     ToastKind::Warn,
                 );
-                0.0
+                fx!(0.0)
             }
         };
-        if progress < 1.0 {
+        if progress < fx!(1.0) {
             self.customs = Some(CustomsScan {
                 checkpoint: ci,
                 progress,
@@ -1792,26 +1852,27 @@ fn dyn_of(s: &Ship) -> Dyn {
         pos: s.pos,
         vel: s.vel,
         w: s.ang_vel,
-        inv_m: 1.0 / s.mass,
-        inv_i: 1.0 / s.inertia,
+        inv_m: fx!(1.0) / s.mass,
+        inv_i: fx!(1.0) / s.inertia,
     }
 }
 
 /// Leitstrahl der Station: zieht wie eine gedämpfte Feder zum Ziel und richtet das Schiff aus.
-fn tractor(ship: &mut Ship, target: Vec2, angle: f32, max_speed: f32) {
-    let v_des = ((target - ship.pos) * 0.7).clamp_length_max(max_speed);
-    let acc = ((v_des - ship.vel) * 1.6).clamp_length_max(5.0);
+fn tractor(ship: &mut Ship, target: Vec2, angle: Fx, max_speed: Fx) {
+    let v_des = ((target - ship.pos) * fx!(0.7)).clamp_length_max(max_speed);
+    let acc = ((v_des - ship.vel) * fx!(1.6)).clamp_length_max(fx!(5.0));
     ship.vel += acc * DT;
-    let alpha = (angle_diff(angle, ship.angle) * 2.0 - ship.ang_vel * 2.8).clamp(-3.0, 3.0);
+    let alpha = (angle_diff(angle, ship.angle) * fx!(2.0) - ship.ang_vel * fx!(2.8))
+        .clamp(-fx!(3.0), fx!(3.0));
     ship.ang_vel += alpha * DT;
 }
 
 /// Schiff an einen Ort setzen (Schwerpunkt), in Ruhe.
-fn place(ship: &mut Ship, pos: Vec2, angle: f32) {
+fn place(ship: &mut Ship, pos: Vec2, angle: Fx) {
     ship.angle = angle;
     ship.prev_angle = angle;
     ship.pos = pos;
     ship.prev_pos = pos;
     ship.vel = Vec2::ZERO;
-    ship.ang_vel = 0.0;
+    ship.ang_vel = fx!(0.0);
 }

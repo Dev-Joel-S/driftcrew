@@ -2,37 +2,37 @@
 //! Notreparatur mit dem Kran. Alles läuft in der Simulation und wird nur mit Slot-Tasten
 //! gespielt – deterministisch, damit es später auch online geht.
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::ship::CargoKind;
 use super::world::angle_diff;
 use super::{DT, SimEvent, SimState, TickInput, ToastKind};
 
 /// Takt in Sekunden und wie weit daneben ein Druck noch zählt.
-pub const BEAT: f32 = 0.7;
-pub const BEAT_WINDOW: f32 = 0.14;
+pub const BEAT: Fx = fx!(0.7);
+pub const BEAT_WINDOW: Fx = fx!(0.14);
 /// Treffer, bis ein ausgefallenes Triebwerk wieder läuft.
-pub const PATCH_HITS: f32 = 8.0;
+pub const PATCH_HITS: Fx = fx!(8.0);
 /// Zustand eines notdürftig geflickten Triebwerks (läuft, stottert aber).
-pub const PATCH_HEALTH: f32 = 0.45;
+pub const PATCH_HEALTH: Fx = fx!(0.45);
 /// Notreparatur der Hülle: Punkte pro Treffer, höchstens bis zu diesem Anteil.
-pub const HULL_PER_HIT: f32 = 2.0;
-pub const HULL_PATCH_CAP: f32 = 0.75;
+pub const HULL_PER_HIT: Fx = fx!(2.0);
+pub const HULL_PATCH_CAP: Fx = fx!(0.75);
 /// So lange ruhig und ohne Eingabe, dann beginnt die Notreparatur.
-pub const REST_TO_REPAIR: f32 = 3.0;
+pub const REST_TO_REPAIR: Fx = fx!(3.0);
 /// Eine Taste so lange halten beendet die Notreparatur (die Taste wirkt dann normal).
-pub const HOLD_TO_LEAVE: f32 = 0.45;
+pub const HOLD_TO_LEAVE: Fx = fx!(0.45);
 /// Kran-Notreparatur: so lange muss das Ersatzteil ruhig an der Stelle sitzen.
-pub const CRANE_PATCH_TIME: f32 = 2.5;
+pub const CRANE_PATCH_TIME: Fx = fx!(2.5);
 /// Kran-Notreparatur: so genau muss der Kran zielen (Grad).
-pub const CRANE_PATCH_AIM: f32 = 15.0;
+pub const CRANE_PATCH_AIM: Fx = fx!(15.0);
 
 /// Rückmeldung zu einem Tastendruck im Takt (für die Anzeige).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Beat {
     pub slot: u8,
     pub hit: bool,
-    pub age: f32,
+    pub age: Fx,
 }
 
 /// Notreparatur und Takt-Reparatur.
@@ -41,11 +41,11 @@ pub struct Repair {
     /// Notreparatur läuft (Schiff ruht, Slot-Tasten flicken statt zu steuern).
     pub active: bool,
     /// Wie lange das Schiff schon ruhig und ohne Eingabe ist.
-    pub rest: f32,
+    pub rest: Fx,
     /// Wie lange jede Taste schon gehalten wird.
-    pub held: Vec<f32>,
+    pub held: Vec<Fx>,
     /// Fortschritt pro Triebwerk (Index wie `ship.thrusters`), 0..1.
-    pub thrusters: Vec<f32>,
+    pub thrusters: Vec<Fx>,
     pub beats: Vec<Beat>,
 }
 
@@ -56,12 +56,12 @@ pub struct Hack {
     /// Slots in der Reihenfolge, in der sie gedrückt werden müssen.
     pub pattern: Vec<u8>,
     pub done: usize,
-    pub left: f32,
-    pub total: f32,
+    pub left: Fx,
+    pub total: Fx,
 }
 
 /// Abstand zum nächsten Taktschlag (Sekunden).
-pub fn beat_offset(time: f32) -> f32 {
+pub fn beat_offset(time: Fx) -> Fx {
     let phase = time.rem_euclid(BEAT);
     phase.min(BEAT - phase)
 }
@@ -73,13 +73,13 @@ impl SimState {
     }
 
     /// Phase im Takt (0..1, 0 = Schlag) – für die Anzeige.
-    pub fn beat_phase(&self) -> f32 {
+    pub fn beat_phase(&self) -> Fx {
         self.time.rem_euclid(BEAT) / BEAT
     }
 
     /// Braucht die Hülle eine Notreparatur?
     pub fn hull_needs_patch(&self) -> bool {
-        self.ship.hull < self.ship.max_hull * HULL_PATCH_CAP - 0.5
+        self.ship.hull < self.ship.max_hull * HULL_PATCH_CAP - fx!(0.5)
     }
 
     /// Minispiele vor der Steuerung auswerten. Ergebnis: Slot-Tasten sind in diesem Tick
@@ -89,18 +89,18 @@ impl SimState {
         self.prev_slots = input.slots;
         let n = self.ship.thrusters.len();
         if self.repair.thrusters.len() != n {
-            self.repair.thrusters = vec![0.0; n];
+            self.repair.thrusters = vec![fx!(0.0); n];
         }
         if self.repair.held.len() != super::MAX_SLOTS {
-            self.repair.held = vec![0.0; super::MAX_SLOTS];
+            self.repair.held = vec![fx!(0.0); super::MAX_SLOTS];
         }
         for b in &mut self.repair.beats {
             b.age += DT;
         }
-        self.repair.beats.retain(|b| b.age < 1.2);
+        self.repair.beats.retain(|b| b.age < fx!(1.2));
         if self.ship.docked.is_some() || self.ship.destroyed || self.vote.is_some() {
             self.repair.active = false;
-            self.repair.rest = 0.0;
+            self.repair.rest = fx!(0.0);
             self.hack = None;
             return false;
         }
@@ -120,7 +120,7 @@ impl SimState {
         self.repair.beats.push(Beat {
             slot,
             hit,
-            age: 0.0,
+            age: fx!(0.0),
         });
         self.events.push(SimEvent::Beat { hit });
         hit
@@ -132,12 +132,12 @@ impl SimState {
         let hit = self.rhythm(slot);
         let p = &mut self.repair.thrusters[ti];
         *p = if hit {
-            *p + 1.0 / PATCH_HITS
+            *p + fx!(1.0) / PATCH_HITS
         } else {
-            (*p - 0.5 / PATCH_HITS).max(0.0)
+            (*p - fx!(0.5) / PATCH_HITS).max(fx!(0.0))
         };
-        if *p >= 1.0 - 1e-4 {
-            *p = 0.0;
+        if *p >= fx!(1.0) - fx!(1e-4) {
+            *p = fx!(0.0);
             self.finish_thruster_patch(ti, "im Takt geflickt");
         }
     }
@@ -157,7 +157,7 @@ impl SimState {
 
     fn update_repair(&mut self, input: &TickInput, edges: u32) -> bool {
         let speed = self.ship.vel.length();
-        let calm = speed < 0.6 && self.ship.ang_vel.abs() < 0.4;
+        let calm = speed < fx!(0.6) && self.ship.ang_vel.abs() < fx!(0.4);
         if !self.repair.active {
             // Ausgefallene Triebwerke lassen sich jederzeit im Takt flicken.
             for ti in 0..self.ship.thrusters.len() {
@@ -171,14 +171,14 @@ impl SimState {
                 self.repair.rest += DT;
                 if self.repair.rest >= REST_TO_REPAIR {
                     self.repair.active = true;
-                    self.repair.held.iter_mut().for_each(|h| *h = 0.0);
+                    self.repair.held.iter_mut().for_each(|h| *h = fx!(0.0));
                     self.toast(
                         "Notreparatur: Slot-Tasten im Takt drücken – lange halten zum Weiterfliegen",
                         ToastKind::Info,
                     );
                 }
             } else {
-                self.repair.rest = 0.0;
+                self.repair.rest = fx!(0.0);
             }
             return false;
         }
@@ -188,13 +188,13 @@ impl SimState {
             self.repair.held[slot] = if down {
                 self.repair.held[slot] + DT
             } else {
-                0.0
+                fx!(0.0)
             };
         }
         let leave = self.repair.held.iter().any(|h| *h >= HOLD_TO_LEAVE);
-        if leave || speed > 2.0 {
+        if leave || speed > fx!(2.0) {
             self.repair.active = false;
-            self.repair.rest = 0.0;
+            self.repair.rest = fx!(0.0);
             return false;
         }
         for slot in 0..super::MAX_SLOTS as u8 {
@@ -216,7 +216,7 @@ impl SimState {
         let thrusters_ok = self.ship.thrusters.iter().all(|t| !t.failed());
         if !self.hull_needs_patch() && thrusters_ok {
             self.repair.active = false;
-            self.repair.rest = 0.0;
+            self.repair.rest = fx!(0.0);
             self.toast(
                 "Notreparatur fertig – den Rest macht die Station",
                 ToastKind::Good,
@@ -228,11 +228,11 @@ impl SimState {
     /// Station mit gesichertem Port, die gerade nicht offen ist?
     pub fn port_locked(&self, si: usize) -> bool {
         self.data.world.stations[si].hack.is_some()
-            && self.time >= self.unlocked.get(si).copied().unwrap_or(0.0)
+            && self.time >= self.unlocked.get(si).copied().unwrap_or(fx!(0.0))
     }
 
     fn try_start_hack(&mut self) {
-        if self.ship.vel.length() > 5.0 {
+        if self.ship.vel.length() > fx!(5.0) {
             return;
         }
         for si in 0..self.world.stations.len() {
@@ -245,7 +245,7 @@ impl SimState {
             let near = self.world.stations[si]
                 .pads
                 .iter()
-                .any(|&p| (self.world.pads[p].center - self.ship.pos).length() < 30.0);
+                .any(|&p| (self.world.pads[p].center - self.ship.pos).shorter_than(fx!(30.0)));
             if !near {
                 continue;
             }
@@ -295,13 +295,13 @@ impl SimState {
         let far = self.world.stations[h.station]
             .pads
             .iter()
-            .all(|&p| (self.world.pads[p].center - self.ship.pos).length() > 60.0);
+            .all(|&p| (self.world.pads[p].center - self.ship.pos).longer_than(fx!(60.0)));
         if far {
             self.hack = None;
             return;
         }
         h.left -= DT;
-        let mut failed = h.left <= 0.0;
+        let mut failed = h.left <= fx!(0.0);
         for slot in 0..super::MAX_SLOTS as u8 {
             if failed || h.done >= h.pattern.len() || edges >> slot & 1 == 0 {
                 continue;
@@ -319,11 +319,11 @@ impl SimState {
             let lock = self.data.world.stations[si]
                 .hack
                 .as_ref()
-                .map_or(30.0, |d| d.lockout);
+                .map_or(fx!(30.0), |d| d.lockout);
             self.hack_lockout[si] = self.time + lock;
             // Störimpuls: der Schild bricht zusammen.
-            self.ship.shield = 0.0;
-            self.ship.since_hit = 0.0;
+            self.ship.shield = fx!(0.0);
+            self.ship.since_hit = fx!(0.0);
             self.events.push(SimEvent::Alarm);
             self.toast(
                 format!("Alarm! Störimpuls – Schild weg, Port {lock:.0} s gesperrt"),
@@ -334,11 +334,11 @@ impl SimState {
             let open = self.data.world.stations[si]
                 .hack
                 .as_ref()
-                .map_or(600.0, |d| d.open);
+                .map_or(fx!(600.0), |d| d.open);
             self.unlocked[si] = self.time + open;
             self.events.push(SimEvent::HackDone);
             self.toast(
-                format!("Port geknackt – {:.0} Minuten offen", open / 60.0),
+                format!("Port geknackt – {:.0} Minuten offen", open / fx!(60.0)),
                 ToastKind::Good,
             );
         } else {
@@ -366,7 +366,7 @@ impl SimState {
             .filter(|(_, t)| t.failed())
             .map(|(i, t)| {
                 let to: Vec2 = self.ship.to_world(t.pos) - mount;
-                let off = angle_diff(f32::atan2(to.y, to.x), aim).abs().to_degrees();
+                let off = angle_diff(Fx::atan2(to.y, to.x), aim).abs().to_degrees();
                 (i, off, to.length())
             })
             .filter(|(_, off, d)| *off <= CRANE_PATCH_AIM && *d <= self.ship.crane_range)

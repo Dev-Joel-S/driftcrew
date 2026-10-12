@@ -1,6 +1,7 @@
 //! Tests für Phase 9: Dockgebühr, Versicherung, Schiffskredit, schwankende Preise und die
 //! Abrechnung am Auftragsende.
 
+use crate::sim::fx::Fx;
 use std::sync::Arc;
 
 use super::data::{CrewSave, GameData, Ore};
@@ -52,20 +53,20 @@ fn delivery(s: &mut SimState, to: usize, reward: u32) -> u32 {
             from: Owner::Station(0),
             to,
             cargo: "Test".into(),
-            mass: 1.0,
+            mass: fx!(1.0),
             traits: Default::default(),
         },
         reward,
         origin: Some(Owner::Station(0)),
         giver: None,
         start: Some(Box::new(s.stats.clone())),
-        top_speed: 0.0,
+        top_speed: fx!(0.0),
         max_strain: None,
         // Keine Boni, damit die Rechnung übersichtlich bleibt: Richtzeit schon vorbei und
         // ein Kratzer (kein Sauberkeitsbonus).
-        par: -1.0,
+        par: -fx!(1.0),
     });
-    s.stats.damage += 5.0;
+    s.stats.damage += fx!(5.0);
     id
 }
 
@@ -73,8 +74,8 @@ fn delivery(s: &mut SimState, to: usize, reward: u32) -> u32 {
 fn dock_fee_depends_on_station_reputation_and_grace() {
     let mut s = sim();
     let kepler = st(&s, "kepler");
-    let base = s.data.shop.finance.dock_fee as f32 * s.world.stations[kepler].prices.dock;
-    assert_eq!(s.dock_fee_at(kepler), base.round() as u32);
+    let base = Fx::from(s.data.shop.finance.dock_fee) * s.world.stations[kepler].prices.dock;
+    assert_eq!(s.dock_fee_at(kepler), base.round_int() as u32);
     let c0 = s.crew.credits;
     dock_at(&mut s, kepler);
     assert_eq!(s.crew.credits, c0 - s.dock_fee_at(kepler));
@@ -83,10 +84,10 @@ fn dock_fee_depends_on_station_reputation_and_grace() {
     dock_at(&mut s, kepler);
     assert_eq!(s.crew.credits, c1);
     // Später wieder: zahlen. Mit Ruf billiger.
-    s.time += s.data.shop.finance.dock_grace + 1.0;
+    s.time += s.data.shop.finance.dock_grace + fx!(1.0);
     s.crew.reputation[kepler] = 3;
     let fee = s.dock_fee_at(kepler);
-    assert_eq!(fee, (base * 0.8).round() as u32);
+    assert_eq!(fee, (base * fx!(0.8)).round_int() as u32);
     dock_at(&mut s, kepler);
     assert_eq!(s.crew.credits, c1 - fee);
     assert_eq!(s.stats.expenses.dock, c0 - c1 + fee);
@@ -106,7 +107,7 @@ fn insurance_costs_a_premium_and_covers_salvage() {
     let cov = s.data.shop.finance.coverage;
     assert_eq!(
         s.salvage_fee_now(),
-        (gross as f32 * (1.0 - cov)).round() as u32
+        (Fx::from(gross) * (fx!(1.0) - cov)).round_int() as u32
     );
 
     // Prämie geht von der Belohnung ab.
@@ -126,7 +127,7 @@ fn insurance_costs_a_premium_and_covers_salvage() {
     let before = s.crew.credits;
     let expect = s.salvage_fee_now();
     s.ship.docked = None;
-    s.ship.hull = 0.0;
+    s.ship.hull = fx!(0.0);
     s.step(&TickInput::default());
     assert!(s.ship.destroyed);
     assert_eq!(s.crew.credits, before - expect);
@@ -195,7 +196,7 @@ fn installment_never_exceeds_earnings_and_loan_ends() {
     dock_at(&mut s, kepler);
     assert_eq!(s.report.as_ref().unwrap().installment, 60);
     assert_eq!(s.crew.loan.as_ref().unwrap().left, 90);
-    s.time += 1000.0;
+    s.time += fx!(1000.0);
     delivery(&mut s, kepler, 300);
     dock_at(&mut s, kepler);
     assert_eq!(s.report.as_ref().unwrap().installment, 90);
@@ -208,36 +209,36 @@ fn selling_lowers_prices_that_recover_and_demand_raises_them() {
     let kepler = st(&s, "kepler");
     let at = Owner::Station(kepler);
     let p0 = s.ore_price_at(at, Ore::Kobalt);
-    s.ship.store(CargoKind::Ore(Ore::Kobalt), 10.0);
+    s.ship.store(CargoKind::Ore(Ore::Kobalt), fx!(10.0));
     s.ship.docked = None;
     s.dock_at_station(kepler);
     s.sell_ore();
     let f = s.market_factor(at, Ore::Kobalt);
     assert!(
-        f < 0.8,
+        f < fx!(0.8),
         "ein voller Laderaum drückt den Preis deutlich ({f})"
     );
     assert!(s.ore_price_at(at, Ore::Kobalt) < p0);
     // Andere Orte und Sorten bleiben unberührt.
-    assert_eq!(s.market_factor(Owner::Station(0), Ore::Kobalt), 1.0);
-    assert_eq!(s.market_factor(at, Ore::Ionit), 1.0);
+    assert_eq!(s.market_factor(Owner::Station(0), Ore::Kobalt), fx!(1.0));
+    assert_eq!(s.market_factor(at, Ore::Ionit), fx!(1.0));
     // Erholt sich mit der Zeit.
-    s.demand_timer = 1e9;
-    for _ in 0..(400.0 / DT) as usize {
+    s.demand_timer = fx!(1e9);
+    for _ in 0..(fx!(400.0) / DT).to_usize() {
         s.update_market();
     }
-    assert!(s.market_factor(at, Ore::Kobalt) > 0.95);
+    assert!(s.market_factor(at, Ore::Kobalt) > fx!(0.95));
 
     // Nachfrage: der Preis steigt dort.
     s.demand = Some(super::finance::Demand {
         owner: at,
         ore: Ore::Ionit,
-        left: 300.0,
+        left: fx!(300.0),
     });
-    for _ in 0..(60.0 / DT) as usize {
+    for _ in 0..(fx!(60.0) / DT).to_usize() {
         s.update_market();
     }
-    assert!(s.market_factor(at, Ore::Ionit) > 1.25);
+    assert!(s.market_factor(at, Ore::Ionit) > fx!(1.25));
 
     // Alles bleibt im Spielstand.
     s.crew.insured = true;
@@ -250,7 +251,7 @@ fn selling_lowers_prices_that_recover_and_demand_raises_them() {
     let data = s.data.clone();
     let def = data.ship(&save.current_ship).clone();
     let s2 = SimState::new(data, &save, Loadout::full(&def), 1);
-    assert!((s2.market_factor(at, Ore::Ionit) - s.market_factor(at, Ore::Ionit)).abs() < 1e-4);
+    assert!((s2.market_factor(at, Ore::Ionit) - s.market_factor(at, Ore::Ionit)).abs() < fx!(1e-4));
     assert_eq!(s2.demand.map(|d| (d.owner, d.ore)), Some((at, Ore::Ionit)));
     assert!(s2.crew.insured);
     assert_eq!(s2.crew.loan, s.crew.loan);
@@ -260,8 +261,8 @@ fn selling_lowers_prices_that_recover_and_demand_raises_them() {
 fn demand_comes_by_itself_deterministically() {
     let mut a = sim();
     let mut b = sim();
-    a.demand_timer = 0.0;
-    b.demand_timer = 0.0;
+    a.demand_timer = fx!(0.0);
+    b.demand_timer = fx!(0.0);
     a.update_market();
     b.update_market();
     assert!(a.demand.is_some());
@@ -278,13 +279,13 @@ fn report_lists_costs_along_the_way() {
     let nova = st(&s, "nova");
     delivery(&mut s, kepler, 500);
     // Unterwegs: Andocken an Nova (Gebühr) und Reparatur.
-    s.time += 1000.0;
+    s.time += fx!(1000.0);
     dock_at(&mut s, nova);
-    s.ship.hull = s.ship.max_hull * 0.5;
+    s.ship.hull = s.ship.max_hull * fx!(0.5);
     buy(&mut s, Purchase::Service("repair".into()));
     let repair = 1000 - s.crew.credits - s.dock_fee_at(nova);
     assert!(repair > 0);
-    s.time += 1000.0;
+    s.time += fx!(1000.0);
     dock_at(&mut s, kepler);
     let r = s.report.clone().unwrap();
     assert_eq!(

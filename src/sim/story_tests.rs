@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::data::{CrewSave, GameData};
 use super::ship::{CargoKind, Loadout};
@@ -27,8 +27,8 @@ fn reload(s: &SimState) -> SimState {
     SimState::new(data, &save, Loadout::full(&def), 1)
 }
 
-fn idle(s: &mut SimState, seconds: f32) {
-    for _ in 0..(seconds * 60.0) as u32 {
+fn idle(s: &mut SimState, seconds: Fx) {
+    for _ in 0..(seconds * fx!(60.0)).to_u32() {
         s.step(&TickInput::default());
     }
 }
@@ -38,7 +38,7 @@ fn float_at(s: &mut SimState, pos: Vec2) {
     s.ship.pos = pos;
     s.ship.prev_pos = pos;
     s.ship.vel = Vec2::ZERO;
-    s.ship.ang_vel = 0.0;
+    s.ship.ang_vel = fx!(0.0);
 }
 
 fn artifact_body(s: &SimState, id: &str) -> Option<usize> {
@@ -51,7 +51,7 @@ fn artifact_body(s: &SimState, id: &str) -> Option<usize> {
 fn pick_up(s: &mut SimState, id: &str) {
     let bi = artifact_body(s, id).expect("Artefakt liegt in der Welt");
     let p = s.bodies[bi].pos;
-    float_at(s, p + Vec2::new(0.0, 6.0));
+    float_at(s, p + Vec2::new(fx!(0.0), fx!(6.0)));
     assert!(s.try_stow(bi), "passt in den Frachtraum");
 }
 
@@ -85,7 +85,7 @@ fn artifacts_lie_once_per_save_at_seeded_sites() {
         .map(|p| Vec2::new(p.0, p.1))
         .collect();
     for p in a.artifact_positions() {
-        assert!(sites.iter().any(|q| (*q - p).length() < 1e-3));
+        assert!(sites.iter().any(|q| (*q - p).length() < fx!(1e-3)));
     }
     let differs =
         (2..8).any(|seed| sim_seeded(seed).artifact_positions() != a.artifact_positions());
@@ -101,19 +101,19 @@ fn artifacts_aboard_weigh_and_have_side_effects() {
     let mut s = sim();
     let mass = s.ship.mass;
     pick_up(&mut s, "sternkarte");
-    assert!(s.ship.mass > mass + 0.5, "Masse an Bord");
-    assert!(s.artifact_jam() > 0.3, "stört die Instrumente");
+    assert!(s.ship.mass > mass + fx!(0.5), "Masse an Bord");
+    assert!(s.artifact_jam() > fx!(0.3), "stört die Instrumente");
     pick_up(&mut s, "antriebskristall");
-    assert!(s.artifact_heat() > 1.2, "mehr Treibstoffverbrauch");
+    assert!(s.artifact_heat() > fx!(1.2), "mehr Treibstoffverbrauch");
     pick_up(&mut s, "resonanzkern");
     assert!(s.artifact_lure());
     // Die Stimmgabel bringt das Schiff ins Trudeln.
     pick_up(&mut s, "stimmgabel");
     let p = s.ship.pos;
     float_at(&mut s, p);
-    s.ship.angle = 0.0;
-    idle(&mut s, 3.0);
-    assert!(s.ship.ang_vel.abs() > 0.01 || s.ship.angle.abs() > 0.01);
+    s.ship.angle = fx!(0.0);
+    idle(&mut s, fx!(3.0));
+    assert!(s.ship.ang_vel.abs() > fx!(0.01) || s.ship.angle.abs() > fx!(0.01));
 }
 
 #[test]
@@ -141,14 +141,14 @@ fn artifacts_stay_in_the_wreck_or_return_home() {
     let mut s = sim();
     let home = s.bodies[artifact_body(&s, "stimmgabel").unwrap()].pos;
     pick_up(&mut s, "stimmgabel");
-    let at = Vec2::new(300.0, 300.0);
+    let at = Vec2::new(fx!(300.0), fx!(300.0));
     float_at(&mut s, at);
-    s.ship.hull = 0.0;
-    s.ship.shield = 0.0;
+    s.ship.hull = fx!(0.0);
+    s.ship.shield = fx!(0.0);
     s.step(&TickInput::default());
     assert!(s.ship.destroyed);
     let p = s.bodies[artifact_body(&s, "stimmgabel").expect("liegt im Wrack")].pos;
-    assert!((p - at).length() < 10.0, "am Wrack: {p:?}");
+    assert!((p - at).length() < fx!(10.0), "am Wrack: {p:?}");
     // Mit abgeschalteter Regel kehrt es an den Fundort zurück.
     let mut s = sim();
     s.step(&TickInput {
@@ -157,11 +157,11 @@ fn artifacts_stay_in_the_wreck_or_return_home() {
     });
     pick_up(&mut s, "stimmgabel");
     float_at(&mut s, at);
-    s.ship.hull = 0.0;
-    s.ship.shield = 0.0;
+    s.ship.hull = fx!(0.0);
+    s.ship.shield = fx!(0.0);
     s.step(&TickInput::default());
     let p = s.bodies[artifact_body(&s, "stimmgabel").unwrap()].pos;
-    assert!((p - home).length() < 1.0);
+    assert!((p - home).length() < fx!(1.0));
     assert!(!s.to_save().story.stay_in_wreck);
 }
 
@@ -169,11 +169,11 @@ fn artifacts_stay_in_the_wreck_or_return_home() {
 fn an_artifact_aboard_is_saved_where_the_ship_is() {
     let mut s = sim();
     pick_up(&mut s, "sternkarte");
-    let at = Vec2::new(-200.0, 400.0);
+    let at = Vec2::new(-fx!(200.0), fx!(400.0));
     float_at(&mut s, at);
     let s2 = reload(&s);
     let p = s2.bodies[artifact_body(&s2, "sternkarte").unwrap()].pos;
-    assert!((p - at).length() < 1e-3);
+    assert!((p - at).length() < fx!(1e-3));
 }
 
 #[test]
@@ -183,15 +183,15 @@ fn logbook_entries_come_from_archives_echoes_and_wrecks() {
     dock_at(&mut s, "kepler");
     assert!(s.story.logs.contains(&"archiv_kepler".to_string()));
     // Funkfetzen: in der Nähe von Ember scannen.
-    float_at(&mut s, Vec2::new(-700.0, -650.0));
+    float_at(&mut s, Vec2::new(-fx!(700.0), -fx!(650.0)));
     assert!(s.start_scan(s.ship.pos));
     assert!(s.story.logs.contains(&"echo_ember".to_string()));
     // Bordbuch: ein Wrack im Scannerring.
-    let wreck = Vec2::new(-1240.0, 1560.0);
-    float_at(&mut s, wreck + Vec2::new(0.0, 60.0));
+    let wreck = Vec2::new(-fx!(1240.0), fx!(1560.0));
+    float_at(&mut s, wreck + Vec2::new(fx!(0.0), fx!(60.0)));
     s.scan = None;
     assert!(s.start_scan(s.ship.pos));
-    idle(&mut s, 4.0);
+    idle(&mut s, fx!(4.0));
     assert!(
         s.story.logs.contains(&"wrack_kassiopeia".to_string()),
         "{:?}",
@@ -201,32 +201,32 @@ fn logbook_entries_come_from_archives_echoes_and_wrecks() {
     let n = s.story.logs.len();
     s.scan = None;
     s.start_scan(s.ship.pos);
-    idle(&mut s, 4.0);
+    idle(&mut s, fx!(4.0));
     assert_eq!(s.story.logs.len(), n);
 }
 
 #[test]
 fn chapters_start_with_their_requirements_and_pay_out() {
     let mut s = sim();
-    idle(&mut s, 1.0);
+    idle(&mut s, fx!(1.0));
     assert!(!s.story.started, "erst nach dem ersten Auftrag");
     s.crew.missions_done = 1;
-    idle(&mut s, 1.0);
+    idle(&mut s, fx!(1.0));
     assert!(s.story.started);
     // Kapitel 1: bei der Anomalie scannen.
     let credits = s.crew.credits;
-    float_at(&mut s, Vec2::new(980.0, -900.0));
-    s.ship.invulnerable = 10.0;
+    float_at(&mut s, Vec2::new(fx!(980.0), -fx!(900.0)));
+    s.ship.invulnerable = fx!(10.0);
     assert!(s.start_scan(s.ship.pos));
     assert_eq!(s.story.chapter, 1);
     assert_eq!(s.crew.credits, credits + s.data.story.chapters[0].reward);
     assert!(s.story.logs.contains(&"kapitel_0".to_string()));
     // Kapitel 2 wartet auf Ruf, dann reicht ein abgeliefertes Artefakt.
-    idle(&mut s, 1.0);
+    idle(&mut s, fx!(1.0));
     assert!(!s.story.started);
     assert!(!s.chapter_missing().is_empty());
     s.crew.reputation[0] = 3;
-    idle(&mut s, 1.0);
+    idle(&mut s, fx!(1.0));
     assert!(s.story.started);
     pick_up(&mut s, "leerstein");
     dock_at(&mut s, "nova");
@@ -245,7 +245,7 @@ fn monuments_wake_with_enough_artifacts_and_open_their_doors() {
         .position(|m| m.id == "signalturm")
         .unwrap();
     let pos = s.world.monuments[turm].pos;
-    float_at(&mut s, pos + Vec2::new(50.0, 0.0));
+    float_at(&mut s, pos + Vec2::new(fx!(50.0), fx!(0.0)));
     assert!(s.start_scan(s.ship.pos));
     assert!(!s.world.monuments[turm].awake, "zu wenig Artefakte");
     assert!(s.events.iter().any(|e| matches!(e, SimEvent::Story { .. })));
@@ -274,7 +274,7 @@ fn monuments_wake_with_enough_artifacts_and_open_their_doors() {
         .artifacts
         .extend(["stimmgabel".to_string(), "resonanzkern".to_string()]);
     let p = s.world.monuments[tor].pos;
-    float_at(&mut s, p + Vec2::new(-70.0, 0.0));
+    float_at(&mut s, p + Vec2::new(-fx!(70.0), fx!(0.0)));
     s.scan = None;
     assert!(s.start_scan(s.ship.pos));
     assert!(s.world.monuments[tor].awake);
@@ -292,7 +292,7 @@ fn lure_artifact_draws_pirates_from_further_away() {
     let n = s.data.traffic.nests[0].clone();
     let nest = Vec2::new(n.center.0, n.center.1);
     // Außerhalb der normalen Reichweite, aber innerhalb der Lockreichweite.
-    float_at(&mut s, nest + Vec2::new(0.0, n.radius + 900.0));
+    float_at(&mut s, nest + Vec2::new(fx!(0.0), n.radius + fx!(900.0)));
     for _ in 0..60 {
         let p = s.ship.pos;
         float_at(&mut s, p);
@@ -309,15 +309,15 @@ fn hidden_artifact_gives_no_scanner_signal() {
     for id in ["leerstein", "sternkarte"] {
         let bi = artifact_body(&s, id).unwrap();
         let p = s.bodies[bi].pos;
-        float_at(&mut s, p + Vec2::new(0.0, 40.0));
+        float_at(&mut s, p + Vec2::new(fx!(0.0), fx!(40.0)));
         s.scan = None;
         s.blips.clear();
         assert!(s.start_scan(s.ship.pos));
-        idle(&mut s, 3.0);
+        idle(&mut s, fx!(3.0));
         let signal = s
             .blips
             .iter()
-            .any(|b| b.kind == super::sector::BlipKind::Signal && (b.pos - p).length() < 5.0);
+            .any(|b| b.kind == super::sector::BlipKind::Signal && (b.pos - p).length() < fx!(5.0));
         assert_eq!(signal, id != "leerstein", "{id}");
     }
     let _ = CargoKind::Artifact { id: String::new() };

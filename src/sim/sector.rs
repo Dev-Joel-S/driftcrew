@@ -1,7 +1,7 @@
 //! Sektoren mit Effekten (Trümmer, Nebel, Sonnenwind), Zufallsereignisse
 //! (Meteoritenschauer, Notsignal, Sonneneruption), Scanner-Impulse und Kartendaten.
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::data::{Ore, SectorEffect, v};
 use super::rng::hash32;
@@ -10,15 +10,15 @@ use super::{Body, BodyKind, DT, SimEvent, SimState, ToastKind};
 /// Wie stark wirken die Sektoren an einem Punkt?
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SectorState {
-    pub debris: f32,
-    pub nebula: f32,
+    pub debris: Fx,
+    pub nebula: Fx,
     pub wind: Vec2,
 }
 
 /// Ausbreitungsgeschwindigkeit des Scanner-Impulses (m/s).
-pub const SCAN_SPEED: f32 = 320.0;
+pub const SCAN_SPEED: Fx = fx!(320.0);
 /// So lange bleiben gefundene Dinge markiert (s).
-pub const BLIP_SECONDS: f32 = 30.0;
+pub const BLIP_SECONDS: Fx = fx!(30.0);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum BlipKind {
@@ -48,14 +48,14 @@ impl BlipKind {
 pub struct ScanBlip {
     pub pos: Vec2,
     pub kind: BlipKind,
-    pub life: f32,
+    pub life: Fx,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScanPulse {
     pub origin: Vec2,
-    pub radius: f32,
-    pub max: f32,
+    pub radius: Fx,
+    pub max: Fx,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,21 +67,21 @@ pub enum EventKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct WorldEvent {
     pub kind: EventKind,
-    pub time_left: f32,
+    pub time_left: Fx,
     /// Herkunftsrichtung (Meteoritenschauer).
     pub dir: Vec2,
-    pub spawn_timer: f32,
+    pub spawn_timer: Fx,
 }
 
 impl WorldEvent {
     pub fn flare_active(&self) -> bool {
-        self.kind == EventKind::SolarFlare && self.time_left > 0.0
+        self.kind == EventKind::SolarFlare && self.time_left > fx!(0.0)
     }
 }
 
 /// Himmelsrichtung für Meldungen.
 pub fn compass(dir: Vec2) -> &'static str {
-    let a = dir.y.atan2(dir.x).to_degrees().rem_euclid(360.0);
+    let a = dir.y.atan2(dir.x).to_degrees().rem_euclid(fx!(360.0));
     const NAMES: [&str; 8] = [
         "Osten",
         "Nordosten",
@@ -92,7 +92,7 @@ pub fn compass(dir: Vec2) -> &'static str {
         "Süden",
         "Südosten",
     ];
-    NAMES[(((a + 22.5) / 45.0) as usize) % 8]
+    NAMES[((a + fx!(22.5)) / fx!(45.0)).to_usize() % 8]
 }
 
 impl SimState {
@@ -102,8 +102,8 @@ impl SimState {
         for r in &self.data.world.regions {
             let Some(e) = r.effect else { continue };
             let d = (p - v(r.center)).length();
-            let k = ((r.radius - d) / (r.radius * 0.3)).clamp(0.0, 1.0);
-            if k <= 0.0 {
+            let k = ((r.radius - d) / (r.radius * fx!(0.3))).clamp(fx!(0.0), fx!(1.0));
+            if k <= fx!(0.0) {
                 continue;
             }
             match e {
@@ -146,7 +146,7 @@ impl SimState {
     fn maintain_debris(&mut self) {
         let me = self.ship.pos;
         for b in &mut self.bodies {
-            if matches!(b.kind, BodyKind::Debris) && (b.pos - me).length() > 240.0 {
+            if matches!(b.kind, BodyKind::Debris) && (b.pos - me).longer_than(fx!(240.0)) {
                 b.alive = false;
             }
         }
@@ -156,43 +156,50 @@ impl SimState {
         let mut density = self.sector_at(me).debris;
         // Geräumte Umgebung (76): kaum noch Schrott.
         if self.effect_near(super::data::EffectKind::Cleared, me) {
-            density *= 0.15;
+            density *= fx!(0.15);
         }
         // Etwa ein Stück auf 4000 m² bei voller Dichte – genug Gefahr, aber zum Ausweichen.
-        let want = (density * 22.0) as usize;
+        let want = (density * fx!(22.0)).to_usize();
         let have = self
             .bodies
             .iter()
             .filter(|b| b.alive && matches!(b.kind, BodyKind::Debris))
             .count();
         // Erst füllen (auch nah am Schiff), danach nur noch außerhalb der Sicht nachlegen.
-        let near: f32 = if have < want / 2 { 25.0 } else { 90.0 };
+        let near: Fx = if have < want / 2 {
+            fx!(25.0)
+        } else {
+            fx!(90.0)
+        };
         for _ in have..want.min(have + 10) {
-            let a = self.rng.range(0.0, std::f32::consts::TAU);
+            let a = self.rng.range(fx!(0.0), Fx::TAU);
             // Flächengleich verteilt zwischen `near` und 170 m.
-            let u = self.rng.f32();
-            let d = (near * near + (170.0f32 * 170.0 - near * near) * u).sqrt();
+            let u = self.rng.unit();
+            let d = (near * near + (fx!(170.0) * fx!(170.0) - near * near) * u).sqrt();
             let pos = me + Vec2::new(a.cos(), a.sin()) * d;
-            if self.point_in_static(pos) || self.sector_at(pos).debris <= 0.05 {
+            if self.point_in_static(pos) || self.sector_at(pos).debris <= fx!(0.05) {
                 continue;
             }
-            let r = self.rng.range(0.5, 1.6);
+            let r = self.rng.range(fx!(0.5), fx!(1.6));
             let id = self.next_id();
-            let vel = Vec2::new(self.rng.range(-1.0, 1.0), self.rng.range(-1.0, 1.0)) * 2.5;
+            let vel = Vec2::new(
+                self.rng.range(-fx!(1.0), fx!(1.0)),
+                self.rng.range(-fx!(1.0), fx!(1.0)),
+            ) * fx!(2.5);
             self.bodies.push(Body {
                 id,
                 kind: BodyKind::Debris,
                 pos,
                 vel,
                 angle: a,
-                ang_vel: self.rng.range(-2.0, 2.0),
+                ang_vel: self.rng.range(-fx!(2.0), fx!(2.0)),
                 radius: r,
-                mass: 0.8 + r * r * 2.0,
+                mass: fx!(0.8) + r * r * fx!(2.0),
                 prev_pos: pos,
                 prev_angle: a,
                 alive: true,
                 seed: hash32(id),
-                age: 0.0,
+                age: fx!(0.0),
             });
         }
     }
@@ -201,15 +208,15 @@ impl SimState {
         let flying = self.ship.docked.is_none() && !self.ship.destroyed;
         if let Some(mut e) = self.event.take() {
             e.time_left -= DT;
-            if e.kind == EventKind::MeteorShower && e.time_left < 8.0 && flying {
+            if e.kind == EventKind::MeteorShower && e.time_left < fx!(8.0) && flying {
                 e.spawn_timer -= DT;
-                if e.spawn_timer <= 0.0 {
-                    let n = self.data.world.events.shower_meteors.max(1) as f32;
-                    e.spawn_timer = 8.0 / n;
+                if e.spawn_timer <= fx!(0.0) {
+                    let n = Fx::from(self.data.world.events.shower_meteors.max(1));
+                    e.spawn_timer = fx!(8.0) / n;
                     self.spawn_shower_meteor(e.dir);
                 }
             }
-            if e.time_left > 0.0 {
+            if e.time_left > fx!(0.0) {
                 self.event = Some(e);
             } else if e.kind == EventKind::SolarFlare {
                 self.toast(
@@ -223,14 +230,14 @@ impl SimState {
             return;
         }
         self.event_timer -= DT;
-        if self.event_timer > 0.0 {
+        if self.event_timer > fx!(0.0) {
             return;
         }
         let ev = self.data.world.events.clone();
         self.event_timer = self.rng.range(ev.interval.0, ev.interval.1);
-        let roll = self.rng.f32();
-        if roll < 0.4 {
-            let a = self.rng.range(0.0, std::f32::consts::TAU);
+        let roll = self.rng.unit();
+        if roll < fx!(0.4) {
+            let a = self.rng.range(fx!(0.0), Fx::TAU);
             let dir = Vec2::new(a.cos(), a.sin());
             self.toast(
                 format!(
@@ -241,14 +248,14 @@ impl SimState {
             );
             self.event = Some(WorldEvent {
                 kind: EventKind::MeteorShower,
-                time_left: 11.0,
+                time_left: fx!(11.0),
                 dir,
-                spawn_timer: 0.0,
+                spawn_timer: fx!(0.0),
             });
-        } else if roll < 0.75 {
+        } else if roll < fx!(0.75) {
             self.spontaneous_distress(ev.distress_bonus);
         } else {
-            self.ship.shield *= 0.4;
+            self.ship.shield *= fx!(0.4);
             self.toast(
                 format!(
                     "Sonneneruption! Schild geschwächt, Radar und Scanner gestört ({:.0} s)",
@@ -260,49 +267,52 @@ impl SimState {
                 kind: EventKind::SolarFlare,
                 time_left: ev.flare_seconds,
                 dir: Vec2::ZERO,
-                spawn_timer: 0.0,
+                spawn_timer: fx!(0.0),
             });
         }
     }
 
     fn spawn_shower_meteor(&mut self, dir: Vec2) {
         let side = Vec2::new(-dir.y, dir.x);
-        let start = self.ship.pos + dir * 140.0 + side * self.rng.range(-60.0, 60.0);
+        let start = self.ship.pos + dir * fx!(140.0) + side * self.rng.range(-fx!(60.0), fx!(60.0));
         let target = self.ship.pos
-            + self.ship.vel * 2.0
-            + Vec2::new(self.rng.range(-25.0, 25.0), self.rng.range(-25.0, 25.0));
-        let speed = self.rng.range(22.0, 34.0);
+            + self.ship.vel * fx!(2.0)
+            + Vec2::new(
+                self.rng.range(-fx!(25.0), fx!(25.0)),
+                self.rng.range(-fx!(25.0), fx!(25.0)),
+            );
+        let speed = self.rng.range(fx!(22.0), fx!(34.0));
         let vel = (target - start).normalize_or_zero() * speed;
-        let r = self.rng.range(0.6, 1.5);
+        let r = self.rng.range(fx!(0.6), fx!(1.5));
         let id = self.next_id();
         self.bodies.push(Body {
             id,
             kind: BodyKind::Meteor,
             pos: start,
             vel,
-            angle: 0.0,
-            ang_vel: self.rng.range(-3.0, 3.0),
+            angle: fx!(0.0),
+            ang_vel: self.rng.range(-fx!(3.0), fx!(3.0)),
             radius: r,
-            mass: r * r * 3.0,
+            mass: r * r * fx!(3.0),
             prev_pos: start,
-            prev_angle: 0.0,
+            prev_angle: fx!(0.0),
             alive: true,
             seed: hash32(id),
-            age: 0.0,
+            age: fx!(0.0),
         });
     }
 
     /// Spontanes Notsignal in der Nähe: höher bezahlt, auf der Karte annehmbar.
-    fn spontaneous_distress(&mut self, bonus: f32) {
-        let a = self.rng.range(0.0, std::f32::consts::TAU);
-        let d = self.rng.range(260.0, 480.0);
+    fn spontaneous_distress(&mut self, bonus: Fx) {
+        let a = self.rng.range(fx!(0.0), Fx::TAU);
+        let d = self.rng.range(fx!(260.0), fx!(480.0));
         let mut site = self.ship.pos + Vec2::new(a.cos(), a.sin()) * d;
-        let lim = self.world.radius * 0.95;
+        let lim = self.world.radius * fx!(0.95);
         if site.length() > lim {
             site = site.normalize() * lim;
         }
         let mut m = self.generate_distress_at(site);
-        m.reward = ((m.reward as f32 * bonus / 5.0).round() * 5.0) as u32;
+        m.reward = ((Fx::from(m.reward) * bonus / fx!(5.0)).round() * fx!(5.0)).to_u32();
         let title = m.title(self);
         self.offers.push(m);
         self.toast(
@@ -323,14 +333,15 @@ impl SimState {
         let nebula = self.sector_at(origin).nebula;
         // Artefakte an Bord stören den Scanner ebenfalls.
         let jam = self.artifact_jam();
-        let mut max = self.ship.scan_range * (1.0 - 0.55 * nebula) * (1.0 - 0.6 * jam);
+        let mut max =
+            self.ship.scan_range * (fx!(1.0) - fx!(0.55) * nebula) * (fx!(1.0) - fx!(0.6) * jam);
         // Reparierter Sender in der Nähe (76): Scanner reicht weiter.
         if self.effect_near(super::data::EffectKind::Beacon, origin) {
-            max *= 1.5;
+            max *= fx!(1.5);
         }
         self.scan = Some(ScanPulse {
             origin,
-            radius: 0.0,
+            radius: fx!(0.0),
             max,
         });
         self.events.push(SimEvent::ScanPulse {
@@ -345,7 +356,7 @@ impl SimState {
         for b in &mut self.blips {
             b.life -= DT;
         }
-        self.blips.retain(|b| b.life > 0.0);
+        self.blips.retain(|b| b.life > fx!(0.0));
         let Some(mut p) = self.scan.take() else {
             return;
         };
@@ -387,7 +398,7 @@ impl SimState {
         for pl in &self.world.planets {
             for d in &pl.deposits {
                 let q = pl.pos + Vec2::new(d.angle.cos(), d.angle.sin()) * pl.radius;
-                if d.amount > 0.5 && ring(q) {
+                if d.amount > fx!(0.5) && ring(q) {
                     found.push(ScanBlip {
                         pos: q,
                         kind: BlipKind::Deposit(pl.ore),
@@ -402,7 +413,7 @@ impl SimState {
         }
         // Gefundenes ersetzt alte Markierungen am selben Ort.
         for f in found {
-            self.blips.retain(|b| (b.pos - f.pos).length() > 2.0);
+            self.blips.retain(|b| (b.pos - f.pos).longer_than(fx!(2.0)));
             self.blips.push(f);
         }
         if p.radius >= p.max {
@@ -423,8 +434,8 @@ impl SimState {
     /// Wert der unverkauften Kartendaten hier.
     pub fn charts_value(&self) -> u32 {
         let rep = self.docked_station().map_or(0, |si| self.rep_level_at(si));
-        let k = 1.0 + 0.1 * rep as f32;
-        (self.charts_unsold as f32 * self.data.shop.chart_price as f32 * k).round() as u32
+        let k = fx!(1.0) + fx!(0.1) * Fx::from(rep);
+        (Fx::from(self.charts_unsold) * Fx::from(self.data.shop.chart_price) * k).round_int() as u32
     }
 
     pub(crate) fn sell_charts(&mut self) {
@@ -451,6 +462,6 @@ mod tests {
     fn compass_names() {
         assert_eq!(compass(Vec2::X), "Osten");
         assert_eq!(compass(Vec2::Y), "Norden");
-        assert_eq!(compass(Vec2::new(-1.0, -1.0)), "Südwesten");
+        assert_eq!(compass(Vec2::new(-fx!(1.0), -fx!(1.0))), "Südwesten");
     }
 }

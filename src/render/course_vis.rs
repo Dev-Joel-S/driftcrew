@@ -74,7 +74,10 @@ pub fn spawn_course_vis(
         for (si, st) in c.steps.iter().enumerate() {
             match st.kind {
                 StepKind::Gate { pos, dir, width } => {
-                    let d = Vec2::new(dir.to_radians().cos(), dir.to_radians().sin());
+                    let d = Vec2::new(
+                        (dir.to_radians().cos()).to_f32(),
+                        (dir.to_radians().sin()).to_f32(),
+                    );
                     let side = Vec2::new(-d.y, d.x) * (width * 0.5 + 0.6);
                     post_at(&mut commands, v(pos) + side, ci, si, 0.75);
                     post_at(&mut commands, v(pos) - side, ci, si, 0.75);
@@ -82,7 +85,7 @@ pub fn spawn_course_vis(
                 StepKind::Face { pos, .. } => {
                     // Boje: ein Pfosten mit großer Kappe. Steht sie mitten in einem Tor,
                     // bekommt sie trotzdem ihren eigenen Pfosten (Tore haben zwei außen).
-                    post_at(&mut commands, v(pos), ci, si, 1.3);
+                    post_at(&mut commands, (v(pos)).to_bevy(), ci, si, 1.3);
                 }
                 _ => {}
             }
@@ -93,16 +96,28 @@ pub fn spawn_course_vis(
     // der Öffnung.
     for st in &s.world.stations {
         let Some(sock) = st.socket else { continue };
-        let wall_mat = mats.add(art.panel_mat(srgb(st.accent_color), 0.45, 0.2));
-        let frame_mat = mats.add(art.panel_mat(srgb(st.main_color), 0.5, 0.15));
+        let wall_mat = mats.add(art.panel_mat(
+            srgb((st.accent_color).map(crate::sim::fx::Fx::to_f32)),
+            0.45,
+            0.2,
+        ));
+        let frame_mat = mats.add(art.panel_mat(
+            srgb((st.main_color).map(crate::sim::fx::Fx::to_f32)),
+            0.5,
+            0.15,
+        ));
         let lamp = mats.add(art.emissive_mat(Color::srgb(1.0, 0.7, 0.2), 6.0));
-        let angle = f32::atan2(sock.open.y, sock.open.x);
+        let angle = f32::atan2((sock.open.y).to_f32(), (sock.open.x).to_f32());
         let rotz = Quat::from_rotation_z(angle);
         let back = sock.center - sock.open * (SOCKET_HALF_DEPTH + SOCKET_WALL * 0.5);
-        let side = Vec2::new(-sock.open.y, sock.open.x);
+        let side = Vec2::new((-sock.open.y).to_f32(), (sock.open.x).to_f32());
         let back_mesh = art.bevel_box(
             &mut meshes,
-            Vec3::new(SOCKET_WALL, 2.0 * (SOCKET_HALF_WIDTH + SOCKET_WALL), 1.6),
+            Vec3::new(
+                (SOCKET_WALL).to_f32(),
+                2.0 * (SOCKET_HALF_WIDTH + SOCKET_WALL),
+                1.6,
+            ),
         );
         commands.spawn((
             Mesh3d(back_mesh),
@@ -111,7 +126,11 @@ pub fn spawn_course_vis(
         ));
         let side_mesh = art.bevel_box(
             &mut meshes,
-            Vec3::new(2.0 * (SOCKET_HALF_DEPTH + SOCKET_WALL), SOCKET_WALL, 1.6),
+            Vec3::new(
+                2.0 * (SOCKET_HALF_DEPTH + SOCKET_WALL),
+                (SOCKET_WALL).to_f32(),
+                1.6,
+            ),
         );
         for k in [-1.0f32, 1.0] {
             let c = sock.center + side * k * (SOCKET_HALF_WIDTH + SOCKET_WALL * 0.5)

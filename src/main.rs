@@ -10,6 +10,7 @@ mod demo;
 mod game;
 mod input;
 mod pads;
+mod prng;
 mod render;
 mod settings;
 mod sim;
@@ -41,6 +42,22 @@ fn install_crash_log() {
 }
 
 fn main() {
+    // `driftcrew --selbsttest`: Rechnung prüfen und beenden (Windows hat keine Konsole: Datei).
+    if std::env::args().any(|a| a == "--selbsttest") {
+        let start = std::time::Instant::now();
+        let (ok, mut text) = sim::selftest::report();
+        text.push_str(&format!(
+            "Dauer: {:.0} ms für 900 Ticks\n",
+            start.elapsed().as_secs_f64() * 1000.0
+        ));
+        print!("{text}");
+        let path = game::save_path().with_file_name("selbsttest.txt");
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&path, &text);
+        std::process::exit(if ok { 0 } else { 1 });
+    }
     install_crash_log();
     let demo = demo::DemoConfig::from_env();
     let mut app = App::new();

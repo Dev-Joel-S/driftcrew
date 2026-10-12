@@ -1,7 +1,7 @@
 //! Einfacher Autopilot: steuert nur mit den beiden äußersten Triebwerken (links/rechts), wie
 //! eine Zwei-Personen-Crew. Fliegt die NPC-Schiffe und hilft in Tests und Vorführungen.
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 #[cfg(test)]
 use super::SimState;
@@ -10,12 +10,14 @@ use super::ship::Ship;
 use super::world::angle_diff;
 
 pub struct Autopilot {
-    pub max_speed: f32,
+    pub max_speed: Fx,
 }
 
 impl Default for Autopilot {
     fn default() -> Self {
-        Autopilot { max_speed: 22.0 }
+        Autopilot {
+            max_speed: fx!(22.0),
+        }
     }
 }
 
@@ -34,25 +36,25 @@ impl Autopilot {
         }
         let left = ship.thrusters.first().unwrap().slot;
         let right = ship.thrusters.last().unwrap().slot;
-        let thrust: f32 = ship.thrusters.iter().map(|t| t.thrust).sum::<f32>() * 2.0
-            / ship.thrusters.len() as f32;
+        let thrust: Fx = ship.thrusters.iter().map(|t| t.thrust).sum::<Fx>() * fx!(2.0)
+            / Fx::from(ship.thrusters.len());
         let accel = thrust / ship.mass;
 
         let to_t = target - ship.pos;
         let dist = to_t.length();
         // Bremsweg inklusive Zeit zum Umdrehen (≈ 2 s).
-        let brake = ((2.0 * accel * 0.5 * dist).sqrt() - accel * 0.6).max(1.0);
+        let brake = ((fx!(2.0) * accel * fx!(0.5) * dist).sqrt() - accel * fx!(0.6)).max(fx!(1.0));
         // Landeanflug: oberhalb nie ganz anhalten (sonst müsste man zum Sinken umdrehen),
         // unterhalb von 10 m nur noch mit der Nase nach oben bremsen.
-        let fine = landing && dist < 10.0;
+        let fine = landing && dist < fx!(10.0);
         let limit = if fine {
-            (dist * 0.25).clamp(0.5, 2.0)
+            (dist * fx!(0.25)).clamp(fx!(0.5), fx!(2.0))
         } else if landing {
-            (dist * 0.25).clamp(1.6, 3.0)
+            (dist * fx!(0.25)).clamp(fx!(1.6), fx!(3.0))
         } else {
             self.max_speed.min(brake)
         };
-        let v_des = if dist > 0.05 {
+        let v_des = if dist > fx!(0.05) {
             to_t / dist * limit
         } else {
             Vec2::ZERO
@@ -60,44 +62,48 @@ impl Autopilot {
         let dv = v_des - ship.vel;
         let coast = dv.length()
             < if fine {
-                0.45
+                fx!(0.45)
             } else if landing {
-                0.8
+                fx!(0.8)
             } else {
-                2.0
+                fx!(2.0)
             };
 
         let mut want = if coast { up } else { dv.normalize() };
         if fine {
             // Kurz vor dem Aufsetzen nie umdrehen: höchstens ±35° neigen.
-            let a = angle_diff(want.to_angle(), up.to_angle()).clamp(-0.6, 0.6);
+            let a = angle_diff(want.to_angle(), up.to_angle()).clamp(-fx!(0.6), fx!(0.6));
             want = Vec2::from_angle(up.to_angle() + a);
         }
-        let desired = f32::atan2(-want.x, want.y);
+        let desired = Fx::atan2(-want.x, want.y);
         let err = angle_diff(desired, ship.angle);
-        let hold = (coast && !landing) || (fine && err.abs() < 0.3);
+        let hold = (coast && !landing) || (fine && err.abs() < fx!(0.3));
         let w_des = if hold {
-            0.0
+            fx!(0.0)
         } else {
-            (err * 1.6).clamp(-1.2, 1.2)
+            (err * fx!(1.6)).clamp(-fx!(1.2), fx!(1.2))
         };
         let dw = w_des - ship.ang_vel;
         // Im Endanflug kleine Drehungen ignorieren: jede Korrektur schiebt auch nach oben.
-        let dw = if fine && dw.abs() < 0.3 { 0.0 } else { dw };
+        let dw = if fine && dw.abs() < fx!(0.3) {
+            fx!(0.0)
+        } else {
+            dw
+        };
 
         let mut slots = 0u32;
-        let helps = dv.dot(forward(ship.angle)) > if fine { 0.45 } else { 0.0 };
+        let helps = dv.dot(forward(ship.angle)) > if fine { fx!(0.45) } else { fx!(0.0) };
         let _ = up;
-        if !coast && helps && err.abs() < if fine { 0.2 } else { 0.3 } {
+        if !coast && helps && err.abs() < if fine { fx!(0.2) } else { fx!(0.3) } {
             slots |= (1 << left) | (1 << right);
-            if dw > 0.4 {
+            if dw > fx!(0.4) {
                 slots &= !(1 << left);
-            } else if dw < -0.4 {
+            } else if dw < -fx!(0.4) {
                 slots &= !(1 << right);
             }
-        } else if dw > 0.12 {
+        } else if dw > fx!(0.12) {
             slots |= 1 << right;
-        } else if dw < -0.12 {
+        } else if dw < -fx!(0.12) {
             slots |= 1 << left;
         }
         slots
@@ -140,21 +146,21 @@ mod tests {
         let p = s.world.pads[pad].clone();
         let rest = s.ship.rest_height();
         let waypoints = [
-            (Vec2::new(0.0, 0.0), 6.0),
-            (Vec2::new(74.0, 0.0), 8.0),
-            (p.center + p.normal * 24.0, 6.0),
-            (p.center + p.normal * (rest - 0.3), 0.3),
+            (Vec2::new(fx!(0.0), fx!(0.0)), fx!(6.0)),
+            (Vec2::new(fx!(74.0), fx!(0.0)), fx!(8.0)),
+            (p.center + p.normal * fx!(24.0), fx!(6.0)),
+            (p.center + p.normal * (rest - fx!(0.3)), fx!(0.3)),
         ];
         let ap = Autopilot::default();
         let mut wp = 0;
         // Der Autopilot ist für die reibungsfreie Physik ausgelegt (Vorführszenen).
         s.flight_assist = false;
-        let mut max_damage = 0.0f32;
+        let mut max_damage = fx!(0.0);
         for tick in 0..60 * 240 {
             let (target, tol) = waypoints[wp.min(waypoints.len() - 1)];
             if wp + 1 < waypoints.len()
                 && (s.ship.pos - target).length() < tol
-                && s.ship.vel.length() < 6.0
+                && s.ship.vel.length() < fx!(6.0)
             {
                 wp += 1;
             }
@@ -164,7 +170,7 @@ mod tests {
             }
             s.step(&TickInput {
                 slots,
-                aims: vec![0.0; crate::sim::MAX_SLOTS],
+                aims: vec![fx!(0.0); crate::sim::MAX_SLOTS],
                 commands: vec![],
                 brake: false,
             });
@@ -177,7 +183,7 @@ mod tests {
                     rel.y,
                     s.ship.vel.x,
                     s.ship.vel.y,
-                    angle_diff(s.ship.angle, 0.0),
+                    angle_diff(s.ship.angle, fx!(0.0)),
                     s.ship.ang_vel,
                     s.ship.hull
                 );
@@ -201,6 +207,6 @@ mod tests {
             s.dock_guide(),
             p
         );
-        assert!(max_damage < 60.0, "zu viel Schaden: {max_damage}");
+        assert!(max_damage < fx!(60.0), "zu viel Schaden: {max_damage}");
     }
 }

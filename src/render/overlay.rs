@@ -1,6 +1,7 @@
 //! Flughilfen als dünne Linien: Geschwindigkeitsvektor, Flugbahn-Vorschau, Zielmarker
 //! der Werkzeuge. Reine Anzeige – liest den Simulationszustand nur.
 
+use crate::fx;
 use bevy::prelude::*;
 
 use super::{ship_pose, slot_color};
@@ -56,7 +57,10 @@ fn draw_flight_aids(
         return;
     }
     let alpha = fixed.overstep_fraction();
-    let com = s.ship.prev_pos.lerp(s.ship.pos, alpha);
+    let com = s
+        .ship
+        .prev_pos
+        .lerp(s.ship.pos, crate::sim::fx::Fx::from_f32(alpha));
     let speed = s.ship.vel.length();
     if speed < 0.3 {
         return;
@@ -70,7 +74,7 @@ fn draw_flight_aids(
     );
 
     // Flugbahn-Vorschau (ohne Eingabe), gestrichelt und zum Ende hin blasser.
-    let pred = s.predict_path(4.0, 1.0 / 20.0);
+    let pred = s.predict_path(fx!(4.0), fx!(1.0 / 20.0));
     let n = pred.points.len().max(2);
     for (i, w) in pred.points.windows(2).enumerate() {
         if i % 2 == 1 {
@@ -120,7 +124,7 @@ fn draw_aim_markers(
     let alpha = fixed.overstep_fraction();
     let (origin, angle) = ship_pose(s, alpha);
     for t in &s.ship.tools {
-        let mount = origin + rot(t.pos, angle);
+        let mount = origin + rot(t.pos, crate::sim::fx::Fx::from_f32(angle));
         let dir = t.aim_dir();
         let reach = match t.kind {
             ToolKind::Cannon => 10.0,
@@ -155,7 +159,7 @@ fn draw_no_return(sim: Res<Sim>, map: Res<MapOpen>, paused: Res<Paused>, mut giz
     let reserve = if s.ship.fuel_empty() {
         crate::sim::tools::EMERGENCY_THRUST
     } else {
-        1.0
+        fx!(1.0)
     };
     let thrust: f32 = s.ship.thrusters.iter().map(|t| t.effective_thrust()).sum();
     let max_accel = thrust * reserve / s.ship.mass;
@@ -163,7 +167,7 @@ fn draw_no_return(sim: Res<Sim>, map: Res<MapOpen>, paused: Res<Paused>, mut giz
         if (s.ship.pos - an.pos).length() > an.radius {
             continue;
         }
-        let r = an.no_return_radius(max_accel);
+        let r = an.no_return_radius(crate::sim::fx::Fx::from_f32(max_accel));
         let n = 72;
         for k in (0..n).step_by(2) {
             let a0 = std::f32::consts::TAU * k as f32 / n as f32;
@@ -221,10 +225,10 @@ fn draw_scan(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mut gizmos: Gizm
     }
     let s = &sim.0;
     if let Some(p) = &s.scan {
-        let a = 0.7 * (1.0 - p.radius / p.max.max(1.0)) + 0.15;
+        let a = 0.7 * (1.0 - p.radius / p.max.max(fx!(1.0))) + 0.15;
         gizmos.circle(
             Isometry3d::from_translation(p.origin.extend(Z)),
-            p.radius,
+            (p.radius).to_f32(),
             Color::srgba(0.35, 0.95, 0.9, a),
         );
     }
@@ -233,7 +237,7 @@ fn draw_scan(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mut gizmos: Gizm
         let fade = (b.life / 4.0).min(1.0);
         let c = match &b.kind {
             crate::sim::sector::BlipKind::Ore(o) | crate::sim::sector::BlipKind::Deposit(o) => {
-                super::srgb(o.color())
+                super::srgb((o.color()).map(crate::sim::fx::Fx::to_f32))
             }
             crate::sim::sector::BlipKind::Wreck => Color::srgb(0.85, 0.8, 0.7),
             crate::sim::sector::BlipKind::Signal => Color::srgb(0.75, 0.55, 1.0),
@@ -296,8 +300,10 @@ fn draw_precision_marks(
         }
         // Interpoliert, damit die Markierung nicht ruckelt.
         let mut ib = b.clone();
-        ib.pos = b.prev_pos.lerp(b.pos, alpha);
-        ib.angle = b.prev_angle + crate::sim::world::angle_diff(b.angle, b.prev_angle) * alpha;
+        ib.pos = b.prev_pos.lerp(b.pos, crate::sim::fx::Fx::from_f32(alpha));
+        ib.angle = crate::sim::fx::Fx::from_f32(
+            b.prev_angle + crate::sim::world::angle_diff(b.angle, b.prev_angle) * alpha,
+        );
         let Some((p, kind)) = precision_target(&ib) else {
             continue;
         };
@@ -309,7 +315,7 @@ fn draw_precision_marks(
         let at = p.extend(Z);
         gizmos.circle(
             Isometry3d::from_translation(at),
-            PRECISION_RADIUS,
+            (PRECISION_RADIUS).to_f32(),
             c.with_alpha(0.9),
         );
         gizmos.circle(
@@ -365,7 +371,10 @@ fn draw_step(
     match &st.kind {
         StepKind::Gate { pos, dir, width } => {
             let c = v(*pos);
-            let d = Vec2::new(dir.to_radians().cos(), dir.to_radians().sin());
+            let d = Vec2::new(
+                (dir.to_radians().cos()).to_f32(),
+                (dir.to_radians().sin()).to_f32(),
+            );
             let side = Vec2::new(-d.y, d.x);
             let half = width * 0.5;
             // Torlinie gestrichelt, damit sie nicht wie eine Wand wirkt.
@@ -390,7 +399,7 @@ fn draw_step(
         }
         StepKind::Pass { pos, radius } => {
             let c = v(*pos);
-            dashed_circle(gizmos, c, *radius, col, t * 0.4);
+            dashed_circle(gizmos, (c).to_bevy(), (*radius).to_f32(), col, t * 0.4);
             gizmos.line((c - Vec2::X).extend(Z), (c + Vec2::X).extend(Z), col);
             gizmos.line((c - Vec2::Y).extend(Z), (c + Vec2::Y).extend(Z), col);
         }
@@ -416,14 +425,20 @@ fn draw_step(
                 gizmos.line(a.extend(Z), b.extend(Z), col.with_alpha(0.35));
             }
             if let Some(f) = progress {
-                arc(gizmos, c, 3.2, f, Color::srgb(0.35, 1.0, 0.55));
+                arc(gizmos, (c).to_bevy(), 3.2, f, Color::srgb(0.35, 1.0, 0.55));
             }
         }
         StepKind::Hold { pos, radius, .. } => {
             let c = v(*pos);
-            dashed_circle(gizmos, c, *radius, col, t * 0.3);
+            dashed_circle(gizmos, (c).to_bevy(), (*radius).to_f32(), col, t * 0.3);
             if let Some(f) = progress {
-                arc(gizmos, c, *radius + 0.8, f, Color::srgb(0.35, 1.0, 0.55));
+                arc(
+                    gizmos,
+                    (c).to_bevy(),
+                    *radius + 0.8,
+                    f,
+                    Color::srgb(0.35, 1.0, 0.55),
+                );
             }
         }
         StepKind::Dock { station, near } => {
@@ -436,7 +451,15 @@ fn draw_step(
                 let up = p.normal * 5.0;
                 let a = p.center - tg;
                 let b = p.center + tg;
-                for (x, y) in [(a, b), (a, a + up), (b, b + up), (a + up, b + up)] {
+                for (x, y) in [
+                    (a, b),
+                    (a, crate::sim::fx::Vec2::from_bevy(a + up)),
+                    (b, crate::sim::fx::Vec2::from_bevy(b + up)),
+                    (
+                        crate::sim::fx::Vec2::from_bevy(a + up),
+                        crate::sim::fx::Vec2::from_bevy(b + up),
+                    ),
+                ] {
                     gizmos.line(x.extend(Z), y.extend(Z), col);
                 }
             }
@@ -462,7 +485,7 @@ fn draw_courses(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mut gizmos: G
                 r.course,
                 r.step,
                 col,
-                s.course_hold_fraction(),
+                s.course_hold_fraction().map(crate::sim::fx::Fx::to_f32),
                 t,
             );
             if r.started() {
@@ -505,7 +528,13 @@ fn draw_survey_and_sockets(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mu
                 let Some(&i) = sites.get(*done) else { continue };
                 let site = &s.data.courses.survey_sites[i];
                 let c = crate::sim::data::v(site.pos);
-                dashed_circle(&mut gizmos, c, site.radius, teal, -t * 0.3);
+                dashed_circle(
+                    &mut gizmos,
+                    (c).to_bevy(),
+                    (site.radius).to_f32(),
+                    teal,
+                    -t * 0.3,
+                );
                 for k in 0..4 {
                     let d = Vec2::from_angle(std::f32::consts::FRAC_PI_2 * k as f32);
                     gizmos.line(
@@ -514,13 +543,13 @@ fn draw_survey_and_sockets(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mu
                         teal,
                     );
                 }
-                let f = hold / s.data.missions.survey.seconds.max(0.01);
+                let f = hold / s.data.missions.survey.seconds.max(fx!(0.01));
                 if f > 0.0 {
                     arc(
                         &mut gizmos,
-                        c,
+                        (c).to_bevy(),
                         site.radius + 0.9,
-                        f.min(1.0),
+                        (f.min(fx!(1.0))).to_f32(),
                         Color::srgb(0.35, 1.0, 0.55),
                     );
                 }
@@ -529,7 +558,7 @@ fn draw_survey_and_sockets(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mu
                 let Some(sock) = s.world.stations[*to].socket else {
                     continue;
                 };
-                let side = Vec2::new(-sock.open.y, sock.open.x);
+                let side = Vec2::new((-sock.open.y).to_f32(), (sock.open.x).to_f32());
                 let col = Color::srgba(1.0, 0.75, 0.2, 0.55 + 0.35 * (t * 2.5).sin());
                 let a = sock.center - sock.open * SOCKET_HALF_DEPTH;
                 let b = sock.center + sock.open * SOCKET_HALF_DEPTH;
@@ -556,9 +585,9 @@ fn draw_survey_and_sockets(sim: Res<Sim>, time: Res<Time>, map: Res<MapOpen>, mu
                 if *settle > 0.0 {
                     arc(
                         &mut gizmos,
-                        sock.center,
+                        (sock.center).to_bevy(),
                         SOCKET_HALF_WIDTH + 1.4,
-                        (settle / SOCKET_SETTLE).min(1.0),
+                        ((settle / SOCKET_SETTLE).min(fx!(1.0))).to_f32(),
                         Color::srgb(0.35, 1.0, 0.55),
                     );
                 }
@@ -586,15 +615,16 @@ fn draw_repair_marks(
     }
     let t = time.elapsed_secs();
     let (origin, angle) = ship_pose(s, fixed.overstep_fraction());
-    let patching: Option<(usize, f32)> = s.ship.tools.iter().find_map(|tl| match tl.crane {
-        CraneState::Patching { thruster, progress } => Some((thruster, progress)),
-        _ => None,
-    });
+    let patching: Option<(usize, crate::sim::fx::Fx)> =
+        s.ship.tools.iter().find_map(|tl| match tl.crane {
+            CraneState::Patching { thruster, progress } => Some((thruster, progress)),
+            _ => None,
+        });
     for (i, th) in s.ship.thrusters.iter().enumerate() {
         if !th.failed() {
             continue;
         }
-        let p = origin + rot(th.pos, angle);
+        let p = origin + rot(th.pos, crate::sim::fx::Fx::from_f32(angle));
         let pulse = 0.55 + 0.45 * (t * 5.0).sin();
         gizmos.circle(
             Isometry3d::from_translation(p.extend(Z)),
@@ -604,7 +634,13 @@ fn draw_repair_marks(
         if let Some((ti, prog)) = patching
             && ti == i
         {
-            arc(&mut gizmos, p, 0.95, prog, Color::srgb(0.35, 1.0, 0.55));
+            arc(
+                &mut gizmos,
+                p,
+                0.95,
+                (prog).to_f32(),
+                Color::srgb(0.35, 1.0, 0.55),
+            );
         }
     }
 }
@@ -626,7 +662,11 @@ fn draw_mounts(
     let base = s.data.ship(&s.crew.current_ship);
     let build = s.build_of(&s.crew.current_ship);
     for m in &base.mounts {
-        let p = origin + rot(Vec2::new(m.pos.0, m.pos.1), angle);
+        let p = origin
+            + rot(
+                crate::sim::fx::Vec2::from_bevy(Vec2::new((m.pos.0).to_f32(), (m.pos.1).to_f32())),
+                crate::sim::fx::Fx::from_f32(angle),
+            );
         let used = build.iter().any(|(id, _)| *id == m.id);
         let chosen = view.selected.as_deref() == Some(m.id.as_str());
         let iso = Isometry3d::from_translation(p.extend(Z + 0.4));
@@ -669,7 +709,10 @@ fn draw_traffic(
     let alpha = fixed.overstep_fraction();
     let me = s.ship.pos;
     for n in s.npcs.iter().filter(|n| n.alive) {
-        let pos = n.ship.prev_pos.lerp(n.ship.pos, alpha);
+        let pos = n
+            .ship
+            .prev_pos
+            .lerp(n.ship.pos, crate::sim::fx::Fx::from_f32(alpha));
         if (pos - me).length() > 260.0 {
             continue;
         }
@@ -687,7 +730,7 @@ fn draw_traffic(
             }
         }
         if let Some(rock) = n.drilling {
-            let nose = pos + rot(Vec2::Y, n.ship.angle) * 1.2;
+            let nose = pos + rot(crate::sim::fx::Vec2::from_bevy(Vec2::Y), n.ship.angle) * 1.2;
             let a = 0.6 + 0.3 * (t * 20.0).sin();
             gizmos.line(
                 nose.extend(Z),
@@ -698,7 +741,7 @@ fn draw_traffic(
     }
     let smuggling = s.contraband().is_some();
     for (ci, cp) in s.data.traffic.checkpoints.iter().enumerate() {
-        let c = Vec2::new(cp.pos.0, cp.pos.1);
+        let c = Vec2::new((cp.pos.0).to_f32(), (cp.pos.1).to_f32());
         if (c - me).length() > cp.radius + 300.0 {
             continue;
         }
@@ -708,13 +751,13 @@ fn draw_traffic(
             (None, true) => Color::srgba(1.0, 0.7, 0.15, 0.7),
             (None, false) => Color::srgba(1.0, 0.75, 0.2, 0.22),
         };
-        dashed_circle(&mut gizmos, c, cp.radius, col, t * 0.1);
+        dashed_circle(&mut gizmos, c, (cp.radius).to_f32(), col, t * 0.1);
         if let Some(sc) = scanning {
             arc(
                 &mut gizmos,
                 c,
                 cp.radius - 3.0,
-                sc.progress,
+                (sc.progress).to_f32(),
                 Color::srgb(1.0, 0.25, 0.2),
             );
             // Scanstrahl zur Crew.
@@ -722,14 +765,14 @@ fn draw_traffic(
         }
     }
     for n in &s.data.traffic.nests {
-        let c = Vec2::new(n.center.0, n.center.1);
+        let c = Vec2::new((n.center.0).to_f32(), (n.center.1).to_f32());
         if (c - me).length() > n.radius + 500.0 {
             continue;
         }
         dashed_circle(
             &mut gizmos,
             c,
-            n.radius,
+            (n.radius).to_f32(),
             Color::srgba(1.0, 0.15, 0.1, 0.25),
             -t * 0.05,
         );

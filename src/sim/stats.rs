@@ -4,16 +4,17 @@
 
 use super::MAX_SLOTS;
 use super::finance::Expenses;
+use crate::sim::fx::Fx;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SlotStats {
     /// Sekunden, in denen das Triebwerk tatsächlich geschoben hat.
-    pub thrust_time: f32,
+    pub thrust_time: Fx,
     /// Kollisionen, bei denen dieses Teil dem Aufprall am nächsten war.
     pub collisions: u32,
     pub shots: u32,
     /// Abgebautes Erz bzw. Schrott in Tonnen.
-    pub drilled: f32,
+    pub drilled: Fx,
     /// Erfolgreiche Kran-Greifer.
     pub grabs: u32,
 }
@@ -34,10 +35,10 @@ impl SlotStats {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CrewStats {
     pub slots: Vec<SlotStats>,
-    pub time: f32,
-    pub distance: f32,
-    pub top_speed: f32,
-    pub damage: f32,
+    pub time: Fx,
+    pub distance: Fx,
+    pub top_speed: Fx,
+    pub damage: Fx,
     /// Ausgaben unterwegs (Dockgebühren, Service, Bergung).
     pub expenses: Expenses,
 }
@@ -46,10 +47,10 @@ impl Default for CrewStats {
     fn default() -> Self {
         CrewStats {
             slots: vec![SlotStats::default(); MAX_SLOTS],
-            time: 0.0,
-            distance: 0.0,
-            top_speed: 0.0,
-            damage: 0.0,
+            time: fx!(0.0),
+            distance: fx!(0.0),
+            top_speed: fx!(0.0),
+            damage: fx!(0.0),
             expenses: Expenses::default(),
         }
     }
@@ -62,7 +63,7 @@ impl CrewStats {
 
     /// Differenz seit einem früheren Stand (für einen einzelnen Auftrag).
     /// Die Höchstgeschwindigkeit wird separat pro Auftrag geführt.
-    pub fn since(&self, start: &CrewStats, top_speed: f32) -> CrewStats {
+    pub fn since(&self, start: &CrewStats, top_speed: Fx) -> CrewStats {
         CrewStats {
             slots: self
                 .slots
@@ -98,15 +99,15 @@ pub struct MissionReport {
     pub bonus_clean: u32,
     /// Bonus für sanft geführte Last am Kran und die höchste Seilbelastung dabei.
     pub bonus_gentle: u32,
-    pub max_strain: Option<f32>,
+    pub max_strain: Option<Fx>,
     /// Zufriedenheit der Passagiere (0..1), falls welche an Bord waren.
-    pub comfort: Option<f32>,
+    pub comfort: Option<Fx>,
     /// Zustand empfindlicher Fracht bei der Ablieferung (0..1).
-    pub cond: Option<f32>,
+    pub cond: Option<Fx>,
     /// Was sich durch den Auftrag in der Welt ändert (76).
     pub effect: Option<String>,
     /// Richtzeit in Sekunden.
-    pub par: f32,
+    pub par: Fx,
     /// Station, Rufstufe danach, gewonnene Punkte.
     pub reputation: Option<(String, u8, u32)>,
     pub stats: CrewStats,
@@ -138,11 +139,11 @@ impl MissionReport {
     pub fn awards(&self) -> Vec<Award> {
         let s = &self.stats.slots;
         let mut v = Vec::new();
-        let best = |f: &dyn Fn(&SlotStats) -> f32| -> Option<(u8, f32)> {
+        let best = |f: &dyn Fn(&SlotStats) -> Fx| -> Option<(u8, Fx)> {
             s.iter()
                 .enumerate()
                 .map(|(i, st)| (i as u8, f(st)))
-                .filter(|(_, x)| *x > 0.0)
+                .filter(|(_, x)| *x > fx!(0.0))
                 .max_by(|a, b| a.1.total_cmp(&b.1).then(b.0.cmp(&a.0)))
         };
         if let Some((slot, t)) = best(&|st| st.thrust_time) {
@@ -168,14 +169,14 @@ impl MissionReport {
                 });
             }
         }
-        if let Some((slot, n)) = best(&|st| st.collisions as f32) {
+        if let Some((slot, n)) = best(&|st| Fx::from(st.collisions)) {
             v.push(Award {
                 title: "Bruchpilot",
                 slot,
                 value: format!("{n:.0} Kollisionen"),
             });
         }
-        if let Some((slot, n)) = best(&|st| st.shots as f32) {
+        if let Some((slot, n)) = best(&|st| Fx::from(st.shots)) {
             v.push(Award {
                 title: "Scharfschütze",
                 slot,
@@ -189,7 +190,7 @@ impl MissionReport {
                 value: format!("{t:.1} t abgebaut"),
             });
         }
-        if let Some((slot, n)) = best(&|st| st.grabs as f32) {
+        if let Some((slot, n)) = best(&|st| Fx::from(st.grabs)) {
             v.push(Award {
                 title: "Greifarm",
                 slot,
@@ -207,8 +208,8 @@ mod tests {
     #[test]
     fn awards_pick_the_extremes() {
         let mut stats = CrewStats::default();
-        stats.slots[0].thrust_time = 30.0;
-        stats.slots[1].thrust_time = 4.0;
+        stats.slots[0].thrust_time = fx!(30.0);
+        stats.slots[1].thrust_time = fx!(4.0);
         stats.slots[1].collisions = 3;
         stats.slots[5].shots = 7;
         let r = MissionReport {
@@ -222,7 +223,7 @@ mod tests {
             comfort: None,
             cond: None,
             effect: None,
-            par: 100.0,
+            par: fx!(100.0),
             reputation: None,
             stats,
             thruster_slots: vec![0, 1],

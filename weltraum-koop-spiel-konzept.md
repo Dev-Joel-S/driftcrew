@@ -151,7 +151,6 @@ Wichtig: Kein Klon. Eigener Name, eigener Look, eigene Assets. Nur das Grundprin
 ## Später
 
 - **Online-Koop** mit Rollback-Netcode (z. B. ggrs / bevy_ggrs)
-- **Deterministische Physik mit Ganzzahlen / Fixed-Point** statt Floats, damit nur Eingaben übers Netz gehen
 - Spielstand online beim Host
 - Optional: Abstimmung auch für Missionen
 
@@ -198,5 +197,6 @@ Was sich gegenüber der ersten Fassung geändert hat (Begründungen und Details 
 - **Runde 4, Flugmodell nachgeschärft:** Nach dem Schub driftet man lange und langsam ausklingend weiter, der Stabilisator ist nur noch klein; die Grund-Bremse ist schwach und wird über Bremsdüsen-Upgrades stärker *(umgesetzt in Phase 19)*
 - **Runde 4, Upgrades verkaufen:** Eingebaute Upgrades lassen sich zum halben Preis wieder ausbauen (höchste Stufe zuerst) *(umgesetzt in Phase 19)*
 - **Runde 4, Einführung:** Der Grundkurs ist zugleich die optionale Einführung und steht für neue Crews oben im Stationsmenü *(umgesetzt in Phase 19)*
+- **Runde 4, Fixed-Point:** Die gesamte Simulation rechnet nur noch mit Fixed-Point (`Fx`, Q32.32) statt Floats – vorgezogen aus „Später“, damit Online-Koop mit „nur Eingaben übers Netz“ und garantiert gleiche Wiederholungen möglich sind. Floats nur an den Rändern (Dateien, Eingabe, Anzeige); ein Test und ein Lint sichern das ab *(umgesetzt in Phase 19)*
 - **Runde 4, Erze:** Asteroidenfelder haben ein Haupterz plus Beimischungen, damit es schon nahe der Heimat mehr als Eisen gibt; weniger taubes Gestein; der Bohrer zeigt vorab, was im Ziel steckt. Bergbau-Richtzeiten rechnen mit dem Weg zum passenden Erz, alle Richtzeiten +25 % *(umgesetzt in Phase 19)*
 - **Runde 4, Bremse als Slot:** Zusätzlich zur festen Bremstaste lässt sich die Bremse in der Lobby wie ein Slot auf eine eigene Taste legen – für Geräte ohne Steuerkreuz *(umgesetzt in Phase 19)*

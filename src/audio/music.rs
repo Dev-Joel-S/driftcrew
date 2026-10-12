@@ -4,7 +4,7 @@
 
 use std::f32::consts::TAU;
 
-use crate::sim::rng::Rng;
+use crate::prng::Prng;
 
 pub const RATE: u32 = 22_050;
 
@@ -161,7 +161,7 @@ pub fn flight_track() -> Vec<f32> {
         }
     }
     let scale = [62.0, 64.0, 67.0, 69.0, 72.0, 74.0, 76.0, 79.0];
-    let mut rng = Rng::new(4242);
+    let mut rng = Prng::new(4242);
     let mut t = 1.5;
     while t < total - 0.5 {
         let n = scale[rng.index(scale.len())];

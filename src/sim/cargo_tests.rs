@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::cargo::{PERSON_MASS, RESCUE_STEP};
 use super::data::{CargoTrait, CrewSave, GameData, ToolKind};
@@ -21,8 +21,8 @@ fn sim() -> SimState {
     SimState::new(data, &save, Loadout::full(&def), 2)
 }
 
-fn idle(s: &mut SimState, seconds: f32) {
-    for _ in 0..(seconds * 60.0) as u32 {
+fn idle(s: &mut SimState, seconds: Fx) {
+    for _ in 0..(seconds * fx!(60.0)).to_u32() {
         s.step(&TickInput::default());
     }
 }
@@ -40,9 +40,9 @@ fn float_at(s: &mut SimState, pos: Vec2) {
     s.ship.pos = pos;
     s.ship.prev_pos = pos;
     s.ship.vel = Vec2::ZERO;
-    s.ship.ang_vel = 0.0;
-    s.ship.angle = 0.0;
-    s.ship.prev_angle = 0.0;
+    s.ship.ang_vel = fx!(0.0);
+    s.ship.angle = fx!(0.0);
+    s.ship.prev_angle = fx!(0.0);
 }
 
 fn toasts(s: &SimState) -> Vec<String> {
@@ -61,7 +61,7 @@ fn push(s: &mut SimState, acc: Vec2) {
     s.update_cargo();
 }
 
-fn container(s: &mut SimState, mass: f32, traits: CargoTrait) -> u32 {
+fn container(s: &mut SimState, mass: Fx, traits: CargoTrait) -> u32 {
     s.ship.store_with(
         CargoKind::Container {
             mission: 0,
@@ -74,18 +74,18 @@ fn container(s: &mut SimState, mass: f32, traits: CargoTrait) -> u32 {
 }
 
 /// Ruhige Stelle ohne Sog, Felder und Stationen.
-const FAR: Vec2 = Vec2::new(-900.0, -900.0);
+const FAR: Vec2 = Vec2::new(fx!(-900.0), fx!(-900.0));
 
 #[test]
 fn moving_cargo_shifts_the_center_of_mass_without_pushing_the_ship() {
     let mut s = sim();
     assert!(s.ship.pods.len() >= 2, "Startschiff hat zwei Frachtmodule");
-    let id = container(&mut s, 4.0, CargoTrait::None);
+    let id = container(&mut s, fx!(4.0), CargoTrait::None);
     let pod = s.ship.cargo[0].pod;
     let other = (pod + 1) % s.ship.pods.len();
     let side = |s: &SimState| s.ship.com.x.signum();
     let before = side(&s);
-    assert_ne!(before, 0.0, "Fracht seitlich: Schwerpunkt verschoben");
+    assert_ne!(before, fx!(0.0), "Fracht seitlich: Schwerpunkt verschoben");
     // Angedockt: sofort umgeladen.
     cmd(&mut s, Command::MoveCargo { id, to: other });
     assert_eq!(s.ship.cargo[0].pod, other);
@@ -105,22 +105,22 @@ fn moving_cargo_shifts_the_center_of_mass_without_pushing_the_ship() {
         s.ship.com.x.abs() < com0.x.abs(),
         "unterwegs sitzt die Masse dazwischen"
     );
-    idle(&mut s, 0.8 + 0.6 * 4.0 + 0.3);
+    idle(&mut s, fx!(0.8) + fx!(0.6) * fx!(4.0) + fx!(0.3));
     assert!(s.ship.cargo[0].moving.is_none());
     assert_eq!(s.ship.cargo[0].pod, pod);
     assert_eq!(side(&s), before);
     assert!(
-        s.ship.vel.length() < 1e-3,
+        s.ship.vel.length() < fx!(1e-3),
         "keine Zugkraft: {:?}",
         s.ship.vel
     );
     assert!(
-        s.ship.ang_vel.abs() < 1e-3,
+        s.ship.ang_vel.abs() < fx!(1e-3),
         "kein Drehimpuls: {}",
         s.ship.ang_vel
     );
     assert!(
-        (s.ship.origin() - hull0).length() < 1e-3,
+        (s.ship.origin() - hull0).length() < fx!(1e-3),
         "der Rumpf bleibt, wo er ist"
     );
 }
@@ -128,7 +128,7 @@ fn moving_cargo_shifts_the_center_of_mass_without_pushing_the_ship() {
 #[test]
 fn moving_into_a_full_module_is_refused() {
     let mut s = sim();
-    let a = container(&mut s, 3.0, CargoTrait::None);
+    let a = container(&mut s, fx!(3.0), CargoTrait::None);
     let pod_a = s.ship.cargo[0].pod;
     let other = (pod_a + 1) % s.ship.pods.len();
     // Das andere Modul randvoll machen.
@@ -157,13 +157,13 @@ fn jettisoned_cargo_drifts_is_saved_and_can_be_picked_up_again() {
     let mut s = sim();
     float_at(&mut s, FAR);
     s.ship.store_item(CargoItem {
-        cond: 0.7,
+        cond: fx!(0.7),
         ..CargoItem::new(
             CargoKind::Salvage {
                 name: "Sensorphalanx".into(),
                 value: 300,
             },
-            2.0,
+            fx!(2.0),
             CargoTrait::Fragile,
         )
     });
@@ -171,7 +171,7 @@ fn jettisoned_cargo_drifts_is_saved_and_can_be_picked_up_again() {
     let mass0 = s.ship.mass;
     cmd(&mut s, Command::Jettison { id });
     assert!(s.ship.cargo.is_empty());
-    assert!(s.ship.mass < mass0 - 1.9);
+    assert!(s.ship.mass < mass0 - fx!(1.9));
     assert!(
         s.events
             .iter()
@@ -182,9 +182,9 @@ fn jettisoned_cargo_drifts_is_saved_and_can_be_picked_up_again() {
         .iter()
         .position(|b| matches!(b.kind, BodyKind::Dropped { .. }))
         .expect("treibt in der Welt");
-    idle(&mut s, 3.0);
+    idle(&mut s, fx!(3.0));
     let b = &s.bodies[bi];
-    assert!(b.vel.length() < 1.5, "kommt zur Ruhe: {:?}", b.vel);
+    assert!(b.vel.length() < fx!(1.5), "kommt zur Ruhe: {:?}", b.vel);
     let dropped_at = b.pos;
 
     // Gespeichert und nach dem Laden wieder da – mit Zustand und Eigenschaft.
@@ -199,7 +199,7 @@ fn jettisoned_cargo_drifts_is_saved_and_can_be_picked_up_again() {
         .position(|b| matches!(b.kind, BodyKind::Dropped { .. }))
         .expect("nach dem Laden noch da");
     assert!(
-        (t.bodies[bi].pos - dropped_at).length() < 1.0,
+        (t.bodies[bi].pos - dropped_at).length() < fx!(1.0),
         "an derselben Stelle"
     );
 
@@ -207,7 +207,7 @@ fn jettisoned_cargo_drifts_is_saved_and_can_be_picked_up_again() {
     assert!(t.try_stow(bi));
     let c = t.ship.cargo.last().unwrap();
     assert_eq!(c.traits, CargoTrait::Fragile);
-    assert!((c.cond - 0.7).abs() < 1e-4);
+    assert!((c.cond - fx!(0.7)).abs() < fx!(1e-4));
     assert!(matches!(c.kind, CargoKind::Salvage { value: 300, .. }));
 }
 
@@ -226,29 +226,29 @@ fn survivors_are_never_jettisoned() {
 fn liquid_sloshes_behind_but_steady_thrust_feels_rigid() {
     let mut s = sim();
     float_at(&mut s, FAR);
-    container(&mut s, 5.0, CargoTrait::Tank);
+    container(&mut s, fx!(5.0), CargoTrait::Tank);
     s.update_cargo();
     // Gleichmäßig beschleunigen: die Flüssigkeit legt sich an die Wand und fährt starr mit.
-    let a = Vec2::new(0.0, 6.0);
+    let a = Vec2::new(fx!(0.0), fx!(6.0));
     for _ in 0..240 {
         push(&mut s, a);
     }
     let v = s.ship.vel;
     let slosh = s.ship.cargo[0].slosh;
-    assert!(slosh.y < -0.3, "Flüssigkeit liegt hinten: {slosh:?}");
+    assert!(slosh.y < -fx!(0.3), "Flüssigkeit liegt hinten: {slosh:?}");
     push(&mut s, a);
     assert!(
-        (s.ship.vel - (v + a * DT)).length() < 1e-3,
+        (s.ship.vel - (v + a * DT)).length() < fx!(1e-3),
         "gleichmäßiger Schub: keine Zusatzkraft"
     );
     // Schub aus: die Flüssigkeit schwappt nach vorn und schiebt das Schiff nach.
     let v_stop = s.ship.vel;
-    let mut peak = 0.0f32;
+    let mut peak = fx!(0.0);
     for _ in 0..90 {
         push(&mut s, Vec2::ZERO);
         peak = peak.max((s.ship.vel - v_stop).length());
     }
-    assert!(peak > 0.02, "Nachschwappen spürbar: {peak}");
+    assert!(peak > fx!(0.02), "Nachschwappen spürbar: {peak}");
 }
 
 #[test]
@@ -263,16 +263,16 @@ fn fragile_cargo_takes_damage_from_hard_knocks_and_pays_by_condition() {
             from: Owner::Station(home),
             to,
             cargo: "Messinstrumente".into(),
-            mass: 2.5,
+            mass: fx!(2.5),
             traits: CargoTrait::Fragile,
         },
         reward: 400,
         origin: Some(Owner::Station(home)),
         giver: None,
         start: None,
-        top_speed: 0.0,
+        top_speed: fx!(0.0),
         max_strain: None,
-        par: 600.0,
+        par: fx!(600.0),
     });
     cmd(&mut s, Command::AcceptMission { id });
     let c = s
@@ -285,40 +285,43 @@ fn fragile_cargo_takes_damage_from_hard_knocks_and_pays_by_condition() {
     s.update_cargo();
     // Sanft: nichts passiert.
     for _ in 0..60 {
-        push(&mut s, Vec2::new(0.0, 12.0));
+        push(&mut s, Vec2::new(fx!(0.0), fx!(12.0)));
     }
-    assert!((s.delivery_condition(id) - 1.0).abs() < 1e-4);
+    assert!((s.delivery_condition(id) - fx!(1.0)).abs() < fx!(1e-4));
     // Harter Stoß: 3 m/s in einem Tick.
-    s.ship.vel += Vec2::new(3.0, 0.0);
+    s.ship.vel += Vec2::new(fx!(3.0), fx!(0.0));
     s.update_cargo();
     let cond = s.delivery_condition(id);
-    assert!(cond < 0.8 && cond > 0.0, "Zustand gesunken: {cond}");
+    assert!(
+        cond < fx!(0.8) && cond > fx!(0.0),
+        "Zustand gesunken: {cond}"
+    );
     assert!(toasts(&s).iter().any(|t| t.contains("beschädigt")));
     // Abrechnung nach Zustand.
-    s.ship.cargo.iter_mut().for_each(|c| c.cond = 0.5);
+    s.ship.cargo.iter_mut().for_each(|c| c.cond = fx!(0.5));
     let idx = s.active.iter().position(|m| m.id == id).unwrap();
     s.complete_mission(idx);
     let r = s.report.as_ref().unwrap();
     assert_eq!(r.reward, 260, "400 × (0,3 + 0,7 × 0,5)");
-    assert_eq!(r.cond, Some(0.5));
+    assert_eq!(r.cond, Some(fx!(0.5)));
 }
 
 #[test]
 fn unstable_cargo_builds_stress_under_hard_acceleration_and_blows() {
     let mut s = sim();
     float_at(&mut s, FAR);
-    container(&mut s, 2.0, CargoTrait::Unstable);
+    container(&mut s, fx!(2.0), CargoTrait::Unstable);
     s.update_cargo();
     // Unter der Grenze: keine Belastung.
     for _ in 0..300 {
-        push(&mut s, Vec2::new(0.0, 10.0));
+        push(&mut s, Vec2::new(fx!(0.0), fx!(10.0)));
     }
-    assert!(s.ship.cargo[0].stress < 1e-4);
+    assert!(s.ship.cargo[0].stress < fx!(1e-4));
     // Darüber: Belastung steigt, irgendwann verpufft es.
     let hull = s.ship.hull + s.ship.shield;
     let mut blew = false;
     for _ in 0..600 {
-        push(&mut s, Vec2::new(0.0, 28.0));
+        push(&mut s, Vec2::new(fx!(0.0), fx!(28.0)));
         if s.ship.cargo.is_empty() {
             blew = true;
             break;
@@ -367,9 +370,9 @@ fn rescue_mission(s: &mut SimState, site: Vec2, crew: u32) -> u32 {
         origin: None,
         giver: None,
         start: None,
-        top_speed: 0.0,
+        top_speed: fx!(0.0),
         max_strain: None,
-        par: 600.0,
+        par: fx!(600.0),
     });
     cmd(s, Command::AcceptMission { id });
     id
@@ -382,7 +385,11 @@ fn alongside(s: &mut SimState) {
         .iter()
         .find(|n| matches!(n.role, Role::Stranded { .. }))
         .unwrap();
-    let at = n.ship.pos + Vec2::new(n.ship.bound_radius() + s.ship.bound_radius() + 2.0, 0.0);
+    let at = n.ship.pos
+        + Vec2::new(
+            n.ship.bound_radius() + s.ship.bound_radius() + fx!(2.0),
+            fx!(0.0),
+        );
     let vel = n.ship.vel;
     float_at(s, at);
     s.ship.vel = vel;
@@ -391,18 +398,18 @@ fn alongside(s: &mut SimState) {
 #[test]
 fn rescue_brings_crew_aboard_person_by_person_and_they_thank_later() {
     let mut s = sim();
-    let site = FAR + Vec2::new(200.0, 0.0);
+    let site = FAR + Vec2::new(fx!(200.0), fx!(0.0));
     let id = rescue_mission(&mut s, site, 3);
     let n = s
         .npcs
         .iter()
         .find(|n| matches!(n.role, Role::Stranded { mission } if mission == id))
         .expect("havariertes Schiff treibt am Notrufort");
-    assert!((n.ship.pos - site).length() < 1.0);
+    assert!((n.ship.pos - site).length() < fx!(1.0));
     assert_eq!(n.label(), "Havariert");
     alongside(&mut s);
     let mass0 = s.ship.mass;
-    idle(&mut s, RESCUE_STEP * 3.0 + 0.5);
+    idle(&mut s, RESCUE_STEP * fx!(3.0) + fx!(0.5));
     let MissionKind::Rescue { aboard, .. } = s.active.iter().find(|m| m.id == id).unwrap().kind
     else {
         unreachable!()
@@ -415,7 +422,7 @@ fn rescue_brings_crew_aboard_person_by_person_and_they_thank_later() {
         .filter(|c| c.kind == CargoKind::Survivor { mission: id })
         .count();
     assert_eq!(people, 3, "jede Person belegt Platz");
-    assert!(s.ship.mass > mass0 + 3.0 * PERSON_MASS - 0.01);
+    assert!(s.ship.mass > mass0 + fx!(3.0) * PERSON_MASS - fx!(0.01));
 
     // An der Zielstation abliefern.
     let to = s.crew.home_station;
@@ -429,7 +436,7 @@ fn rescue_brings_crew_aboard_person_by_person_and_they_thank_later() {
             .all(|c| !matches!(c.kind, CargoKind::Survivor { .. }))
     );
     assert_eq!(s.crew.rescued.len(), 1);
-    idle(&mut s, 0.5);
+    idle(&mut s, fx!(0.5));
     assert!(
         s.npcs
             .iter()
@@ -438,7 +445,7 @@ fn rescue_brings_crew_aboard_person_by_person_and_they_thank_later() {
     );
 
     // Später meldet sich die Kapitänin – an einer Station, mit Geschenk.
-    s.crew.rescued[0].wait = 0.05;
+    s.crew.rescued[0].wait = fx!(0.05);
     let credits = s.crew.credits;
     let parts = s.crew.storage_parts;
     let mut story = false;
@@ -456,7 +463,7 @@ fn rescue_brings_crew_aboard_person_by_person_and_they_thank_later() {
 #[test]
 fn rescue_needs_room_and_the_crew_decides_what_to_leave_behind() {
     let mut s = sim();
-    let site = FAR + Vec2::new(-200.0, 0.0);
+    let site = FAR + Vec2::new(-fx!(200.0), fx!(0.0));
     let id = rescue_mission(&mut s, site, 2);
     // Frachtraum randvoll mit Ladung.
     for p in 0..s.ship.pods.len() {
@@ -477,7 +484,7 @@ fn rescue_needs_room_and_the_crew_decides_what_to_leave_behind() {
     s.ship.recompute_mass();
     alongside(&mut s);
     let mut warned = false;
-    for _ in 0..((RESCUE_STEP + 0.3) * 60.0) as u32 {
+    for _ in 0..((RESCUE_STEP + fx!(0.3)) * fx!(60.0)).to_u32() {
         s.step(&TickInput::default());
         warned |= s.events.iter().any(|e| {
             matches!(e, SimEvent::Toast { text, kind: ToastKind::Warn } if text.contains("Kein Platz"))
@@ -494,11 +501,11 @@ fn rescue_needs_room_and_the_crew_decides_what_to_leave_behind() {
     cmd(&mut s, Command::Jettison { id: 100 });
     for b in &mut s.bodies {
         if matches!(b.kind, BodyKind::Dropped { .. }) {
-            b.pos += Vec2::new(0.0, 80.0);
+            b.pos += Vec2::new(fx!(0.0), fx!(80.0));
         }
     }
     alongside(&mut s);
-    idle(&mut s, RESCUE_STEP * 2.0 + 0.5);
+    idle(&mut s, RESCUE_STEP * fx!(2.0) + fx!(0.5));
     assert_eq!(aboard(&s), 2);
 }
 
@@ -518,7 +525,10 @@ fn bonus_find_is_optional_extra_salvage_near_the_site() {
     assert!(!finds.is_empty(), "Zusatzfund erscheint");
     for b in &finds {
         let d = (b.pos - site).length();
-        assert!((30.0..=75.0).contains(&d), "nahe am Einsatzort: {d}");
+        assert!(
+            (fx!(30.0)..=fx!(75.0)).contains(&d),
+            "nahe am Einsatzort: {d}"
+        );
         let BodyKind::Dropped { item } = &b.kind else {
             unreachable!()
         };
@@ -558,7 +568,7 @@ fn two_cranes_grab_one_object_at_two_points() {
     };
     // Schwere Kiste vor dem Schiff.
     let mount = s.ship.tool_world_pos(a);
-    let center = mount + Vec2::new(0.0, 8.0);
+    let center = mount + Vec2::new(fx!(0.0), fx!(8.0));
     let id = s.next_id();
     s.bodies.push(Body {
         id,
@@ -568,21 +578,21 @@ fn two_cranes_grab_one_object_at_two_points() {
         },
         pos: center,
         vel: Vec2::ZERO,
-        angle: 0.0,
-        ang_vel: 0.0,
-        radius: 1.5,
-        mass: 8.0,
+        angle: fx!(0.0),
+        ang_vel: fx!(0.0),
+        radius: fx!(1.5),
+        mass: fx!(8.0),
         prev_pos: center,
-        prev_angle: 0.0,
+        prev_angle: fx!(0.0),
         alive: true,
         seed: 1,
-        age: 0.0,
+        age: fx!(0.0),
     });
     // Beide Kräne zielen auf verschiedene Seiten der Kiste.
     let fire = |s: &mut SimState, ti: usize, target: Vec2| {
         let m = s.ship.tool_world_pos(ti);
         let slot = s.ship.tools[ti].slot;
-        let mut aims = vec![0.0; MAX_SLOTS];
+        let mut aims = vec![fx!(0.0); MAX_SLOTS];
         aims[slot as usize] = (target - m).to_angle();
         // Kurz tippen, dann fährt der Greifer aus, bis er trifft.
         s.step(&TickInput {
@@ -606,8 +616,8 @@ fn two_cranes_grab_one_object_at_two_points() {
         }
         texts
     };
-    fire(&mut s, a, center + Vec2::new(-1.2, 0.0));
-    let second = fire(&mut s, b, center + Vec2::new(1.2, 0.0));
+    fire(&mut s, a, center + Vec2::new(-fx!(1.2), fx!(0.0)));
+    let second = fire(&mut s, b, center + Vec2::new(fx!(1.2), fx!(0.0)));
     let local = |s: &SimState, ti: usize| match s.ship.tools[ti].crane {
         CraneState::Attached { body, local, .. } if body == id => Some(local),
         _ => None,
@@ -616,7 +626,7 @@ fn two_cranes_grab_one_object_at_two_points() {
     assert!(la.is_some() && lb.is_some(), "beide Kräne halten die Kiste");
     let (la, lb) = (la.unwrap(), lb.unwrap());
     assert!(
-        (la - lb).length() > 0.8,
+        (la - lb).length() > fx!(0.8),
         "zwei verschiedene Griffpunkte: {la:?} {lb:?}"
     );
     assert!(

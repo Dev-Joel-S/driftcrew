@@ -211,7 +211,7 @@ fn map_input(
             Some(MapAct::Accept(id)) => pending.0.push(Command::AcceptMission { id }),
             Some(MapAct::Abandon(id)) => pending.0.push(Command::AbandonMission { id }),
             Some(MapAct::Mark) => entry.start(
-                super::text_entry::Purpose::Mark(sim.0.ship.pos),
+                super::text_entry::Purpose::Mark((sim.0.ship.pos).to_bevy()),
                 String::new(),
                 &mut paused,
             ),
@@ -236,7 +236,7 @@ fn draw_map(
     // Nebeltextur nur neu bauen, wenn sich die Erkundung geändert hat.
     let ex = &sim.0.explored;
     if fog.version != Some(ex.version) || fog.handle.is_none() {
-        let img = fog_image(ex, sim.0.world.radius);
+        let img = fog_image(ex, (sim.0.world.radius).to_f32());
         match &fog.handle {
             Some(h) => {
                 let _ = images.insert(h, img);
@@ -330,15 +330,15 @@ fn draw_map(
                 ));
             };
             for reg in &s.data.world.regions {
-                let c = srgb(hex(&reg.colors.0)).with_alpha(0.10);
-                let at = to_map(Vec2::new(reg.center.0, reg.center.1));
+                let c = srgb((hex(&reg.colors.0)).map(crate::sim::fx::Fx::to_f32)).with_alpha(0.10);
+                let at = to_map(Vec2::new((reg.center.0).to_f32(), (reg.center.1).to_f32()));
                 dot(m, at, reg.radius * scale * 2.0, c, true);
             }
             // Sektoren mit Effekten (sichtbar, sobald entdeckt).
             for reg in &s.data.world.regions {
                 let Some(e) = reg.effect else { continue };
-                let c = Vec2::new(reg.center.0, reg.center.1);
-                if !s.discovered(c) {
+                let c = Vec2::new((reg.center.0).to_f32(), (reg.center.1).to_f32());
+                if !s.discovered(crate::sim::fx::Vec2::from_bevy(c)) {
                     continue;
                 }
                 let (tag, col) = match e {
@@ -372,20 +372,20 @@ fn draw_map(
                 },
                 ImageNode::new(fog_handle.clone()),
             ));
-            let seen = |p: Vec2| s.discovered(p);
+            let seen = |p: Vec2| s.discovered(crate::sim::fx::Vec2::from_bevy(p));
             for f in s
                 .data
                 .world
                 .asteroid_fields
                 .iter()
-                .filter(|f| seen(Vec2::new(f.center.0, f.center.1)))
+                .filter(|f| seen(Vec2::new((f.center.0).to_f32(), (f.center.1).to_f32())))
             {
-                let at = to_map(Vec2::new(f.center.0, f.center.1));
+                let at = to_map(Vec2::new((f.center.0).to_f32(), (f.center.1).to_f32()));
                 dot(
                     m,
                     at,
                     f.radius * scale * 2.0,
-                    srgb(hex(&f.color)).with_alpha(0.35),
+                    srgb((hex(&f.color)).map(crate::sim::fx::Fx::to_f32)).with_alpha(0.35),
                     true,
                 );
                 // Was es dort gibt: Haupterz zuerst, Beimischungen klein dahinter.
@@ -397,9 +397,9 @@ fn draw_map(
                 .world
                 .meteor_zones
                 .iter()
-                .filter(|z| seen(Vec2::new(z.center.0, z.center.1)))
+                .filter(|z| seen(Vec2::new((z.center.0).to_f32(), (z.center.1).to_f32())))
             {
-                let at = to_map(Vec2::new(z.center.0, z.center.1));
+                let at = to_map(Vec2::new((z.center.0).to_f32(), (z.center.1).to_f32()));
                 dot(
                     m,
                     at,
@@ -410,16 +410,18 @@ fn draw_map(
                 label(m, at, format!("⚠ {}", z.name), Color::srgb(1.0, 0.55, 0.3));
             }
             for (i, p) in s.world.planets.iter().enumerate() {
-                if !seen(p.pos) {
+                if !seen((p.pos).to_bevy()) {
                     continue;
                 }
-                let at = to_map(p.pos);
-                let c = srgb(hex(&s.data.world.planets[i].atmosphere));
+                let at = to_map((p.pos).to_bevy());
+                let c = srgb(
+                    (hex(&s.data.world.planets[i].atmosphere)).map(crate::sim::fx::Fx::to_f32),
+                );
                 dot(m, at, (p.radius * scale * 2.0).max(12.0), c, true);
                 label(m, at, format!("{} · {}", p.name, p.ore.label()), c);
             }
-            for an in s.world.anomalies.iter().filter(|a| seen(a.pos)) {
-                let at = to_map(an.pos);
+            for an in s.world.anomalies.iter().filter(|a| seen((a.pos).to_bevy())) {
+                let at = to_map((an.pos).to_bevy());
                 let (area, core, name) = if an.is_black_hole() {
                     (
                         Color::srgba(0.45, 0.3, 0.8, 0.3),
@@ -439,23 +441,29 @@ fn draw_map(
             }
             // Monumente (sobald entdeckt) und – nach dem Signalturm – die Fundorte der Artefakte.
             for mo in &s.world.monuments {
-                if !seen(mo.pos) {
+                if !seen((mo.pos).to_bevy()) {
                     continue;
                 }
-                let at = to_map(mo.pos);
-                let c = srgb(mo.accent_color);
+                let at = to_map((mo.pos).to_bevy());
+                let c = srgb((mo.accent_color).map(crate::sim::fx::Fx::to_f32));
                 dot(m, at, 11.0, c, false);
                 let state = if mo.awake { "erwacht" } else { "schlafend" };
                 label(m, at, format!("△ {} ({state})", mo.name), c);
             }
             if s.story.sites_revealed {
                 for p in s.artifact_positions() {
-                    dot(m, to_map(p), 8.0, Color::srgb(0.75, 0.55, 1.0), true);
+                    dot(
+                        m,
+                        to_map((p).to_bevy()),
+                        8.0,
+                        Color::srgb(0.75, 0.55, 1.0),
+                        true,
+                    );
                 }
             }
             // Piratennester und Zollbojen, sobald entdeckt.
             for n in &s.data.traffic.nests {
-                let c = Vec2::new(n.center.0, n.center.1);
+                let c = Vec2::new((n.center.0).to_f32(), (n.center.1).to_f32());
                 if !seen(c) {
                     continue;
                 }
@@ -481,7 +489,7 @@ fn draw_map(
                 let pts: Vec<Vec2> = r
                     .points
                     .iter()
-                    .map(|p| to_map(Vec2::new(p.0, p.1)))
+                    .map(|p| to_map(Vec2::new((p.0).to_f32(), (p.1).to_f32())))
                     .collect();
                 for w in pts.windows(2) {
                     let n = ((w[1] - w[0]).length() / 6.0).ceil().max(1.0) as usize;
@@ -503,14 +511,14 @@ fn draw_map(
             }
             // Markierungen der Crew (82).
             for mk in &s.journal.marks {
-                let at = to_map(Vec2::new(mk.pos.0, mk.pos.1));
+                let at = to_map(Vec2::new((mk.pos.0).to_f32(), (mk.pos.1).to_f32()));
                 let c = Color::srgb(1.0, 0.9, 0.4);
                 dot(m, at, 7.0, c, false);
                 label(m, at, format!("✎ {}", mk.text), c);
             }
             // Wirkungen erledigter Aufträge an den Stationen (76).
             for e in &s.effects {
-                let at = to_map(s.world.stations[e.station].pos) + Vec2::new(0.0, 14.0);
+                let at = to_map((s.world.stations[e.station].pos).to_bevy()) + Vec2::new(0.0, 14.0);
                 label(
                     m,
                     at,
@@ -519,7 +527,7 @@ fn draw_map(
                 );
             }
             for cp in &s.data.traffic.checkpoints {
-                let c = Vec2::new(cp.pos.0, cp.pos.1);
+                let c = Vec2::new((cp.pos.0).to_f32(), (cp.pos.1).to_f32());
                 if !seen(c) {
                     continue;
                 }
@@ -538,22 +546,22 @@ fn draw_map(
                 .world
                 .wrecks
                 .iter()
-                .filter(|w| seen(Vec2::new(w.pos.0, w.pos.1)))
+                .filter(|w| seen(Vec2::new((w.pos.0).to_f32(), (w.pos.1).to_f32())))
             {
-                let at = to_map(Vec2::new(w.pos.0, w.pos.1));
+                let at = to_map(Vec2::new((w.pos.0).to_f32(), (w.pos.1).to_f32()));
                 dot(m, at, 6.0, Color::srgb(0.7, 0.66, 0.6), false);
             }
             if let Some(w) = s.data.world.wrecks.first()
-                && seen(Vec2::new(w.pos.0, w.pos.1))
+                && seen(Vec2::new((w.pos.0).to_f32(), (w.pos.1).to_f32()))
             {
-                let at = to_map(Vec2::new(w.pos.0, w.pos.1));
+                let at = to_map(Vec2::new((w.pos.0).to_f32(), (w.pos.1).to_f32()));
                 label(m, at, "Wracks".into(), Color::srgb(0.75, 0.7, 0.62));
             }
             for (si, st) in s.world.stations.iter().enumerate() {
                 if !s.station_known(si) {
                     continue;
                 }
-                let at = to_map(st.pos);
+                let at = to_map((st.pos).to_bevy());
                 let c = match st.kind {
                     StationKind::Shipyard => Color::srgb(1.0, 0.55, 0.15),
                     _ => TEAL,
@@ -574,12 +582,12 @@ fn draw_map(
                 let Some(start) = s.step_target(list[0], 0) else {
                     continue;
                 };
-                if !seen(start) {
+                if !seen((start).to_bevy()) {
                     continue;
                 }
                 for &ci in list {
                     if let Some(p) = s.step_target(ci, 0) {
-                        dot(m, to_map(p), 6.0, flag, true);
+                        dot(m, to_map((p).to_bevy()), 6.0, flag, true);
                     }
                 }
                 let name = match list.as_slice() {
@@ -588,7 +596,7 @@ fn draw_map(
                 };
                 label(
                     m,
-                    to_map(start) - Vec2::new(0.0, 26.0),
+                    to_map((start).to_bevy()) - Vec2::new(0.0, 26.0),
                     format!("⚑ {name}"),
                     flag,
                 );
@@ -596,10 +604,10 @@ fn draw_map(
             // Verkehr: Frachter, Händlerin, Rivalen, Konvois (Piraten nur in Radarnähe).
             for n in s.npcs.iter().filter(|n| n.alive) {
                 let near = (n.ship.pos - s.ship.pos).length() < super::hud::RADAR_RANGE;
-                if (n.hostile && !near) || !seen(n.ship.pos) {
+                if (n.hostile && !near) || !seen((n.ship.pos).to_bevy()) {
                     continue;
                 }
-                let at = to_map(n.ship.pos);
+                let at = to_map((n.ship.pos).to_bevy());
                 let c = super::hud::npc_color(n);
                 dot(m, at, 5.0, c, false);
                 if matches!(
@@ -615,13 +623,13 @@ fn draw_map(
                 if let Some(t) = mi.nav_target(s)
                     && blink == 0
                 {
-                    dot(m, to_map(t), 12.0, ACCENT, true);
+                    dot(m, to_map((t).to_bevy()), 12.0, ACCENT, true);
                 }
             }
             if let Some(t) = s.course_target()
                 && blink == 0
             {
-                dot(m, to_map(t), 10.0, flag, true);
+                dot(m, to_map((t).to_bevy()), 10.0, flag, true);
             }
             for mi in s.offers.iter().filter(|m| m.is_distress()) {
                 let site = match &mi.kind {
@@ -632,10 +640,16 @@ fn draw_map(
                 if let Some(site) = site
                     && blink == 1
                 {
-                    dot(m, to_map(site), 10.0, Color::srgb(1.0, 0.25, 0.25), true);
+                    dot(
+                        m,
+                        to_map((site).to_bevy()),
+                        10.0,
+                        Color::srgb(1.0, 0.25, 0.25),
+                        true,
+                    );
                 }
             }
-            let me = to_map(s.ship.pos);
+            let me = to_map((s.ship.pos).to_bevy());
             dot(m, me, 10.0, Color::WHITE, true);
             label(m, me, "Ihr".into(), TEXT);
         });

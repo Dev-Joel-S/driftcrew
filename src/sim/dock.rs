@@ -1,15 +1,15 @@
 //! Andocken (die zentrale Fähigkeit), Zerstörung und Wiedereinstieg.
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::ship::{CargoKind, CraneState};
 use super::world::{Owner, angle_diff};
 use super::{Body, BodyKind, DT, EscapePod, SimEvent, SimState, TickInput, ToastKind};
 
 /// Maximal erlaubte Geschwindigkeit beim Andocken.
-pub const DOCK_MAX_SPEED: f32 = 2.6;
+pub const DOCK_MAX_SPEED: Fx = fx!(2.6);
 /// Maximal erlaubte Abweichung der Ausrichtung (Grad).
-pub const DOCK_MAX_ANGLE_DEG: f32 = 24.0;
+pub const DOCK_MAX_ANGLE_DEG: Fx = fx!(24.0);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct DockGuide {
@@ -18,22 +18,22 @@ pub struct DockGuide {
     pub angle_ok: bool,
     pub spin_ok: bool,
     pub in_zone: bool,
-    pub distance: f32,
+    pub distance: Fx,
     /// Aktuelle Werte für die Ampel-Anzeige.
-    pub speed: f32,
-    pub angle_deg: f32,
-    pub spin: f32,
+    pub speed: Fx,
+    pub angle_deg: Fx,
+    pub spin: Fx,
     /// Seitlicher Versatz zur Plattformmitte (positiv = in Tangentenrichtung).
-    pub lateral: f32,
+    pub lateral: Fx,
     /// Höhe über der Ruheposition.
-    pub height: f32,
+    pub height: Fx,
 }
 
 /// So lange fliegt die Rettungskapsel, bevor die Bergung das Schiff an der Heimatstation abstellt.
-pub const RESPAWN_SECONDS: f32 = 5.0;
+pub const RESPAWN_SECONDS: Fx = fx!(5.0);
 
 /// Maximal erlaubte Drehgeschwindigkeit beim Andocken (rad/s).
-pub const DOCK_MAX_SPIN: f32 = 0.9;
+pub const DOCK_MAX_SPIN: Fx = fx!(0.9);
 
 /// Ampel für die Andockhilfe: grün = passt, gelb = bis doppelter Grenzwert, rot = darüber.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -43,10 +43,10 @@ pub enum Light {
     Red,
 }
 
-pub fn light(value: f32, limit: f32) -> Light {
+pub fn light(value: Fx, limit: Fx) -> Light {
     if value < limit {
         Light::Green
-    } else if value < limit * 2.0 {
+    } else if value < limit * fx!(2.0) {
         Light::Yellow
     } else {
         Light::Red
@@ -94,7 +94,7 @@ impl SimState {
             }
             let rel = self.ship.pos - pad.center;
             let dist = rel.length();
-            if dist > 28.0 || best.is_some_and(|b| b.distance < dist) {
+            if dist > fx!(28.0) || best.is_some_and(|b| b.distance < dist) {
                 continue;
             }
             let along = rel.dot(pad.normal);
@@ -110,7 +110,9 @@ impl SimState {
                 speed_ok: speed < DOCK_MAX_SPEED,
                 angle_ok: angle_deg < DOCK_MAX_ANGLE_DEG,
                 spin_ok: spin < DOCK_MAX_SPIN,
-                in_zone: lateral.abs() < pad.half_width && along > rest - 0.6 && along < rest + 1.4,
+                in_zone: lateral.abs() < pad.half_width
+                    && along > rest - fx!(0.6)
+                    && along < rest + fx!(1.4),
                 distance: dist,
                 speed,
                 angle_deg,
@@ -128,26 +130,26 @@ impl SimState {
             return;
         }
         let thrusting = self.ship.thrusters.iter().any(|t| input.pressed(t.slot));
-        if self.ship.dock_cooldown > 0.0 || thrusting {
-            self.ship.dock_timer = 0.0;
+        if self.ship.dock_cooldown > fx!(0.0) || thrusting {
+            self.ship.dock_timer = fx!(0.0);
             return;
         }
         match self.dock_guide() {
             Some(g) if g.in_zone && g.speed_ok && g.angle_ok && g.spin_ok => {
                 self.ship.dock_timer += DT;
-                if self.ship.dock_timer > 0.35 {
+                if self.ship.dock_timer > fx!(0.35) {
                     self.dock(g.pad);
                 }
             }
-            _ => self.ship.dock_timer = 0.0,
+            _ => self.ship.dock_timer = fx!(0.0),
         }
     }
 
     pub(crate) fn dock(&mut self, pad: usize) {
         self.ship.docked = Some(pad);
-        self.ship.dock_timer = 0.0;
+        self.ship.dock_timer = fx!(0.0);
         self.ship.vel = Vec2::ZERO;
-        self.ship.ang_vel = 0.0;
+        self.ship.ang_vel = fx!(0.0);
         for t in &mut self.ship.thrusters {
             t.firing = false;
         }
@@ -177,15 +179,15 @@ impl SimState {
         let p = self.world.pads[pad].clone();
         let rest = self.ship.rest_height();
         let lateral = (self.ship.pos - p.center).dot(p.tangent()).clamp(
-            -(p.half_width - 0.8).max(0.0),
-            (p.half_width - 0.8).max(0.0),
+            -(p.half_width - fx!(0.8)).max(fx!(0.0)),
+            (p.half_width - fx!(0.8)).max(fx!(0.0)),
         );
-        let target = p.center + p.normal * (rest + 0.02) + p.tangent() * lateral;
+        let target = p.center + p.normal * (rest + fx!(0.02)) + p.tangent() * lateral;
         let ta = p.ship_angle();
-        self.ship.angle += angle_diff(ta, self.ship.angle) * 0.2;
-        self.ship.pos = self.ship.pos.lerp(target, 0.2);
+        self.ship.angle += angle_diff(ta, self.ship.angle) * fx!(0.2);
+        self.ship.pos = self.ship.pos.lerp(target, fx!(0.2));
         self.ship.vel = Vec2::ZERO;
-        self.ship.ang_vel = 0.0;
+        self.ship.ang_vel = fx!(0.0);
     }
 
     pub(crate) fn dock_at_station(&mut self, si: usize) {
@@ -210,11 +212,11 @@ impl SimState {
         };
         let p = self.world.pads[pad].clone();
         self.ship.angle = p.ship_angle();
-        self.ship.pos = p.center + p.normal * (self.ship.rest_height() + 0.02);
+        self.ship.pos = p.center + p.normal * (self.ship.rest_height() + fx!(0.02));
         self.ship.prev_pos = self.ship.pos;
         self.ship.prev_angle = self.ship.angle;
         self.ship.vel = Vec2::ZERO;
-        self.ship.ang_vel = 0.0;
+        self.ship.ang_vel = fx!(0.0);
         self.ship.docked = Some(pad);
         self.crew.home_station = si;
     }
@@ -223,11 +225,11 @@ impl SimState {
         if self.ship.destroyed {
             return;
         }
-        if self.ship.hull <= 0.0 {
+        if self.ship.hull <= fx!(0.0) {
             self.destroy_ship();
             return;
         }
-        let low = self.ship.hull < self.ship.max_hull * 0.3;
+        let low = self.ship.hull < self.ship.max_hull * fx!(0.3);
         if low && !self.low_hull_warned {
             self.low_hull_warned = true;
             self.toast("Hülle kritisch! Reparatur an einer Station", ToastKind::Bad);
@@ -244,25 +246,25 @@ impl SimState {
         let nose = super::geom::rot(Vec2::Y, self.ship.angle);
         self.escape = Some(EscapePod {
             pos,
-            vel: self.ship.vel * 0.5 + nose * 7.0,
+            vel: self.ship.vel * fx!(0.5) + nose * fx!(7.0),
             angle: self.ship.angle,
-            spin: self.rng.range(-1.2, 1.2),
+            spin: self.rng.range(-fx!(1.2), fx!(1.2)),
             prev_pos: pos,
             prev_angle: self.ship.angle,
         });
-        self.ship.hull = 0.0;
+        self.ship.hull = fx!(0.0);
         for t in &mut self.ship.tools {
             t.crane = CraneState::Idle;
             t.drill = None;
         }
         for t in &mut self.ship.thrusters {
             t.firing = false;
-            t.level = 0.0;
+            t.level = fx!(0.0);
         }
         self.events.push(SimEvent::Explosion {
             pos,
-            size: 9.0,
-            color: [1.0, 0.7, 0.3],
+            size: fx!(9.0),
+            color: [fx!(1.0), fx!(0.7), fx!(0.3)],
         });
         self.events.push(SimEvent::ShipDestroyed);
 
@@ -275,22 +277,22 @@ impl SimState {
                 CargoKind::Artifact { id } => artifacts.push(id),
                 CargoKind::Capsule { mission } => {
                     let id = self.next_id();
-                    let a = self.rng.range(0.0, std::f32::consts::TAU);
+                    let a = self.rng.range(fx!(0.0), Fx::TAU);
                     let dir = Vec2::new(a.cos(), a.sin());
                     self.bodies.push(Body {
                         id,
                         kind: BodyKind::Capsule { mission },
-                        pos: pos + dir * 2.0,
-                        vel: self.ship.vel + dir * 3.0,
-                        angle: 0.0,
-                        ang_vel: 1.0,
-                        radius: 0.7,
-                        mass: 0.8,
+                        pos: pos + dir * fx!(2.0),
+                        vel: self.ship.vel + dir * fx!(3.0),
+                        angle: fx!(0.0),
+                        ang_vel: fx!(1.0),
+                        radius: fx!(0.7),
+                        mass: fx!(0.8),
                         prev_pos: pos,
-                        prev_angle: 0.0,
+                        prev_angle: fx!(0.0),
                         alive: true,
                         seed: id,
-                        age: 0.0,
+                        age: fx!(0.0),
                     });
                 }
                 CargoKind::Container { mission, .. } => {
@@ -329,20 +331,20 @@ impl SimState {
     /// Bergungsgebühr vor Versicherung: fester Betrag + Anteil der Kasse.
     pub fn salvage_fee_gross(&self) -> u32 {
         let shop = &self.data.shop;
-        let fee = shop.salvage_base as f32 + self.crew.credits as f32 * shop.respawn_fee;
-        fee.round() as u32
+        let fee = Fx::from(shop.salvage_base) + Fx::from(self.crew.credits) * shop.respawn_fee;
+        fee.round_int() as u32
     }
 
     /// Bergungsgebühr, die bei einer Zerstörung jetzt aus der gemeinsamen Kasse fällig wäre
     /// (nach Abzug der Versicherung, höchstens die Kasse).
     pub fn salvage_fee_now(&self) -> u32 {
-        let gross = self.salvage_fee_gross() as f32;
+        let gross = Fx::from(self.salvage_fee_gross());
         let share = if self.crew.insured {
-            1.0 - self.data.shop.finance.coverage
+            fx!(1.0) - self.data.shop.finance.coverage
         } else {
-            1.0
+            fx!(1.0)
         };
-        ((gross * share).round() as u32).min(self.crew.credits)
+        ((gross * share).round_int() as u32).min(self.crew.credits)
     }
 
     pub(crate) fn update_respawn(&mut self) {
@@ -352,25 +354,25 @@ impl SimState {
             p.pos += p.vel * DT;
             p.angle += p.spin * DT;
             // Kleine Steuerdüsen bremsen die Kapsel allmählich ab.
-            p.vel *= 1.0 - 0.35 * DT;
-            p.spin *= 1.0 - 0.5 * DT;
+            p.vel *= fx!(1.0) - fx!(0.35) * DT;
+            p.spin *= fx!(1.0) - fx!(0.5) * DT;
         }
         self.ship.respawn_timer -= DT;
-        if self.ship.respawn_timer > 0.0 {
+        if self.ship.respawn_timer > fx!(0.0) {
             return;
         }
         self.escape = None;
         self.ship.destroyed = false;
         self.ship.hull = self.ship.max_hull;
         // Verbrauchtes ist weg (Phase 19): Schildladung und Munition müssen nachgekauft werden.
-        self.ship.shield = 0.0;
+        self.ship.shield = fx!(0.0);
         self.ship.ammo = 0;
-        self.ship.fuel = self.ship.fuel.max(self.ship.max_fuel * 0.5);
+        self.ship.fuel = self.ship.fuel.max(self.ship.max_fuel * fx!(0.5));
         self.fuel_warned = 0;
         for t in &mut self.ship.thrusters {
-            t.health = 1.0;
+            t.health = fx!(1.0);
         }
-        self.ship.invulnerable = 2.0;
+        self.ship.invulnerable = fx!(2.0);
         self.low_hull_warned = false;
         let home = self.crew.home_station;
         self.dock_at_station(home);
@@ -398,10 +400,10 @@ mod tests {
         let pad = s.world.stations[0].pads[0];
         let p = s.world.pads[pad].clone();
         s.ship.docked = None;
-        s.ship.dock_cooldown = 0.0;
+        s.ship.dock_cooldown = fx!(0.0);
         s.ship.angle = p.ship_angle();
-        s.ship.pos = p.center + p.normal * (s.ship.rest_height() + 2.0);
-        s.ship.vel = -p.normal * 1.2;
+        s.ship.pos = p.center + p.normal * (s.ship.rest_height() + fx!(2.0));
+        s.ship.vel = -p.normal * fx!(1.2);
         for _ in 0..240 {
             s.step(&TickInput::default());
             if s.ship.docked.is_some() {
@@ -417,10 +419,10 @@ mod tests {
         let pad = s.world.stations[0].pads[0];
         let p = s.world.pads[pad].clone();
         s.ship.docked = None;
-        s.ship.shield = 0.0;
-        s.ship.angle = p.ship_angle() + 1.2;
-        s.ship.pos = p.center + p.normal * (s.ship.rest_height() + 3.0);
-        s.ship.vel = -p.normal * 14.0;
+        s.ship.shield = fx!(0.0);
+        s.ship.angle = p.ship_angle() + fx!(1.2);
+        s.ship.pos = p.center + p.normal * (s.ship.rest_height() + fx!(3.0));
+        s.ship.vel = -p.normal * fx!(14.0);
         let hull = s.ship.hull;
         for _ in 0..60 {
             s.step(&TickInput::default());

@@ -7,7 +7,7 @@
 //! als gedämpfte Feder im Modul gerechnet, und nur der Unterschied zur starren Last wirkt aufs
 //! Schiff (in gleichmäßiger Beschleunigung also nichts).
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::data::{CargoTrait, CrewSave, DroppedSave, RescuedSave, v};
 use super::geom::rot;
@@ -17,21 +17,21 @@ use super::ship::{CargoItem, CargoKind};
 use super::{Body, BodyKind, DT, SimEvent, SimState, ToastKind};
 
 /// Platz, den eine gerettete Person im Frachtraum braucht (mit Notversorgung), t.
-pub const PERSON_MASS: f32 = 0.4;
+pub const PERSON_MASS: Fx = fx!(0.4);
 /// Flüssigkeit: Federkonstante, Dämpfung, größte Auslenkung im Modul.
-const SLOSH_K: f32 = 4.0;
-const SLOSH_C: f32 = 0.8;
-const SLOSH_MAX: f32 = 0.7;
+const SLOSH_K: Fx = fx!(4.0);
+const SLOSH_C: Fx = fx!(0.8);
+const SLOSH_MAX: Fx = fx!(0.7);
 /// Ab dieser Beschleunigung (m/s²) leidet empfindliche Fracht – das ist ein Stoß, kein Schub.
-pub const FRAGILE_ACC: f32 = 40.0;
+pub const FRAGILE_ACC: Fx = fx!(40.0);
 /// Ab dieser Beschleunigung baut instabile Fracht Belastung auf (volle Schubkraft liegt knapp
 /// darüber, also vorsichtig Gas geben).
-pub const UNSTABLE_ACC: f32 = 13.0;
+pub const UNSTABLE_ACC: Fx = fx!(13.0);
 /// Längsseits: höchstens so viel Lücke zwischen den Rümpfen und so schnell relativ zueinander.
-pub const RESCUE_GAP: f32 = 5.0;
-const RESCUE_SPEED: f32 = 1.5;
+pub const RESCUE_GAP: Fx = fx!(5.0);
+const RESCUE_SPEED: Fx = fx!(1.5);
 /// So lange dauert es, eine Person hinüberzuholen.
-pub const RESCUE_STEP: f32 = 1.2;
+pub const RESCUE_STEP: Fx = fx!(1.2);
 
 impl SimState {
     /// Ladeplan: ein Stück umladen (angedockt sofort, im Flug mit Laufzeit).
@@ -65,8 +65,8 @@ impl SimState {
         self.ship.recompute_mass();
         // Seitlich weg vom Schiff, damit es nicht gleich wieder anstößt.
         let out = (at - self.ship.pos).normalize_or(rot(-glam_y(), self.ship.angle));
-        let pos = at + out * 2.0;
-        let vel = self.ship.vel + out * 1.5;
+        let pos = at + out * fx!(2.0);
+        let vel = self.ship.vel + out * fx!(1.5);
         let label = self.cargo_label(&item.kind);
         match &item.kind {
             CargoKind::Artifact { id } => {
@@ -75,11 +75,11 @@ impl SimState {
             }
             CargoKind::Capsule { mission } => {
                 let mission = *mission;
-                self.spawn_body(BodyKind::Capsule { mission }, pos, vel, 0.7, 0.8);
+                self.spawn_body(BodyKind::Capsule { mission }, pos, vel, fx!(0.7), fx!(0.8));
             }
             _ => {
                 let r = dropped_radius(item.mass);
-                let m = item.mass.max(0.3);
+                let m = item.mass.max(fx!(0.3));
                 self.spawn_body(BodyKind::Dropped { item }, pos, vel, r, m);
             }
         }
@@ -102,22 +102,22 @@ impl SimState {
         }
     }
 
-    fn spawn_body(&mut self, kind: BodyKind, pos: Vec2, vel: Vec2, radius: f32, mass: f32) {
+    fn spawn_body(&mut self, kind: BodyKind, pos: Vec2, vel: Vec2, radius: Fx, mass: Fx) {
         let id = self.next_id();
         self.bodies.push(Body {
             id,
             kind,
             pos,
             vel,
-            angle: 0.0,
-            ang_vel: 0.6,
+            angle: fx!(0.0),
+            ang_vel: fx!(0.6),
             radius,
             mass,
             prev_pos: pos,
-            prev_angle: 0.0,
+            prev_angle: fx!(0.0),
             alive: true,
             seed: hash32(id),
-            age: 0.0,
+            age: fx!(0.0),
         });
     }
 
@@ -130,7 +130,7 @@ impl SimState {
         self.cargo_dynamics();
         self.update_rescue();
         self.update_rescued();
-        self.cargo_warn = (self.cargo_warn - DT).max(0.0);
+        self.cargo_warn = (self.cargo_warn - DT).max(fx!(0.0));
     }
 
     /// Schwappen, Stöße und Überlastung. Gemessen wird die Beschleunigung des Schiffs
@@ -164,30 +164,31 @@ impl SimState {
                         let n = c.slosh.normalize();
                         c.slosh = n * SLOSH_MAX;
                         let vn = c.slosh_v.dot(n);
-                        if vn > 0.0 {
+                        if vn > fx!(0.0) {
                             c.slosh_v -= n * vn;
                         }
                     }
                     // Rückwirkung aufs Schiff: nur der Unterschied zur starren Last (−m·x''),
                     // bei gleichmäßigem Schub also nichts.
-                    let f = (-(c.slosh_v - v0) / DT * c.mass).clamp_length_max(c.mass * 20.0);
+                    let f = (-(c.slosh_v - v0) / DT * c.mass).clamp_length_max(c.mass * fx!(20.0));
                     impulses.push((rot(f, self.ship.angle) * DT, pos_local + c.slosh));
                 }
                 CargoTrait::Fragile if a > FRAGILE_ACC => {
-                    c.cond = (c.cond - ((a - FRAGILE_ACC) / 250.0).min(0.5)).max(0.0);
+                    c.cond =
+                        (c.cond - ((a - FRAGILE_ACC) / fx!(250.0)).min(fx!(0.5))).max(fx!(0.0));
                     damaged = true;
-                    if c.cond <= 0.0 {
+                    if c.cond <= fx!(0.0) {
                         lost.push((c.id, pos_local, c.traits));
                     }
                 }
                 CargoTrait::Unstable => {
                     if a > UNSTABLE_ACC {
-                        c.stress += (a - UNSTABLE_ACC) / UNSTABLE_ACC * 0.6 * DT;
-                        stressed = c.stress > 0.6;
+                        c.stress += (a - UNSTABLE_ACC) / UNSTABLE_ACC * fx!(0.6) * DT;
+                        stressed = c.stress > fx!(0.6);
                     } else {
-                        c.stress = (c.stress - 0.08 * DT).max(0.0);
+                        c.stress = (c.stress - fx!(0.08) * DT).max(fx!(0.0));
                     }
-                    if c.stress >= 1.0 {
+                    if c.stress >= fx!(1.0) {
                         lost.push((c.id, pos_local, c.traits));
                     }
                 }
@@ -198,25 +199,25 @@ impl SimState {
             let w = self.ship.to_world(at);
             self.ship.apply_impulse(j, w);
         }
-        if damaged && self.cargo_warn <= 0.0 {
-            self.cargo_warn = 3.0;
+        if damaged && self.cargo_warn <= fx!(0.0) {
+            self.cargo_warn = fx!(3.0);
             let worst = self
                 .ship
                 .cargo
                 .iter()
                 .filter(|c| c.traits == CargoTrait::Fragile)
                 .map(|c| c.cond)
-                .fold(1.0, f32::min);
+                .fold(fx!(1.0), Fx::min);
             self.toast(
                 format!(
                     "Empfindliche Fracht beschädigt – Zustand {:.0} %",
-                    worst * 100.0
+                    worst * fx!(100.0)
                 ),
                 ToastKind::Warn,
             );
         }
-        if stressed && self.cargo_warn <= 0.0 {
-            self.cargo_warn = 3.0;
+        if stressed && self.cargo_warn <= fx!(0.0) {
+            self.cargo_warn = fx!(3.0);
             self.toast(
                 "Instabile Fracht überlastet – Schub zurücknehmen!",
                 ToastKind::Bad,
@@ -239,10 +240,10 @@ impl SimState {
         if t == CargoTrait::Unstable {
             self.events.push(SimEvent::Explosion {
                 pos: at,
-                size: 4.0,
-                color: [0.6, 0.9, 1.0],
+                size: fx!(4.0),
+                color: [fx!(0.6), fx!(0.9), fx!(1.0)],
             });
-            self.ship_damage(18.0, at, true);
+            self.ship_damage(fx!(18.0), at, true);
             self.toast(format!("{label} ist verpufft!"), ToastKind::Bad);
         } else {
             self.toast(format!("{label} ist zu Bruch gegangen"), ToastKind::Bad);
@@ -253,12 +254,12 @@ impl SimState {
     }
 
     /// Zustand der Lieferfracht eines Auftrags (empfindlich: 0..1, sonst 1).
-    pub fn delivery_condition(&self, mission: u32) -> f32 {
+    pub fn delivery_condition(&self, mission: u32) -> Fx {
         self.ship
             .cargo
             .iter()
             .find(|c| matches!(c.kind, CargoKind::Container { mission: m, .. } if m == mission))
-            .map_or(1.0, |c| c.cond)
+            .map_or(fx!(1.0), |c| c.cond)
     }
 
     /// Zusatzfund (77) in der Nähe eines Einsatzorts – vielleicht.
@@ -268,15 +269,15 @@ impl SimState {
             return;
         }
         let name = bd.names[self.rng.index(bd.names.len())].clone();
-        let mass = (self.rng.range(bd.mass.0, bd.mass.1) * 2.0).round() / 2.0;
+        let mass = (self.rng.range(bd.mass.0, bd.mass.1) * fx!(2.0)).round() / fx!(2.0);
         let value = self.rng.range_u32(bd.value.0, bd.value.1);
         let traits = if self.rng.chance(bd.unstable_chance) {
             CargoTrait::Unstable
         } else {
             CargoTrait::None
         };
-        let a = self.rng.range(0.0, std::f32::consts::TAU);
-        let pos = site + Vec2::new(a.cos(), a.sin()) * self.rng.range(35.0, 70.0);
+        let a = self.rng.range(fx!(0.0), Fx::TAU);
+        let pos = site + Vec2::new(a.cos(), a.sin()) * self.rng.range(fx!(35.0), fx!(70.0));
         let item = CargoItem::new(
             CargoKind::Salvage {
                 name: name.clone(),
@@ -309,7 +310,7 @@ impl SimState {
     /// Platz ist.
     fn update_rescue(&mut self) {
         if self.ship.destroyed || self.ship.docked.is_some() {
-            self.rescue_timer = 0.0;
+            self.rescue_timer = fx!(0.0);
             return;
         }
         let mut target = None;
@@ -334,21 +335,21 @@ impl SimState {
             }
         }
         let Some(mi) = target else {
-            self.rescue_timer = 0.0;
+            self.rescue_timer = fx!(0.0);
             return;
         };
         self.rescue_timer += DT;
         if self.rescue_timer < RESCUE_STEP {
             return;
         }
-        self.rescue_timer = 0.0;
+        self.rescue_timer = fx!(0.0);
         let mid = self.active[mi].id;
         let stored = self
             .ship
             .store(CargoKind::Survivor { mission: mid }, PERSON_MASS);
-        if stored <= 0.0 {
-            if self.cargo_warn <= 0.0 {
-                self.cargo_warn = 4.0;
+        if stored <= fx!(0.0) {
+            if self.cargo_warn <= fx!(0.0) {
+                self.cargo_warn = fx!(4.0);
                 self.toast(
                     "Kein Platz für weitere Gerettete – Fracht umladen oder abwerfen (Pause → Ladeplan)",
                     ToastKind::Warn,
@@ -389,7 +390,7 @@ impl SimState {
         if self.docked_station().is_none() {
             return;
         }
-        let Some(i) = self.crew.rescued.iter().position(|r| r.wait <= 0.0) else {
+        let Some(i) = self.crew.rescued.iter().position(|r| r.wait <= fx!(0.0)) else {
             return;
         };
         let r = self.crew.rescued.remove(i);
@@ -423,7 +424,7 @@ impl SimState {
             }
             let mut item = CargoItem::new(d.kind.clone(), d.mass, d.traits);
             item.cond = d.cond;
-            let (r, m) = (dropped_radius(d.mass), d.mass.max(0.3));
+            let (r, m) = (dropped_radius(d.mass), d.mass.max(fx!(0.3)));
             self.spawn_body(BodyKind::Dropped { item }, v(d.pos), Vec2::ZERO, r, m);
         }
         self.crew.rescued = save.rescued.clone();
@@ -467,6 +468,6 @@ fn glam_y() -> Vec2 {
 }
 
 /// Radius eines abgeworfenen Stücks nach Masse.
-pub fn dropped_radius(mass: f32) -> f32 {
-    (0.45 + mass.sqrt() * 0.3).min(1.6)
+pub fn dropped_radius(mass: Fx) -> Fx {
+    (fx!(0.45) + mass.sqrt() * fx!(0.3)).min(fx!(1.6))
 }

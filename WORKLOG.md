@@ -297,6 +297,42 @@ die Phasen 14–18 den Rest). Phase 19 setzt die Rückmeldungen aus dem ersten S
 
 ## Protokoll
 
+### Runde 4 – Phase 19, Teil 9: Fixed-Point statt Floats (erledigt)
+
+- Rückmeldung: „Etwas viele f32 bei einem Spiel ohne Floats.“ – gemeint ist die Vorgabe aus dem
+  Konzept (deterministische Physik mit Ganzzahlen / Fixed-Point, damit nur Eingaben übers Netz
+  gehen). Ich hatte das unter „Später“ eingeordnet und die Simulation mit `f32` gebaut. Auf
+  Rückfrage: **nur Fixed-Point, Floats sind Mist** – also komplett umgestellt.
+- **`sim/fx.rs`:** `Fx` = Q32.32 in `i64`, Zwischenwerte `i128`, alle Operationen sättigend
+  (Debug = Release), Teilen durch null = Maximum. `Vec2` mit denselben Methodennamen wie
+  `bevy::Vec2`. `isqrt` über `u128::isqrt`, Sinus/Kosinus/Arkustangens per CORDIC (40
+  Iterationen, Tabelle in Q60) – Genauigkeit besser als 5·10⁻⁹, alles ohne Systemmathematik.
+  `fx!(0.6)` wertet Dezimalzahlen im `const`-Block zur Übersetzungszeit aus.
+- **Umstellung:** Skript (`f32`→`Fx`, Literale→`fx!`, `as f32`→`Fx::from`), danach vom Compiler
+  geführt; Typumwandlungen an den Rändern per Auswertung der Compilerfehler. Rund 2.400
+  Literale und 780 `f32`-Stellen in 45 Dateien. `Rng::f32()` heißt jetzt `unit()` (32
+  Zufallsbits = die Nachkommastellen). `TICK_HZ` ist eine Ganzzahl, `DT = 1/60` als Fx.
+  Farben der Daten bleiben `[Fx; 3]`, die Anzeige wandelt um.
+- **Ränder:** Datendateien/Spielstände lesen Ganzzahlen und Dezimalzahlen (`Deserialize`), schreiben
+  Dezimalzahlen – alte Spielstände laden (Test mit echtem Altstand). Eingabe (Sticks, Maus) →
+  `Fx::from_f32` beim Bauen von `TickInput`. Render, UI, Ton und Demo nutzen eine Brücke in
+  `fx.rs` (`Fx`↔`f32`, `Vec2`↔`bevy::Vec2`, Summen, Vergleiche) – das Ergebnis solcher
+  Mischrechnungen ist immer ein Float, in der Simulation sind sie nicht erreichbar.
+  Darstellungs-Zufall in `prng.rs` (Float), nicht in der Simulation.
+- **Leistung:** Die erste Fassung war 25× langsamer (36 ms/Tick im Test-Profil): Die Wurzel
+  Stelle für Stelle machte 78 % aller Befehle. Mit `u128::isqrt` und wurzelfreien
+  Abstandsvergleichen (`Vec2::longer_than`/`shorter_than`, exakt und überlaufsicher; 51 Stellen)
+  sind es 1,4 ms/Tick; die Testreihe läuft wieder in ~40 s.
+- **Absicherung:** `no_floats_in_sim` (liest `src/sim`: kein `f32`/`f64`, keine Float-Literale
+  außerhalb `fx!`, kein `bevy::`, keine Randfunktionen), `#![deny(clippy::float_arithmetic)]`,
+  `golden_run_is_bit_exact` (900 Ticks, Soll-Bits fest), `driftcrew --selbsttest` (derselbe Lauf
+  zum Nachprüfen auf Windows/NixOS; Datei `selbsttest.txt`), Fx-Tests (Arithmetik, Sättigung,
+  Rundung, Wurzel, Trigonometrie gegen `f64`, Formatierung, Dateien).
+- **Verhalten:** 182 Tests grün, Clippy sauber. Kleine Änderung: die Größenverteilung der
+  Asteroiden nutzt `t^1,5` statt `t^1,4` (keine Potenz mit Bruch-Exponent in Fixed-Point).
+- Nicht prüfbar hier: derselbe Selbsttest unter Windows (kein Wine im Container) – dafür der
+  `--selbsttest`.
+
 ### Runde 4 – Phase 19, Teil 8: Erze verständlich, Abbau und Richtzeiten (erledigt)
 
 - Rückmeldung: „Was gibt mir welches Material? Die wenigsten Asteroiden geben irgendwas, ich

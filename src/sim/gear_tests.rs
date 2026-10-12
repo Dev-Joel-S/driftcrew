@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use bevy::math::Vec2;
+use crate::sim::fx::Vec2;
 
 use super::data::{CrewSave, GameData, Gear, ToolKind};
 use super::economy::Purchase;
@@ -15,7 +15,7 @@ fn fresh() -> SimState {
     let mut save = CrewSave::new_game(&data);
     save.gear = Some(Vec::new());
     save.ammo = Some(0);
-    save.shield = Some(0.0);
+    save.shield = Some(fx!(0.0));
     save.credits = 3_000;
     let def = data.ship(&save.current_ship).clone();
     SimState::new(data, &save, Loadout::full(&def), 1)
@@ -35,15 +35,15 @@ fn new_crew_starts_without_crane_cannon_and_shield() {
     assert!(!s.ship.has_tool(ToolKind::Cannon));
     assert!(s.ship.has_tool(ToolKind::Drill), "Bohrer ist immer da");
     assert!(s.ship.has_tool(ToolKind::Scanner), "Scanner ist immer da");
-    assert_eq!(s.ship.max_shield, 0.0);
-    assert_eq!(s.ship.shield, 0.0);
+    assert_eq!(s.ship.max_shield, fx!(0.0));
+    assert_eq!(s.ship.shield, fx!(0.0));
     // Alte Spielstände (ohne Feld) haben alles an Bord.
     let data = s.data.clone();
     let save = CrewSave::new_game(&data);
     assert!(save.gear.is_none());
     let def = data.ship(&save.current_ship).clone();
     let old = SimState::new(data, &save, Loadout::full(&def), 1);
-    assert!(old.ship.has_tool(ToolKind::Crane) && old.ship.max_shield > 0.0);
+    assert!(old.ship.has_tool(ToolKind::Crane) && old.ship.max_shield > fx!(0.0));
 }
 
 #[test]
@@ -106,17 +106,21 @@ fn gear_is_bought_at_a_shipyard_and_then_needs_a_key() {
 fn shield_does_not_recharge_by_itself_and_is_bought_at_stations() {
     let mut s = fresh();
     s.unlock_gear(Gear::Shield, "eingebaut");
-    assert!(s.ship.max_shield > 0.0);
+    assert!(s.ship.max_shield > fx!(0.0));
     assert_eq!(s.ship.shield, s.ship.max_shield, "frisch geladen");
     // Treffer, dann lange warten: kein Nachladen.
-    s.ship.shield = 5.0;
+    s.ship.shield = fx!(5.0);
     s.ship.docked = None;
-    s.ship.pos = Vec2::new(-900.0, -900.0);
-    s.ship.since_hit = 100.0;
+    s.ship.pos = Vec2::new(-fx!(900.0), -fx!(900.0));
+    s.ship.since_hit = fx!(100.0);
     for _ in 0..600 {
         s.step(&TickInput::default());
     }
-    assert!((s.ship.shield - 5.0).abs() < 1e-4, "{}", s.ship.shield);
+    assert!(
+        (s.ship.shield - fx!(5.0)).abs() < fx!(1e-4),
+        "{}",
+        s.ship.shield
+    );
     // An der Station kostet das Aufladen.
     let home = s.crew.home_station;
     s.dock_at_station(home);
@@ -133,12 +137,12 @@ fn shield_does_not_recharge_by_itself_and_is_bought_at_stations() {
     );
     assert_eq!(s.ship.shield, s.ship.max_shield);
     // Munition und Schildladung überleben Speichern und Laden.
-    s.ship.shield = 7.0;
+    s.ship.shield = fx!(7.0);
     let save = s.to_save();
     let data = s.data.clone();
     let def = data.ship(&save.current_ship).clone();
     let t = SimState::new(data, &save, Loadout::full(&def), 1);
-    assert!((t.ship.shield - 7.0).abs() < 1e-4);
+    assert!((t.ship.shield - fx!(7.0)).abs() < fx!(1e-4));
 }
 
 #[test]
@@ -148,9 +152,9 @@ fn destruction_loses_ammo_and_shield_charge_but_keeps_gear() {
     s.unlock_gear(Gear::Cannon, "eingebaut");
     assert!(s.ship.ammo > 0, "Kanone kommt mit Munition");
     s.ship.docked = None;
-    s.ship.pos = Vec2::new(-900.0, -900.0);
-    s.ship.hull = 0.0;
-    s.ship.shield = 0.0;
+    s.ship.pos = Vec2::new(-fx!(900.0), -fx!(900.0));
+    s.ship.hull = fx!(0.0);
+    s.ship.shield = fx!(0.0);
     for _ in 0..(60 * 30) {
         s.step(&TickInput::default());
         if s.ship.docked.is_some() && !s.ship.destroyed {
@@ -158,7 +162,7 @@ fn destruction_loses_ammo_and_shield_charge_but_keeps_gear() {
         }
     }
     assert!(!s.ship.destroyed, "geborgen");
-    assert_eq!(s.ship.shield, 0.0, "Schildladung weg");
+    assert_eq!(s.ship.shield, fx!(0.0), "Schildladung weg");
     assert_eq!(s.ship.ammo, 0, "Munition weg");
     assert!(
         s.has_gear(Gear::Shield) && s.has_gear(Gear::Cannon),
@@ -182,7 +186,7 @@ fn gear_is_found_in_a_wreck_and_unlocked_when_collected() {
         .iter()
         .position(|b| matches!(b.kind, BodyKind::Wreck { idx, .. } if idx == widx))
         .expect("Wrack in der Welt");
-    let at = s.bodies[bi].pos + Vec2::new(10.0, 0.0);
+    let at = s.bodies[bi].pos + Vec2::new(fx!(10.0), fx!(0.0));
     let piece = s.tear_part_at(bi, at).expect("ein Teil löst sich");
     let BodyKind::Dropped { item } = &s.bodies[piece].kind else {
         panic!("Ausrüstung kommt als Fundstück heraus")

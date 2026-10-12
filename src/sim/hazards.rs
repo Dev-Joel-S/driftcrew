@@ -1,6 +1,6 @@
 //! Gefahren und bewegliche Objekte: Asteroidenfelder, Meteoriten, Geschosse.
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::data::Ore;
 use super::geom::{ray_circle, ray_poly, rot};
@@ -9,14 +9,14 @@ use super::world::Shape;
 use super::{Body, BodyKind, DT, SimEvent, SimState};
 
 /// Wracks werden etwas größer dargestellt als das Schiff, nach dem sie aussehen.
-pub const WRECK_SCALE: f32 = 1.3;
+pub const WRECK_SCALE: Fx = fx!(1.3);
 
-pub fn asteroid_hp(r: f32) -> f32 {
-    18.0 * r
+pub fn asteroid_hp(r: Fx) -> Fx {
+    fx!(18.0) * r
 }
 
-pub fn asteroid_mass(r: f32) -> f32 {
-    r * r * 2.2
+pub fn asteroid_mass(r: Fx) -> Fx {
+    r * r * fx!(2.2)
 }
 
 impl SimState {
@@ -41,10 +41,10 @@ impl SimState {
             let r = def
                 .parts
                 .iter()
-                .map(|p| Vec2::new(p.pos.0, p.pos.1).length() + 0.5 * p.size.0.max(p.size.1))
-                .fold(1.0f32, f32::max)
+                .map(|p| Vec2::new(p.pos.0, p.pos.1).length() + fx!(0.5) * p.size.0.max(p.size.1))
+                .fold(fx!(1.0), Fx::max)
                 * WRECK_SCALE
-                * 0.8;
+                * fx!(0.8);
             let angle = w.angle.to_radians();
             self.bodies.push(Body {
                 id,
@@ -57,14 +57,14 @@ impl SimState {
                 pos,
                 vel: Vec2::ZERO,
                 angle,
-                ang_vel: self.rng.range(-0.04, 0.04),
+                ang_vel: self.rng.range(-fx!(0.04), fx!(0.04)),
                 radius: r,
-                mass: 40.0 + w.scrap,
+                mass: fx!(40.0) + w.scrap,
                 prev_pos: pos,
                 prev_angle: angle,
                 alive: true,
                 seed: hash32(id),
-                age: 0.0,
+                age: fx!(0.0),
             });
         }
     }
@@ -75,27 +75,27 @@ impl SimState {
         let radius = f.radius;
         let mut p = c;
         for _ in 0..12 {
-            let a = self.rng.range(0.0, std::f32::consts::TAU);
-            let d = radius * self.rng.f32().sqrt();
+            let a = self.rng.range(fx!(0.0), Fx::TAU);
+            let d = radius * self.rng.unit().sqrt();
             p = c + Vec2::new(a.cos(), a.sin()) * d;
             match avoid {
-                Some(q) if (p - q).length() < 90.0 => continue,
+                Some(q) if (p - q).shorter_than(fx!(90.0)) => continue,
                 _ => break,
             }
         }
         p
     }
 
-    pub(crate) fn spawn_asteroid(&mut self, field: usize, pos: Vec2, radius: Option<f32>) -> usize {
+    pub(crate) fn spawn_asteroid(&mut self, field: usize, pos: Vec2, radius: Option<Fx>) -> usize {
         let f = self.data.world.asteroid_fields[field].clone();
         let r = radius.unwrap_or_else(|| {
-            let t = self.rng.f32();
-            f.min_radius + (f.max_radius - f.min_radius) * t.powf(1.4)
+            let t = self.rng.unit();
+            f.min_radius + (f.max_radius - f.min_radius) * (t * t.sqrt())
         });
         let ore = if self.rng.chance(f.ore_chance) {
             // Beimischung: manche Erz-Asteroiden tragen ein anderes Erz als das Feld.
-            let roll = self.rng.f32();
-            let mut acc = 0.0;
+            let roll = self.rng.unit();
+            let mut acc = fx!(0.0);
             let mut o = f.ore;
             for (m, c) in &f.mixed {
                 acc += c;
@@ -108,16 +108,23 @@ impl SimState {
         } else {
             None
         };
-        let vein = ore.is_some() && r >= 2.5 && self.rng.chance(0.2);
+        let vein = ore.is_some() && r >= fx!(2.5) && self.rng.chance(fx!(0.2));
         let id = self.next_id();
-        let vel = Vec2::new(self.rng.range(-1.0, 1.0), self.rng.range(-1.0, 1.0)) * 1.2;
-        let ang_vel = self.rng.range(-0.6, 0.6);
-        let angle = self.rng.range(0.0, std::f32::consts::TAU);
+        let vel = Vec2::new(
+            self.rng.range(-fx!(1.0), fx!(1.0)),
+            self.rng.range(-fx!(1.0), fx!(1.0)),
+        ) * fx!(1.2);
+        let ang_vel = self.rng.range(-fx!(0.6), fx!(0.6));
+        let angle = self.rng.range(fx!(0.0), Fx::TAU);
         self.bodies.push(Body {
             id,
             kind: BodyKind::Asteroid {
                 ore,
-                ore_left: if ore.is_some() { r * 2.2 } else { 0.0 },
+                ore_left: if ore.is_some() {
+                    r * fx!(2.2)
+                } else {
+                    fx!(0.0)
+                },
                 hp: asteroid_hp(r),
                 field,
                 vein,
@@ -132,80 +139,81 @@ impl SimState {
             prev_angle: angle,
             alive: true,
             seed: hash32(id),
-            age: 0.0,
+            age: fx!(0.0),
         });
         self.bodies.len() - 1
     }
 
-    pub(crate) fn spawn_chunk(&mut self, pos: Vec2, vel: Vec2, ore: Ore, amount: f32) {
+    pub(crate) fn spawn_chunk(&mut self, pos: Vec2, vel: Vec2, ore: Ore, amount: Fx) {
         let id = self.next_id();
-        let r = 0.45 + amount.min(3.0) * 0.12;
+        let r = fx!(0.45) + amount.min(fx!(3.0)) * fx!(0.12);
         self.bodies.push(Body {
             id,
             kind: BodyKind::OreChunk { ore, amount },
             pos,
             vel,
-            angle: 0.0,
-            ang_vel: self.rng.range(-2.0, 2.0),
+            angle: fx!(0.0),
+            ang_vel: self.rng.range(-fx!(2.0), fx!(2.0)),
             radius: r,
-            mass: 0.4 + amount * 0.3,
+            mass: fx!(0.4) + amount * fx!(0.3),
             prev_pos: pos,
-            prev_angle: 0.0,
+            prev_angle: fx!(0.0),
             alive: true,
             seed: hash32(id),
-            age: 0.0,
+            age: fx!(0.0),
         });
     }
 
     pub(crate) fn update_hazards(&mut self) {
-        self.border_warn = (self.border_warn - DT).max(-1.0);
+        self.border_warn = (self.border_warn - DT).max(-fx!(1.0));
 
         // Meteoritenschauer in der Nähe des Schiffs.
         let zones = self.data.world.meteor_zones.clone();
         for (zi, z) in zones.iter().enumerate() {
             let c = Vec2::new(z.center.0, z.center.1);
-            if (self.ship.pos - c).length() > z.radius + 380.0
+            if (self.ship.pos - c).longer_than(z.radius + fx!(380.0))
                 || self.effect_near(super::data::EffectKind::Cleared, c)
             {
                 continue;
             }
             self.meteor_timers[zi] -= DT;
-            if self.meteor_timers[zi] <= 0.0 {
-                self.meteor_timers[zi] = z.interval * self.rng.range(0.6, 1.4);
-                let a = self.rng.range(0.0, std::f32::consts::TAU);
-                let start = c + Vec2::new(a.cos(), a.sin()) * z.radius * 1.1;
-                let ta = self.rng.range(0.0, std::f32::consts::TAU);
-                let target = c + Vec2::new(ta.cos(), ta.sin()) * z.radius * 0.6 * self.rng.f32();
+            if self.meteor_timers[zi] <= fx!(0.0) {
+                self.meteor_timers[zi] = z.interval * self.rng.range(fx!(0.6), fx!(1.4));
+                let a = self.rng.range(fx!(0.0), Fx::TAU);
+                let start = c + Vec2::new(a.cos(), a.sin()) * z.radius * fx!(1.1);
+                let ta = self.rng.range(fx!(0.0), Fx::TAU);
+                let target =
+                    c + Vec2::new(ta.cos(), ta.sin()) * z.radius * fx!(0.6) * self.rng.unit();
                 let dir = (target - start).normalize_or_zero();
                 let speed = self.rng.range(z.speed.0, z.speed.1);
-                let r = self.rng.range(0.7, 1.7);
+                let r = self.rng.range(fx!(0.7), fx!(1.7));
                 let id = self.next_id();
                 self.bodies.push(Body {
                     id,
                     kind: BodyKind::Meteor,
                     pos: start,
                     vel: dir * speed,
-                    angle: 0.0,
-                    ang_vel: self.rng.range(-3.0, 3.0),
+                    angle: fx!(0.0),
+                    ang_vel: self.rng.range(-fx!(3.0), fx!(3.0)),
                     radius: r,
-                    mass: r * r * 3.0,
+                    mass: r * r * fx!(3.0),
                     prev_pos: start,
-                    prev_angle: 0.0,
+                    prev_angle: fx!(0.0),
                     alive: true,
                     seed: hash32(id),
-                    age: 0.0,
+                    age: fx!(0.0),
                 });
             }
         }
         // Meteoriten außerhalb aller Zonen verschwinden.
         for b in &mut self.bodies {
-            if !matches!(b.kind, BodyKind::Meteor) || b.age < 3.0 {
+            if !matches!(b.kind, BodyKind::Meteor) || b.age < fx!(3.0) {
                 continue;
             }
-            let inside = zones
-                .iter()
-                .any(|z| (b.pos - Vec2::new(z.center.0, z.center.1)).length() < z.radius * 1.3);
-            if !inside || b.age > 40.0 {
+            let inside = zones.iter().any(|z| {
+                (b.pos - Vec2::new(z.center.0, z.center.1)).shorter_than(z.radius * fx!(1.3))
+            });
+            if !inside || b.age > fx!(40.0) {
                 b.alive = false;
             }
         }
@@ -218,44 +226,44 @@ impl SimState {
                 if !b.alive {
                     continue;
                 }
-                if hp <= 0.0 {
+                if hp <= fx!(0.0) {
                     to_break.push(bi);
                     continue;
                 }
                 let f = &fields[field];
                 let c = Vec2::new(f.center.0, f.center.1);
                 let d = b.pos - c;
-                if d.length() > f.radius * 1.15 {
-                    b.vel -= d.normalize_or_zero() * 0.6 * DT;
+                if d.length() > f.radius * fx!(1.15) {
+                    b.vel -= d.normalize_or_zero() * fx!(0.6) * DT;
                 }
                 // Etwas Reibung, damit Felder über lange Zeit ruhig bleiben.
-                b.vel *= 1.0 - 0.02 * DT;
+                b.vel *= fx!(1.0) - fx!(0.02) * DT;
             }
             if let BodyKind::OreChunk { .. }
             | BodyKind::Capsule { .. }
             | BodyKind::Crate { .. }
             | BodyKind::Salvage { .. } = b.kind
             {
-                b.vel *= 1.0 - 0.05 * DT;
+                b.vel *= fx!(1.0) - fx!(0.05) * DT;
             }
             // Abgeworfene Fracht kommt zur Ruhe, damit man sie später wiederfindet.
             if let BodyKind::Dropped { .. } = b.kind {
-                b.vel *= 1.0 - 0.25 * DT;
-                b.ang_vel *= 1.0 - 0.1 * DT;
+                b.vel *= fx!(1.0) - fx!(0.25) * DT;
+                b.ang_vel *= fx!(1.0) - fx!(0.1) * DT;
             }
             // Artefakte kommen von selbst zur Ruhe.
             if let BodyKind::Artifact { .. } = b.kind {
-                b.vel *= 1.0 - 0.3 * DT;
-                b.ang_vel += (0.4 - b.ang_vel) * 0.5 * DT;
+                b.vel *= fx!(1.0) - fx!(0.3) * DT;
+                b.ang_vel += (fx!(0.4) - b.ang_vel) * fx!(0.5) * DT;
             }
             // Wracks treiben träge zurück an ihren Platz, außer jemand schleppt sie weit weg.
             if let BodyKind::Wreck { home, .. } = b.kind {
                 let d = home - b.pos;
-                if d.length() < 150.0 {
-                    b.vel += d * 0.004 * DT;
+                if d.length() < fx!(150.0) {
+                    b.vel += d * fx!(0.004) * DT;
                 }
-                b.vel *= 1.0 - 0.15 * DT;
-                b.ang_vel *= 1.0 - 0.05 * DT;
+                b.vel *= fx!(1.0) - fx!(0.15) * DT;
+                b.ang_vel *= fx!(1.0) - fx!(0.05) * DT;
             }
         }
         for bi in to_break {
@@ -263,10 +271,10 @@ impl SimState {
         }
         for (fi, field_def) in fields.iter().enumerate() {
             self.field_respawn[fi] -= DT;
-            if self.field_respawn[fi] > 0.0 {
+            if self.field_respawn[fi] > fx!(0.0) {
                 continue;
             }
-            self.field_respawn[fi] = 3.0;
+            self.field_respawn[fi] = fx!(3.0);
             let count = self
                 .bodies
                 .iter()
@@ -283,7 +291,7 @@ impl SimState {
         // Erzvorkommen auf Planeten wachsen langsam nach.
         for p in &mut self.world.planets {
             for d in &mut p.deposits {
-                d.amount = (d.amount + 0.04 * DT).min(d.max);
+                d.amount = (d.amount + fx!(0.04) * DT).min(d.max);
             }
         }
     }
@@ -300,19 +308,21 @@ impl SimState {
         else {
             return;
         };
-        let color = ore.map(|o| o.color()).unwrap_or([0.85, 0.6, 0.45]);
+        let color = ore
+            .map(|o| o.color())
+            .unwrap_or([fx!(0.85), fx!(0.6), fx!(0.45)]);
         self.events.push(SimEvent::Explosion {
             pos: b.pos,
-            size: b.radius * 1.6,
+            size: b.radius * fx!(1.6),
             color,
         });
-        if b.radius > 2.4 {
-            let side = rot(Vec2::X, self.rng.range(0.0, std::f32::consts::TAU));
-            for s in [-1.0f32, 1.0] {
-                let r = b.radius * 0.6;
-                let idx = self.spawn_asteroid(field, b.pos + side * s * r * 1.05, Some(r));
+        if b.radius > fx!(2.4) {
+            let side = rot(Vec2::X, self.rng.range(fx!(0.0), Fx::TAU));
+            for s in [-fx!(1.0), fx!(1.0)] {
+                let r = b.radius * fx!(0.6);
+                let idx = self.spawn_asteroid(field, b.pos + side * s * r * fx!(1.05), Some(r));
                 let nb = &mut self.bodies[idx];
-                nb.vel = b.vel + side * s * 2.5;
+                nb.vel = b.vel + side * s * fx!(2.5);
                 if let BodyKind::Asteroid {
                     ore: o,
                     ore_left: ol,
@@ -320,17 +330,23 @@ impl SimState {
                 } = &mut nb.kind
                 {
                     *o = ore;
-                    *ol = ore_left * 0.4;
+                    *ol = ore_left * fx!(0.4);
                 }
             }
         }
         if let Some(o) = ore {
-            let chunks = if b.radius > 3.0 { 3 } else { 2 };
-            let amount = (ore_left * 0.6 / chunks as f32).max(0.6);
+            let chunks = if b.radius > fx!(3.0) { 3 } else { 2 };
+            let amount = (ore_left * fx!(0.6) / Fx::from(chunks)).max(fx!(0.6));
             for k in 0..chunks {
-                let a = std::f32::consts::TAU * k as f32 / chunks as f32 + self.rng.range(0.0, 1.0);
+                let a =
+                    Fx::TAU * Fx::from(k) / Fx::from(chunks) + self.rng.range(fx!(0.0), fx!(1.0));
                 let dir = Vec2::new(a.cos(), a.sin());
-                self.spawn_chunk(b.pos + dir * b.radius * 0.5, b.vel + dir * 2.0, o, amount);
+                self.spawn_chunk(
+                    b.pos + dir * b.radius * fx!(0.5),
+                    b.vel + dir * fx!(2.0),
+                    o,
+                    amount,
+                );
             }
         }
     }
@@ -344,11 +360,11 @@ impl SimState {
             self.projectiles[pi].life -= DT;
             let seg = to - from;
             let len = seg.length();
-            if len < 1e-6 {
+            if len < fx!(1e-6) {
                 continue;
             }
             let dir = seg / len;
-            let mut hit: Option<(f32, Option<usize>)> = None;
+            let mut hit: Option<(Fx, Option<usize>)> = None;
             for (bi, b) in self.bodies.iter().enumerate() {
                 if !b.alive {
                     continue;
@@ -376,7 +392,7 @@ impl SimState {
                 }
             }
             for sp in &self.world.spinners {
-                if (sp.pos - from).length() > sp.reach() + len + 1.0 {
+                if (sp.pos - from).longer_than(sp.reach() + len + fx!(1.0)) {
                     continue;
                 }
                 for q in sp.quads() {
@@ -389,11 +405,11 @@ impl SimState {
             }
             // NPC-Schiffe (Drohnen treffen keine Drohnen) und – bei Piratenschüssen – die Crew.
             let hostile = self.projectiles[pi].hostile;
-            let mut ship_hit: Option<(f32, Option<usize>)> = None;
+            let mut ship_hit: Option<(Fx, Option<usize>)> = None;
             for (ni, n) in self.npcs.iter().enumerate() {
                 if !n.alive
                     || (hostile && n.hostile)
-                    || (n.ship.pos - from).length() > len + n.ship.bound_radius() + 1.0
+                    || (n.ship.pos - from).longer_than(len + n.ship.bound_radius() + fx!(1.0))
                 {
                     continue;
                 }
@@ -408,7 +424,7 @@ impl SimState {
             if hostile
                 && !self.ship.destroyed
                 && self.ship.docked.is_none()
-                && (self.ship.pos - from).length() < len + self.ship.bound_radius() + 1.0
+                && (self.ship.pos - from).shorter_than(len + self.ship.bound_radius() + fx!(1.0))
             {
                 for q in self.ship.quads() {
                     if let Some(t) = ray_poly(from, dir, len, &q)
@@ -422,13 +438,13 @@ impl SimState {
                 && hit.is_none_or(|(ht, _)| st < ht)
             {
                 let p = from + dir * st;
-                self.projectiles[pi].life = 0.0;
+                self.projectiles[pi].life = fx!(0.0);
                 self.projectiles[pi].pos = p;
                 self.events.push(SimEvent::ProjectileHit { pos: p });
                 match who {
                     Some(ni) => {
                         let n = &mut self.npcs[ni].ship;
-                        n.vel += vel * (0.6 / n.mass);
+                        n.vel += vel * (fx!(0.6) / n.mass);
                         let dmg = if hostile {
                             super::npc::DRONE_DAMAGE
                         } else {
@@ -437,7 +453,7 @@ impl SimState {
                         self.damage_npc(ni, dmg);
                     }
                     None => {
-                        self.ship.apply_impulse(vel * 0.6, p);
+                        self.ship.apply_impulse(vel * fx!(0.6), p);
                         self.ship_damage(super::npc::DRONE_DAMAGE, p, true);
                     }
                 }
@@ -447,22 +463,22 @@ impl SimState {
                 continue;
             };
             let p = from + dir * t;
-            self.projectiles[pi].life = 0.0;
+            self.projectiles[pi].life = fx!(0.0);
             self.projectiles[pi].pos = p;
             self.events.push(SimEvent::ProjectileHit { pos: p });
             if let Some(bi) = target {
                 let b = &mut self.bodies[bi];
-                b.vel += vel * (0.6 / b.mass);
+                b.vel += vel * (fx!(0.6) / b.mass);
                 match &mut b.kind {
-                    BodyKind::Asteroid { hp, .. } => *hp -= 25.0 * cannon_damage,
-                    BodyKind::Wreck { scrap, .. } => *scrap = (*scrap - 0.3).max(0.0),
+                    BodyKind::Asteroid { hp, .. } => *hp -= fx!(25.0) * cannon_damage,
+                    BodyKind::Wreck { scrap, .. } => *scrap = (*scrap - fx!(0.3)).max(fx!(0.0)),
                     BodyKind::Meteor => {
                         b.alive = false;
                         let (pos, r) = (b.pos, b.radius);
                         self.events.push(SimEvent::Explosion {
                             pos,
-                            size: r * 2.0,
-                            color: [1.0, 0.55, 0.2],
+                            size: r * fx!(2.0),
+                            color: [fx!(1.0), fx!(0.55), fx!(0.2)],
                         });
                     }
                     _ => {}
@@ -496,7 +512,7 @@ mod tests {
             .iter()
             .filter(|b| {
                 matches!(b.kind, BodyKind::Asteroid { field: 0, .. })
-                    && (b.pos - c).length() < f.radius * 1.2
+                    && (b.pos - c).shorter_than(f.radius * fx!(1.2))
             })
             .count();
         assert!(

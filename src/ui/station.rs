@@ -1,5 +1,6 @@
 //! Stationsmenü (angedockt) und Abstimmungs-Popup der Crew.
 
+use crate::fx;
 use bevy::input::gamepad::Gamepad;
 use bevy::prelude::*;
 
@@ -369,7 +370,7 @@ fn project_items(sim: &SimState, v: &mut Vec<Item<Act>>) {
     for (ore, n) in &stage.needs {
         let have = p.delivered_of(*ore);
         // `+ 0.0` macht aus einer negativen Null eine positive (sonst „-0.0“).
-        let aboard = sim.ship.ore_amount(*ore).max(0.0) + 0.0;
+        let aboard = sim.ship.ore_amount(*ore).max(fx!(0.0)) + 0.0;
         if have + 1e-3 < *n && aboard > 0.01 {
             useful = true;
         }
@@ -795,7 +796,7 @@ fn items_for(sim: &SimState, tab: Tab, view: &BuildView) -> Vec<Item<Act>> {
                 };
                 it = it.detail(detail);
                 if let Some(c) = color {
-                    it = it.swatch(srgb(hex(c)));
+                    it = it.swatch(srgb((hex(c)).map(crate::sim::fx::Fx::to_f32)));
                 }
                 v.push(it);
             };
@@ -857,8 +858,8 @@ fn items_for(sim: &SimState, tab: Tab, view: &BuildView) -> Vec<Item<Act>> {
                         )
                         .right(format!(
                             "noch {}:{:02}",
-                            e.left as u32 / 60,
-                            e.left as u32 % 60
+                            (e.left).to_u32() / 60,
+                            (e.left).to_u32() % 60
                         ))
                         .detail("Wirkung eurer erledigten Aufträge")
                         .enabled(false),
@@ -935,7 +936,7 @@ fn items_for(sim: &SimState, tab: Tab, view: &BuildView) -> Vec<Item<Act>> {
                     MissionKind::Rescue { crew, .. } => {
                         let need = *crew as f32 * crate::sim::cargo::PERSON_MASS;
                         let free: f32 = (0..sim.ship.pods.len())
-                            .map(|i| sim.ship.pod_free(i).max(0.0))
+                            .map(|i| sim.ship.pod_free(i).max(fx!(0.0)))
                             .sum();
                         let room = if free + 1e-3 >= need {
                             "Platz reicht".to_string()
@@ -970,7 +971,11 @@ fn items_for(sim: &SimState, tab: Tab, view: &BuildView) -> Vec<Item<Act>> {
                     }
                 };
                 let (lo, hi) = m.crew(sim);
-                let par = format!("Richtzeit {}:{:02}", m.par as u32 / 60, m.par as u32 % 60);
+                let par = format!(
+                    "Richtzeit {}:{:02}",
+                    (m.par).to_u32() / 60,
+                    (m.par).to_u32() % 60
+                );
                 let detail = match m.giver.and_then(|g| sim.data.npcs.get(g)) {
                     Some(n) => format!(
                         "{} ({}) · Crew {lo}–{hi} · {par} · {detail}",
@@ -1059,7 +1064,7 @@ fn items_for(sim: &SimState, tab: Tab, view: &BuildView) -> Vec<Item<Act>> {
                     _ => "bester Preis weit und breit".to_string(),
                 };
                 // In 5-%-Schritten, damit die Liste nicht bei jeder Kleinigkeit neu entsteht.
-                let f = here.map_or(1.0, |o| sim.market_factor(o, ore));
+                let f = here.map_or(1.0, |o| (sim.market_factor(o, ore)).to_f32());
                 let pct = ((f - 1.0) * 20.0).round() * 5.0;
                 let trend = if pct <= -5.0 {
                     format!(" · ▼ {:.0} % (viel verkauft, erholt sich)", -pct)
@@ -1454,7 +1459,7 @@ fn reputation_line(s: &SimState, si: usize) -> String {
 pub fn spawn_portrait(p: &mut ChildSpawnerCommands, look: &crate::sim::data::Look, size: f32) {
     use crate::render::srgb;
     use crate::sim::data::hex;
-    let c = |h: &str| srgb(hex(h));
+    let c = |h: &str| srgb((hex(h)).map(crate::sim::fx::Fx::to_f32));
     let abs = |left: f32, top: f32, w: f32, h: f32| Node {
         position_type: PositionType::Absolute,
         left: Val::Px(left * size),
@@ -1663,7 +1668,7 @@ fn draw_vote(
                     });
                 }
             });
-            let frac = (v.timer / VOTE_SECONDS).clamp(0.0, 1.0);
+            let frac = (v.timer / VOTE_SECONDS).clamp(fx!(0.0), fx!(1.0));
             p.spawn((
                 Node {
                     width: Val::Percent(100.0),

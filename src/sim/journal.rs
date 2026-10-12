@@ -2,7 +2,7 @@
 //! Crew-Tagebuch – automatische Erlebnisse (erstes Andocken, neue Sektoren, knappste Rettung,
 //! größte Bergung, Plaketten), eigene Notizen und Kartenmarkierungen.
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 use serde::{Deserialize, Serialize};
 
 use super::data::{CrewSave, P, v};
@@ -44,7 +44,7 @@ impl JournalKind {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct JournalEntry {
     /// Flugzeit der Crew in Sekunden (über alle Sitzungen).
-    pub time: f32,
+    pub time: Fx,
     pub kind: JournalKind,
     pub text: String,
 }
@@ -54,7 +54,7 @@ pub struct JournalEntry {
 pub struct Plaque {
     pub id: String,
     pub title: String,
-    pub color: [f32; 3],
+    pub color: [Fx; 3],
     pub ship: String,
 }
 
@@ -69,7 +69,7 @@ pub struct Mark {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(default)]
 pub struct Journal {
-    pub playtime: f32,
+    pub playtime: Fx,
     /// Name pro Schiffstyp: (Schiff, Name).
     pub names: Vec<(String, String)>,
     pub plaques: Vec<Plaque>,
@@ -78,13 +78,13 @@ pub struct Journal {
     /// Schon erlebte Erstmaligkeiten („dock:nova“, „sector:Kernsektor“).
     pub firsts: Vec<String>,
     /// Rekorde: knappste Rettung (Hülle in %), größte Bergung (Credits).
-    pub closest_rescue: Option<f32>,
+    pub closest_rescue: Option<Fx>,
     pub biggest_salvage: Option<u32>,
 }
 
 /// Flugzeit lesbar: „1 h 05 min“ bzw. „12 min“.
-pub fn fmt_time(t: f32) -> String {
-    let m = (t / 60.0) as u32;
+pub fn fmt_time(t: Fx) -> String {
+    let m = (t / fx!(60.0)).to_u32();
     if m >= 60 {
         format!("{} h {:02} min", m / 60, m % 60)
     } else {
@@ -170,7 +170,7 @@ impl SimState {
     }
 
     /// Plakette vergeben (einmal pro Anlass).
-    pub(crate) fn award_plaque(&mut self, id: String, title: String, color: [f32; 3]) {
+    pub(crate) fn award_plaque(&mut self, id: String, title: String, color: [Fx; 3]) {
         if self.journal.plaques.iter().any(|p| p.id == id) {
             return;
         }
@@ -209,14 +209,14 @@ impl SimState {
 
     /// Bei Abschluss eines Auftrags: Rekorde und Plaketten.
     pub(crate) fn journal_mission(&mut self, kind: &MissionKind, title: &str, earned: u32) {
-        let hull = (self.ship.hull / self.ship.max_hull * 100.0).max(0.0);
+        let hull = (self.ship.hull / self.ship.max_hull * fx!(100.0)).max(fx!(0.0));
         let rescue = matches!(
             kind,
             MissionKind::Rescue { .. } | MissionKind::Capsules { .. } | MissionKind::Tow { .. }
         );
         if rescue && self.journal.closest_rescue.is_none_or(|h| hull < h) {
             let before = self.journal.closest_rescue.replace(hull);
-            if before.is_some() || hull < 60.0 {
+            if before.is_some() || hull < fx!(60.0) {
                 self.add_entry(
                     JournalKind::Record,
                     format!("Knappste Rettung bisher: {title} – mit nur {hull:.0} % Hülle"),
@@ -242,12 +242,12 @@ impl SimState {
             MissionKind::Rescue { ship, .. } => self.award_plaque(
                 format!("rescue:{ship}"),
                 format!("Retter der {ship}"),
-                [0.95, 0.35, 0.3],
+                [fx!(0.95), fx!(0.35), fx!(0.3)],
             ),
             MissionKind::Bulky { name, .. } => self.award_plaque(
                 format!("bulky:{name}"),
                 format!("Bergung: {name}"),
-                [1.0, 0.7, 0.15],
+                [fx!(1.0), fx!(0.7), fx!(0.15)],
             ),
             _ => {}
         }
@@ -289,7 +289,7 @@ impl SimState {
                     self.award_plaque(
                         format!("project:{station}:{stage}"),
                         format!("Wiederaufbau {name}, Etappe {}", stage + 1),
-                        [0.35, 0.9, 0.6],
+                        [fx!(0.35), fx!(0.9), fx!(0.6)],
                     );
                 }
                 SimEvent::ChapterDone { chapter } => {

@@ -1,5 +1,6 @@
 //! Schiff, Körper (Asteroiden, Meteore, Kapseln, Wracks), Geschosse und Werkzeugeffekte.
 
+use crate::fx;
 use std::collections::HashMap;
 
 use bevy::light::NotShadowCaster;
@@ -37,7 +38,11 @@ pub fn livery_colors(
         .and_then(|i| shop.flames.get(i))
         .and_then(|f| f.color.as_ref())
         .map(|c| hex(c));
-    (paint(l.hull), paint(l.accent), flame)
+    (
+        (paint(l.hull)).map(|c| c.map(crate::sim::fx::Fx::to_f32)),
+        (paint(l.accent)).map(|c| c.map(crate::sim::fx::Fx::to_f32)),
+        (flame).map(|c| c.map(crate::sim::fx::Fx::to_f32)),
+    )
 }
 
 #[derive(Component)]
@@ -233,8 +238,10 @@ pub fn spawn_ship_model(
         ([0.32, 0.33, 0.36], [0.45, 0.2, 0.18])
     } else {
         (
-            opts.hull.unwrap_or_else(|| hex(&def.hull_color)),
-            opts.accent.unwrap_or_else(|| hex(&def.accent_color)),
+            opts.hull
+                .unwrap_or_else(|| (hex(&def.hull_color)).map(crate::sim::fx::Fx::to_f32)),
+            opts.accent
+                .unwrap_or_else(|| (hex(&def.accent_color)).map(crate::sim::fx::Fx::to_f32)),
         )
     };
     // Lackierter Stahl statt Spielzeugplastik: etwas Metall, gedeckte Töne.
@@ -291,7 +298,7 @@ pub fn spawn_ship_model(
                 .spawn((
                     Mesh3d(mesh),
                     MeshMaterial3d(mat),
-                    Transform::from_xyz(p.pos.x, p.pos.y, z),
+                    Transform::from_xyz((p.pos.x).to_f32(), (p.pos.y).to_f32(), z),
                 ))
                 .id(),
         );
@@ -305,7 +312,7 @@ pub fn spawn_ship_model(
                             Mesh3d(stripe),
                             MeshMaterial3d(stripe_mat.clone()),
                             Transform::from_xyz(
-                                p.pos.x,
+                                (p.pos.x).to_f32(),
                                 p.pos.y + p.half.y * 0.55,
                                 depth * 0.5 + 0.02,
                             ),
@@ -341,7 +348,7 @@ pub fn spawn_ship_model(
                             Mesh3d(visor),
                             MeshMaterial3d(glass_mat.clone()),
                             Transform::from_xyz(
-                                p.pos.x,
+                                (p.pos.x).to_f32(),
                                 p.pos.y + p.half.y * 0.12,
                                 depth * 0.5 + 0.12,
                             ),
@@ -357,7 +364,11 @@ pub fn spawn_ship_model(
                             .spawn((
                                 Mesh3d(band.clone()),
                                 MeshMaterial3d(dark_mat.clone()),
-                                Transform::from_xyz(p.pos.x, p.pos.y + k * p.half.y * 0.6, -0.1),
+                                Transform::from_xyz(
+                                    (p.pos.x).to_f32(),
+                                    p.pos.y + k * p.half.y * 0.6,
+                                    -0.1,
+                                ),
                             ))
                             .id(),
                     );
@@ -374,7 +385,7 @@ pub fn spawn_ship_model(
             .iter()
             .find(|p| matches!(p.kind, PartKind::Thruster(_)) && (p.pos - t.pos).length() < 1e-3)
             .map(|p| p.half)
-            .unwrap_or(Vec2::splat(0.22));
+            .unwrap_or(crate::sim::fx::Vec2::from_bevy(Vec2::splat(0.22)));
         let col = if opts.slot_colors {
             slot_color(t.slot)
         } else if let Some((_, c)) = opts.npc {
@@ -406,7 +417,7 @@ pub fn spawn_ship_model(
                         .spawn((
                             Mesh3d(ring),
                             MeshMaterial3d(ring_mat),
-                            Transform::from_xyz(t.pos.x, t.pos.y + half.y * 0.2, -0.1),
+                            Transform::from_xyz((t.pos.x).to_f32(), t.pos.y + half.y * 0.2, -0.1),
                         ))
                         .id(),
                 );
@@ -484,7 +495,7 @@ pub fn spawn_ship_model(
         let ring_mat = mats.add(art.emissive_mat(col, if opts.slot_colors { 1.2 } else { 0.0 }));
         let head = commands
             .spawn((
-                Transform::from_xyz(t.pos.x, t.pos.y, 0.7),
+                Transform::from_xyz((t.pos.x).to_f32(), (t.pos.y).to_f32(), 0.7),
                 Visibility::default(),
                 ToolHead(i),
             ))
@@ -615,9 +626,9 @@ pub fn spawn_ship_model(
                 .iter()
                 .fold((0.0f32, 0.0f32, 0.0f32), |(a, b, c), p| {
                     (
-                        a.min(p.pos.x - p.half.x),
-                        b.max(p.pos.x + p.half.x),
-                        c.max(p.pos.y + p.half.y),
+                        a.min((p.pos.x - p.half.x).to_f32()),
+                        b.max((p.pos.x + p.half.x).to_f32()),
+                        c.max((p.pos.y + p.half.y).to_f32()),
                     )
                 });
         for (x, col, phase) in [
@@ -685,7 +696,7 @@ pub fn spawn_ship_model(
                 .spawn((
                     Mesh3d(art.quad.clone()),
                     MeshMaterial3d(shield_mat),
-                    Transform::from_xyz(ship.com.x, ship.com.y, 1.2)
+                    Transform::from_xyz((ship.com.x).to_f32(), (ship.com.y).to_f32(), 1.2)
                         .with_scale(Vec3::splat(r * 2.0)),
                     ShieldVis,
                     NotShadowCaster,
@@ -740,7 +751,12 @@ pub fn sync_ship(
 ) {
     let ship = &sim.0.ship;
     let (hull, accent, flame) = livery_colors(&sim.0);
-    let plaques: Vec<[f32; 3]> = sim.0.ship_plaques().iter().map(|p| p.color).collect();
+    let plaques: Vec<[f32; 3]> = sim
+        .0
+        .ship_plaques()
+        .iter()
+        .map(|p| p.color.map(crate::sim::fx::Fx::to_f32))
+        .collect();
     let sig = format!(
         "{}|{hull:?}{accent:?}{flame:?}|{plaques:?}",
         ship_signature(ship)
@@ -832,7 +848,7 @@ pub fn sync_ship(
             .iter()
             .find(|p| matches!(p.kind, PartKind::Thruster(_)) && (p.pos - th.pos).length() < 1e-3)
             .map(|p| p.half.y)
-            .unwrap_or(0.2);
+            .unwrap_or(fx!(0.2));
         let tip_y = th.pos.y - half - 0.18 - 0.25;
         t.translation.y = tip_y - t.scale.y * 0.5;
     }
@@ -906,14 +922,14 @@ pub fn sync_bodies(
                 } else {
                     let f = &data.0.world.asteroid_fields[*field];
                     let mut m = StandardMaterial {
-                        base_color: srgb(hex(&f.color)),
+                        base_color: srgb((hex(&f.color)).map(crate::sim::fx::Fx::to_f32)),
                         base_color_texture: Some(art.rock.clone()),
                         normal_map_texture: Some(art.rock_n.clone()),
                         perceptual_roughness: 0.92,
                         ..default()
                     };
                     if let Some(o) = ore {
-                        let c = srgb(o.color()).to_linear();
+                        let c = srgb((o.color()).map(crate::sim::fx::Fx::to_f32)).to_linear();
                         m.emissive = c * 5.0;
                         m.emissive_texture = Some(art.veins.clone());
                     }
@@ -927,7 +943,7 @@ pub fn sync_bodies(
                         .spawn((
                             Mesh3d(mesh),
                             MeshMaterial3d(mat),
-                            Transform::from_scale(Vec3::splat(b.radius)),
+                            Transform::from_scale(Vec3::splat((b.radius).to_f32())),
                             BodyMesh(b.id),
                         ))
                         .id(),
@@ -948,7 +964,7 @@ pub fn sync_bodies(
                         .spawn((
                             Mesh3d(mesh),
                             MeshMaterial3d(mat),
-                            Transform::from_scale(Vec3::splat(b.radius)),
+                            Transform::from_scale(Vec3::splat((b.radius).to_f32())),
                             BodyMesh(b.id),
                         ))
                         .id(),
@@ -966,7 +982,7 @@ pub fn sync_bodies(
                 );
             }
             BodyKind::OreChunk { ore, .. } => {
-                let c = srgb(ore.color());
+                let c = srgb((ore.color()).map(crate::sim::fx::Fx::to_f32));
                 let mat = mats.add(StandardMaterial {
                     base_color: c,
                     emissive: c.to_linear() * 7.0,
@@ -1004,7 +1020,7 @@ pub fn sync_bodies(
                     .artifacts
                     .iter()
                     .find(|a| &a.id == id)
-                    .map(|a| srgb(hex(&a.color)))
+                    .map(|a| srgb((hex(&a.color)).map(crate::sim::fx::Fx::to_f32)))
                     .unwrap_or(Color::WHITE);
                 let core = mats.add(StandardMaterial {
                     base_color: col,
@@ -1076,7 +1092,7 @@ pub fn sync_bodies(
                         .spawn((
                             Mesh3d(art.capsule.clone()),
                             MeshMaterial3d(shell),
-                            Transform::from_scale(Vec3::splat(b.radius)),
+                            Transform::from_scale(Vec3::splat((b.radius).to_f32())),
                             BodyMesh(b.id),
                         ))
                         .id(),
@@ -1116,7 +1132,8 @@ pub fn sync_bodies(
                 let bulb = mats.add(art.emissive_mat(Color::srgb(1.0, 0.65, 0.15), 8.0));
                 let body = art.prism(
                     &mut meshes,
-                    &crate::sim::data::PartShape::Chamfer(0.12).outline(Vec2::new(1.5, 0.95)),
+                    &crate::sim::data::PartShape::Chamfer(fx!(0.12))
+                        .outline(crate::sim::fx::Vec2::from_bevy(Vec2::new(1.5, 0.95))),
                     1.9,
                     0.08,
                     Some((0.1, 0.05)),
@@ -1186,7 +1203,7 @@ pub fn sync_bodies(
                 let k = crate::sim::hazards::WRECK_SCALE;
                 commands.entity(model).insert(
                     Transform::from_translation((-ship.com * k).extend(0.0))
-                        .with_scale(Vec3::splat(k)),
+                        .with_scale(Vec3::splat((k).to_f32())),
                 );
                 // Glimmende Bruchstellen, solange noch Schrott drin ist.
                 let ember = mats.add(art.emissive_mat(Color::srgb(1.0, 0.45, 0.15), 3.0));
@@ -1222,13 +1239,13 @@ pub fn sync_bodies(
                         h.spawn((
                             Mesh3d(shard),
                             MeshMaterial3d(metal),
-                            Transform::from_scale(Vec3::splat(b.radius)),
+                            Transform::from_scale(Vec3::splat((b.radius).to_f32())),
                         ));
                         h.spawn((
                             Mesh3d(strip),
                             MeshMaterial3d(edge),
                             Transform::from_xyz(0.0, 0.3 * b.radius, 0.0)
-                                .with_scale(Vec3::splat(b.radius)),
+                                .with_scale(Vec3::splat((b.radius).to_f32())),
                         ));
                     })
                     .id();
@@ -1266,7 +1283,7 @@ pub fn sync_bodies(
                             c.spawn((
                                 Mesh3d(art.sphere.clone()),
                                 MeshMaterial3d(metal.clone()),
-                                Transform::from_xyz(h + t, 0.0, 0.2)
+                                Transform::from_xyz((h + t).to_f32(), 0.0, 0.2)
                                     .with_scale(Vec3::new(0.25, 1.4, 1.4)),
                             ));
                         }
@@ -1317,7 +1334,11 @@ pub fn sync_bodies(
                 use crate::sim::data::CargoTrait;
                 use crate::sim::ship::CargoKind;
                 let (band_c, bulb_c, glow) = match (&item.kind, item.traits) {
-                    (CargoKind::Ore(o), _) => (srgb(o.color()), srgb(o.color()), 1.2),
+                    (CargoKind::Ore(o), _) => (
+                        srgb((o.color()).map(crate::sim::fx::Fx::to_f32)),
+                        srgb((o.color()).map(crate::sim::fx::Fx::to_f32)),
+                        1.2,
+                    ),
                     // Ausrüstung aus einem Wrack: golden leuchtend, damit man sie sieht.
                     (CargoKind::Gear(_), _) => (
                         Color::srgb(1.0, 0.78, 0.25),
@@ -1414,7 +1435,10 @@ pub fn sync_bodies(
     let by_id: HashMap<u32, &crate::sim::Body> = sim.0.bodies.iter().map(|b| (b.id, b)).collect();
     for (bv, mut t) in &mut roots {
         let Some(b) = by_id.get(&bv.0) else { continue };
-        t.translation = b.prev_pos.lerp(b.pos, alpha).extend(0.0);
+        t.translation = b
+            .prev_pos
+            .lerp(b.pos, crate::sim::fx::Fx::from_f32(alpha))
+            .extend(0.0);
     }
     for (bm, mut t) in &mut inner {
         let Some(b) = by_id.get(&bm.0) else { continue };
@@ -1504,7 +1528,7 @@ pub fn sync_projectiles(
         sim.0.projectiles.iter().map(|p| (p.id, p)).collect();
     for (pv, mut t) in &mut q {
         let Some(p) = by_id.get(&pv.0) else { continue };
-        let pos = p.prev_pos.lerp(p.pos, alpha);
+        let pos = p.prev_pos.lerp(p.pos, crate::sim::fx::Fx::from_f32(alpha));
         let dir = p.vel.normalize_or_zero();
         t.translation = pos.extend(0.3);
         t.rotation = Quat::from_rotation_arc(Vec3::Y, dir.extend(0.0).normalize_or(Vec3::Y));
@@ -1603,7 +1627,8 @@ pub fn sync_tools(
             ));
         }
     }
-    let mount_world = |i: usize| origin + rot(ship.tools[i].pos, angle);
+    let mount_world =
+        |i: usize| origin + rot(ship.tools[i].pos, crate::sim::fx::Fx::from_f32(angle));
     let segment = |a: Vec2, b: Vec2, thick: f32, z: f32| -> Transform {
         let d = b - a;
         let len = d.length().max(0.01);
@@ -1637,14 +1662,21 @@ pub fn sync_tools(
             CraneState::Extending { len, dir } | CraneState::Retracting { len, dir } => {
                 Some((mount + *dir * *len, None))
             }
-            CraneState::Patching { thruster, .. } => ship
-                .thrusters
-                .get(*thruster)
-                .map(|t| (origin + rot(t.pos, angle), None)),
+            CraneState::Patching { thruster, .. } => ship.thrusters.get(*thruster).map(|t| {
+                (
+                    origin + rot(t.pos, crate::sim::fx::Fx::from_f32(angle)),
+                    None,
+                )
+            }),
             CraneState::Attached { body, rope, local } => {
                 sim.0.bodies.iter().find(|b| b.id == *body).map(|b| {
                     let a = b.prev_angle + angle_diff(b.angle, b.prev_angle) * alpha;
-                    (b.prev_pos.lerp(b.pos, alpha) + rot(*local, a), Some(*rope))
+                    (
+                        (b.prev_pos.lerp(b.pos, crate::sim::fx::Fx::from_f32(alpha))
+                            + rot(*local, crate::sim::fx::Fx::from_f32(a)))
+                        .to_bevy(),
+                        Some(rope.to_f32()),
+                    )
                 })
             }
         };
@@ -1665,10 +1697,10 @@ pub fn sync_tools(
         let mount = mount_world(c.0);
         let tip = match &tool.crane {
             CraneState::Extending { len, dir } | CraneState::Retracting { len, dir } => {
-                Some((mount + *dir * *len, *dir))
+                Some((mount + *dir * *len, dir.to_bevy()))
             }
             CraneState::Patching { thruster, .. } => ship.thrusters.get(*thruster).map(|t| {
-                let p = origin + rot(t.pos, angle);
+                let p = origin + rot(t.pos, crate::sim::fx::Fx::from_f32(angle));
                 (p, (p - mount).normalize_or_zero())
             }),
             _ => None,
@@ -1697,8 +1729,10 @@ pub fn sync_tools(
             .drill
             .as_ref()
             .map(|d| d.point)
-            .unwrap_or(mount + tool.aim_dir() * 5.5);
-        *t = segment(mount, end, 0.06, 0.8);
+            .unwrap_or(crate::sim::fx::Vec2::from_bevy(
+                mount + tool.aim_dir() * 5.5,
+            ));
+        *t = segment(mount, (end).to_bevy(), 0.06, 0.8);
         *vis = Visibility::Visible;
     }
 }
@@ -1723,7 +1757,9 @@ pub fn sync_pod(
         return;
     };
     let alpha = fixed.overstep_fraction();
-    let pos = pod.prev_pos.lerp(pod.pos, alpha);
+    let pos = pod
+        .prev_pos
+        .lerp(pod.pos, crate::sim::fx::Fx::from_f32(alpha));
     let angle = pod.prev_angle + angle_diff(pod.angle, pod.prev_angle) * alpha;
     let tr =
         Transform::from_translation(pos.extend(0.0)).with_rotation(Quat::from_rotation_z(angle));

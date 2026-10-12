@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::data::{CrewSave, GameData, Ore};
 use super::economy::Purchase;
@@ -21,8 +21,8 @@ fn sim() -> SimState {
     SimState::new(data, &save, Loadout::full(&def), 2)
 }
 
-fn idle(s: &mut SimState, seconds: f32) {
-    for _ in 0..(seconds * 60.0) as u32 {
+fn idle(s: &mut SimState, seconds: Fx) {
+    for _ in 0..(seconds * fx!(60.0)).to_u32() {
         s.step(&TickInput::default());
     }
 }
@@ -33,7 +33,7 @@ fn float_at(s: &mut SimState, pos: Vec2) {
     s.ship.pos = pos;
     s.ship.prev_pos = pos;
     s.ship.vel = Vec2::ZERO;
-    s.ship.ang_vel = 0.0;
+    s.ship.ang_vel = fx!(0.0);
 }
 
 fn npc<'a>(s: &'a SimState, name: &str) -> &'a super::npc::Npc {
@@ -49,9 +49,9 @@ fn mission(s: &mut SimState, kind: MissionKind, origin: usize) -> u32 {
         origin: Some(Owner::Station(origin)),
         giver: None,
         start: None,
-        top_speed: 0.0,
+        top_speed: fx!(0.0),
         max_strain: None,
-        par: 600.0,
+        par: fx!(600.0),
     });
     s.step(&TickInput {
         commands: vec![Command::AcceptMission { id }],
@@ -70,7 +70,7 @@ fn traffic_spawns_docked_ships_with_their_own_physics() {
             "{name} steht an einer Plattform"
         );
         assert!(
-            n.ship.mass > 1.0 && n.ship.thrusters.len() == 2,
+            n.ship.mass > fx!(1.0) && n.ship.thrusters.len() == 2,
             "{name}: echtes Schiff"
         );
     }
@@ -99,7 +99,7 @@ fn traders_fly_their_route_and_dock_without_crashing() {
     };
     let mut legs: Vec<Option<usize>> = (0..s.npcs.len()).map(|i| leg_of(&s, i)).collect();
     let mut done = vec![0u32; s.npcs.len()];
-    let hull: Vec<f32> = s.npcs.iter().map(|n| n.ship.hull).collect();
+    let hull: Vec<Fx> = s.npcs.iter().map(|n| n.ship.hull).collect();
     let mut docked_events = 0;
     let mut was_docked: Vec<bool> = s.npcs.iter().map(|n| n.docked_pad().is_some()).collect();
     for _ in 0..60 * 480 {
@@ -132,7 +132,7 @@ fn traders_fly_their_route_and_dock_without_crashing() {
     for (n, h) in s.npcs.iter().zip(hull) {
         assert!(n.alive, "{} lebt", n.name);
         assert!(
-            n.ship.hull > h - 25.0,
+            n.ship.hull > h - fx!(25.0),
             "{}: {} → {}",
             n.name,
             h,
@@ -144,7 +144,7 @@ fn traders_fly_their_route_and_dock_without_crashing() {
 #[test]
 fn npc_ships_bump_into_the_crew_ship_physically() {
     let mut s = sim();
-    let pos = Vec2::new(300.0, 200.0);
+    let pos = Vec2::new(fx!(300.0), fx!(200.0));
     float_at(&mut s, pos);
     // Ein Frachter treibt mit 4 m/s auf das Crew-Schiff zu.
     let i = s.npcs.iter().position(|n| n.name == "Möwe").unwrap();
@@ -152,13 +152,13 @@ fn npc_ships_bump_into_the_crew_ship_physically() {
         let n = &mut s.npcs[i];
         // Es will an der Crew vorbei – mitten durch.
         n.nav = Nav::Hold {
-            target: pos + Vec2::new(30.0, 0.0),
+            target: pos + Vec2::new(fx!(30.0), fx!(0.0)),
         };
-        n.ship.pos = pos + Vec2::new(-9.0, 0.0);
+        n.ship.pos = pos + Vec2::new(-fx!(9.0), fx!(0.0));
         n.ship.prev_pos = n.ship.pos;
-        n.ship.vel = Vec2::new(4.0, 0.0);
+        n.ship.vel = Vec2::new(fx!(4.0), fx!(0.0));
         // Nase nach rechts, Richtung Crew.
-        n.ship.angle = -std::f32::consts::FRAC_PI_2;
+        n.ship.angle = -Fx::HALF_PI;
         n.ship.prev_angle = n.ship.angle;
     }
     let mut hit = false;
@@ -168,17 +168,20 @@ fn npc_ships_bump_into_the_crew_ship_physically() {
             .events
             .iter()
             .any(|e| matches!(e, SimEvent::Impact { .. }));
-        if s.ship.vel.x > 0.5 {
+        if s.ship.vel.x > fx!(0.5) {
             break;
         }
     }
     assert!(hit, "Stoß gemeldet");
     assert!(
-        s.ship.vel.x > 0.5,
+        s.ship.vel.x > fx!(0.5),
         "Crew-Schiff wird angeschoben: {:?}",
         s.ship.vel
     );
-    assert!(s.npcs[i].ship.vel.x < 4.0, "der Frachter wird gebremst");
+    assert!(
+        s.npcs[i].ship.vel.x < fx!(4.0),
+        "der Frachter wird gebremst"
+    );
 }
 
 #[test]
@@ -188,14 +191,14 @@ fn drones_spawn_near_their_nest_and_shoot_at_the_crew() {
         s.data.traffic.nests[0].center.0,
         s.data.traffic.nests[0].center.1,
     );
-    float_at(&mut s, nest + Vec2::new(0.0, 120.0));
+    float_at(&mut s, nest + Vec2::new(fx!(0.0), fx!(120.0)));
     let (shield, hull) = (s.ship.shield, s.ship.hull);
     let mut shots = 0;
     // Tiefster Stand (der Schild lädt mit Zusatzenergie zwischendurch schnell nach).
     let (mut min_shield, mut min_hull) = (shield, hull);
     for _ in 0..60 * 30 {
         // Die Crew hält still (Position festhalten, damit nur die Drohnen arbeiten).
-        s.ship.pos = nest + Vec2::new(0.0, 120.0);
+        s.ship.pos = nest + Vec2::new(fx!(0.0), fx!(120.0));
         s.ship.vel = Vec2::ZERO;
         s.step(&TickInput::default());
         shots += s.projectiles.iter().filter(|p| p.hostile).count().min(1);
@@ -218,8 +221,8 @@ fn drones_spawn_near_their_nest_and_shoot_at_the_crew() {
 #[test]
 fn crew_shots_destroy_a_drone_and_leave_salvage() {
     let mut s = sim();
-    let pos = Vec2::new(-300.0, 600.0);
-    float_at(&mut s, pos + Vec2::new(0.0, -200.0));
+    let pos = Vec2::new(-fx!(300.0), fx!(600.0));
+    float_at(&mut s, pos + Vec2::new(fx!(0.0), -fx!(200.0)));
     let id = s.spawn_drone(pos, None, None);
     let mut down = false;
     for k in 0..20 {
@@ -228,14 +231,14 @@ fn crew_shots_destroy_a_drone_and_leave_salvage() {
         let Some(target) = d.filter(|n| n.alive).map(|n| n.ship.pos) else {
             break;
         };
-        let from = target + Vec2::new(0.0, -6.0);
+        let from = target + Vec2::new(fx!(0.0), -fx!(6.0));
         let pid = s.next_id();
         s.projectiles.push(Projectile {
             id: pid,
             pos: from,
             prev_pos: from,
-            vel: Vec2::new(0.0, 60.0),
-            life: 1.0,
+            vel: Vec2::new(fx!(0.0), fx!(60.0)),
+            life: fx!(1.0),
             hostile: false,
         });
         for _ in 0..15 {
@@ -256,7 +259,7 @@ fn crew_shots_destroy_a_drone_and_leave_salvage() {
         s.bodies
             .iter()
             .any(|b| matches!(b.kind, super::BodyKind::Salvage { .. })
-                && (b.pos - pos).length() < 30.0),
+                && (b.pos - pos).length() < fx!(30.0)),
         "Bauteil zum Bergen"
     );
 }
@@ -282,10 +285,10 @@ fn escort_convoy_waits_for_the_crew_gets_ambushed_and_arrives() {
         other => panic!("Konvoi nicht erzeugt: {other:?}"),
     };
     // Solange die Crew angedockt ist, wartet der Frachter.
-    idle(&mut s, 25.0);
+    idle(&mut s, fx!(25.0));
     let c = s.npcs.iter().find(|n| n.id == convoy).unwrap();
     assert!(!c.has_departed(), "wartet");
-    assert!(c.ship.vel.length() < 3.0);
+    assert!(c.ship.vel.length() < fx!(3.0));
     // Abdocken und in der Nähe schweben: los geht's.
     let mut ambushed = false;
     let mut done = false;
@@ -294,7 +297,7 @@ fn escort_convoy_waits_for_the_crew_gets_ambushed_and_arrives() {
             break;
         };
         // Die Crew begleitet den Frachter (schwebt seitlich versetzt mit).
-        let at = c.ship.pos + Vec2::new(0.0, 40.0);
+        let at = c.ship.pos + Vec2::new(fx!(0.0), fx!(40.0));
         float_at(&mut s, at);
         // … und schießt jeden Angreifer sofort ab.
         let drones: Vec<usize> = (0..s.npcs.len())
@@ -302,7 +305,7 @@ fn escort_convoy_waits_for_the_crew_gets_ambushed_and_arrives() {
             .collect();
         ambushed |= !drones.is_empty();
         for i in drones {
-            s.damage_npc(i, 100.0);
+            s.damage_npc(i, fx!(100.0));
         }
         s.step(&TickInput::default());
         if s.events.iter().any(|e| {
@@ -337,7 +340,7 @@ fn destroyed_convoy_fails_the_escort() {
         .iter()
         .position(|n| matches!(n.role, Role::Convoy { mission, .. } if mission == id))
         .unwrap();
-    s.damage_npc(ci, 10_000.0);
+    s.damage_npc(ci, fx!(10_000.0));
     assert!(!s.active.iter().any(|m| m.id == id), "Auftrag gescheitert");
     assert!(s.events.contains(&SimEvent::MissionFailed { id }));
 }
@@ -352,22 +355,22 @@ fn smuggle(s: &mut SimState) -> u32 {
             from: neb,
             to: kepler,
             cargo: "Nebelperlen".into(),
-            mass: 2.0,
+            mass: fx!(2.0),
         },
         reward: 500,
         origin: Some(Owner::Station(neb)),
         giver: None,
         start: None,
-        top_speed: 0.0,
+        top_speed: fx!(0.0),
         max_strain: None,
-        par: 300.0,
+        par: fx!(300.0),
     });
     s.ship.store(
         CargoKind::Container {
             mission: id,
             name: "Nebelperlen".into(),
         },
-        2.0,
+        fx!(2.0),
     );
     id
 }
@@ -382,8 +385,8 @@ fn customs_buoy_catches_slow_smugglers() {
     let fine = s.data.missions.smuggle.fine;
     let scan = s.data.missions.smuggle.scan_time;
     let mut busted = false;
-    for _ in 0..((scan + 1.0) * 60.0) as u32 {
-        float_at(&mut s, buoy + Vec2::new(10.0, 0.0));
+    for _ in 0..((scan + fx!(1.0)) * fx!(60.0)).to_u32() {
+        float_at(&mut s, buoy + Vec2::new(fx!(10.0), fx!(0.0)));
         s.step(&TickInput::default());
         busted |= s.events.contains(&SimEvent::Busted);
     }
@@ -400,13 +403,13 @@ fn quick_pass_through_a_buoy_and_delivery_pays() {
     let cp = &s.data.traffic.checkpoints[1];
     let buoy = Vec2::new(cp.pos.0, cp.pos.1);
     let scan = s.data.missions.smuggle.scan_time;
-    for _ in 0..((scan * 0.6) * 60.0) as u32 {
+    for _ in 0..((scan * fx!(0.6)) * fx!(60.0)).to_u32() {
         float_at(&mut s, buoy);
         s.step(&TickInput::default());
     }
-    assert!(s.customs.as_ref().is_some_and(|c| c.progress > 0.4));
+    assert!(s.customs.as_ref().is_some_and(|c| c.progress > fx!(0.4)));
     // Raus aus dem Radius: der Scan bricht ab.
-    float_at(&mut s, buoy + Vec2::new(0.0, 400.0));
+    float_at(&mut s, buoy + Vec2::new(fx!(0.0), fx!(400.0)));
     s.step(&TickInput::default());
     assert!(s.customs.is_none());
     assert!(s.active.iter().any(|m| m.id == id));
@@ -449,16 +452,16 @@ fn merchant_sells_material_only_where_her_ship_is_docked() {
             ..Default::default()
         });
     }
-    idle(&mut s, 0.5);
+    idle(&mut s, fx!(0.5));
     let price = s.data.traffic.merchant.as_ref().unwrap().goods[1].price;
-    assert!((s.stored(Ore::Kobalt) - kobalt - 6.0).abs() < 1e-3);
+    assert!((s.stored(Ore::Kobalt) - kobalt - fx!(6.0)).abs() < fx!(1e-3));
     assert_eq!(s.crew.credits, credits - price);
 }
 
 #[test]
 fn mechanic_upgrades_only_at_his_shipyard() {
     let mut s = sim();
-    s.crew.storage = [20.0; 5];
+    s.crew.storage = [fx!(20.0); 5];
     s.crew.storage_parts = 4;
     let err = s
         .purchase_info(&Purchase::Upgrade("fein_schub".into()))
@@ -471,7 +474,7 @@ fn mechanic_upgrades_only_at_his_shipyard() {
     s.purchase_info(&Purchase::Upgrade("fein_schub".into()))
         .expect("in der Werft Orion zu haben");
     // Ohne Zusatzmasse.
-    assert_eq!(s.data.upgrade("fein_schub").unwrap().mass, 0.0);
+    assert_eq!(s.data.upgrade("fein_schub").unwrap().mass, fx!(0.0));
 }
 
 #[test]
@@ -504,7 +507,7 @@ fn rival_crew_takes_an_open_distress_call() {
             home,
             goal: Some(site),
         };
-        n.ship.pos = site + Vec2::new(3.0, 0.0);
+        n.ship.pos = site + Vec2::new(fx!(3.0), fx!(0.0));
         n.ship.prev_pos = n.ship.pos;
         n.ship.vel = Vec2::ZERO;
         n.nav = Nav::Hold { target: n.ship.pos };
@@ -539,11 +542,11 @@ fn crew_cannot_dock_on_a_pad_with_an_npc_ship() {
     let mut s = sim();
     let pad = npc(&s, "Möwe").docked_pad().unwrap();
     let p = s.world.pads[pad].clone();
-    let above = p.center + p.normal * (s.ship.rest_height() + 6.0);
+    let above = p.center + p.normal * (s.ship.rest_height() + fx!(6.0));
     float_at(&mut s, above);
     assert!(s.dock_guide().is_none_or(|g| g.pad != pad));
     // Wer dort trotzdem hinfliegt, prallt am Frachter ab.
-    s.ship.vel = -p.normal * 3.0;
+    s.ship.vel = -p.normal * fx!(3.0);
     let mut bumped = false;
     for _ in 0..120 {
         s.step(&TickInput::default());

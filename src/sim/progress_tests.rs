@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::data::{CrewSave, GameData, Ore, ToolKind};
 use super::economy::{PaintPart, Purchase};
@@ -35,10 +35,10 @@ fn cmd(s: &mut SimState, c: Command) {
 fn land_on(s: &mut SimState, pad: usize) {
     let p = s.world.pads[pad].clone();
     s.ship.angle = p.ship_angle();
-    s.ship.pos = p.center + p.normal * (s.ship.rest_height() + 0.02);
+    s.ship.pos = p.center + p.normal * (s.ship.rest_height() + fx!(0.02));
     s.ship.prev_pos = s.ship.pos;
     s.ship.vel = Vec2::ZERO;
-    s.ship.ang_vel = 0.0;
+    s.ship.ang_vel = fx!(0.0);
     s.ship.docked = Some(pad);
 }
 
@@ -82,9 +82,9 @@ fn outpost_ships_ore_to_a_station() {
     let com_before = s.ship.com;
     cmd(&mut s, Command::AcceptMission { id: offer.id });
     assert_eq!(s.active.len(), 1);
-    assert!((s.ship.cargo_mass() - mass).abs() < 1e-3);
+    assert!((s.ship.cargo_mass() - mass).abs() < fx!(1e-3));
     assert!(
-        (s.ship.com - com_before).length() > 0.01,
+        (s.ship.com - com_before).length() > fx!(0.01),
         "Ladung verschiebt den Schwerpunkt"
     );
     let rep_before = s.crew.reputation[to];
@@ -106,7 +106,7 @@ fn reputation_brings_more_offers_and_discounts() {
             .count()
     };
     let base = count(&s);
-    s.ship.hull = s.ship.max_hull * 0.5;
+    s.ship.hull = s.ship.max_hull * fx!(0.5);
     let price_before = s
         .purchase_info(&Purchase::Service("repair".into()))
         .unwrap()
@@ -141,7 +141,7 @@ fn completed_mission_has_a_report_with_awards() {
         let slots = if k < 40 { (1 << a) | (1 << b) } else { 1 << a };
         s.step(&TickInput {
             slots,
-            aims: vec![0.0; MAX_SLOTS],
+            aims: vec![fx!(0.0); MAX_SLOTS],
             commands: vec![],
             brake: false,
         });
@@ -172,10 +172,10 @@ fn collisions_are_counted_per_slot() {
     let pad = s.world.stations[0].pads[0];
     let p = s.world.pads[pad].clone();
     s.ship.docked = None;
-    s.ship.shield = 1000.0;
+    s.ship.shield = fx!(1000.0);
     s.ship.angle = p.ship_angle();
-    s.ship.pos = p.center + p.normal * (s.ship.rest_height() + 2.0);
-    s.ship.vel = -p.normal * 9.0;
+    s.ship.pos = p.center + p.normal * (s.ship.rest_height() + fx!(2.0));
+    s.ship.vel = -p.normal * fx!(9.0);
     for _ in 0..30 {
         s.step(&TickInput::default());
     }
@@ -194,7 +194,7 @@ fn wreck_gives_scrap_and_tears_parts() {
     let (wpos, wr, wid) = (s.bodies[wi].pos, s.bodies[wi].radius, s.bodies[wi].id);
     // Bohren: Schiff direkt daneben, Bohrer zeigt aufs Wrack.
     s.ship.docked = None;
-    s.ship.angle = 0.0;
+    s.ship.angle = fx!(0.0);
     let di = s
         .ship
         .tools
@@ -202,7 +202,7 @@ fn wreck_gives_scrap_and_tears_parts() {
         .position(|t| t.kind == ToolKind::Drill)
         .unwrap();
     let drill_local = s.ship.tools[di].pos - s.ship.com;
-    s.ship.pos = wpos + Vec2::new(wr + 2.5, 0.0) - drill_local;
+    s.ship.pos = wpos + Vec2::new(wr + fx!(2.5), fx!(0.0)) - drill_local;
     s.ship.prev_pos = s.ship.pos;
     s.ship.vel = Vec2::ZERO;
     let slot = s.ship.tools[di].slot;
@@ -215,7 +215,10 @@ fn wreck_gives_scrap_and_tears_parts() {
             brake: false,
         });
     }
-    assert!(s.ship.ore_amount(Ore::Schrott) > 0.3, "Schrott gebohrt");
+    assert!(
+        s.ship.ore_amount(Ore::Schrott) > fx!(0.3),
+        "Schrott gebohrt"
+    );
 
     // Kran am Wrack, dann ein Ruck: ein Bauteil reißt ab und hängt am Haken.
     let ci = s
@@ -231,7 +234,7 @@ fn wreck_gives_scrap_and_tears_parts() {
         rope,
         local: Vec2::ZERO,
     };
-    s.ship.vel = (mount - wpos).normalize() * 6.0;
+    s.ship.vel = (mount - wpos).normalize() * fx!(6.0);
     let parts = |s: &SimState| match s.bodies.iter().find(|b| b.id == wid).unwrap().kind {
         BodyKind::Wreck { parts, .. } => parts,
         _ => 0,
@@ -297,7 +300,7 @@ fn paint_and_exploration_survive_saving() {
     );
     assert_eq!(s.crew.livery(&s.crew.current_ship).hull, Some(2));
     // Irgendwo weit draußen herumfliegen → dort ist es danach entdeckt.
-    let far = Vec2::new(1800.0, -1800.0);
+    let far = Vec2::new(fx!(1800.0), -fx!(1800.0));
     assert!(!s.discovered(far));
     s.ship.docked = None;
     s.ship.pos = far;
@@ -343,12 +346,12 @@ fn ping_names_the_spot_and_fades() {
         &mut s,
         Command::Ping {
             player: 1,
-            pos: Vec2::new(5000.0, 0.0),
+            pos: Vec2::new(fx!(5000.0), fx!(0.0)),
         },
     );
     assert_eq!(s.pings.len(), 1);
     assert!(s.pings[0].label.is_empty());
-    for _ in 0..(super::PING_SECONDS * 60.0) as usize + 2 {
+    for _ in 0..(super::PING_SECONDS * fx!(60.0)).to_usize() + 2 {
         s.step(&TickInput::default());
     }
     assert!(s.pings.is_empty());
@@ -370,8 +373,8 @@ fn hot_join_rebuilds_the_ship_in_flight() {
         1,
     );
     s.ship.docked = None;
-    s.ship.pos = Vec2::new(0.0, 400.0);
-    s.ship.vel = Vec2::new(4.0, 1.0);
+    s.ship.pos = Vec2::new(fx!(0.0), fx!(400.0));
+    s.ship.vel = Vec2::new(fx!(4.0), fx!(1.0));
     let origin = s.ship.origin();
     cmd(
         &mut s,
@@ -385,10 +388,13 @@ fn hot_join_rebuilds_the_ship_in_flight() {
     assert_eq!(s.ship.tools.len(), 1);
     assert_eq!(s.crew.size, 2);
     assert!(
-        (s.ship.vel - Vec2::new(4.0, 1.0)).length() < 0.05,
+        (s.ship.vel - Vec2::new(fx!(4.0), fx!(1.0))).length() < fx!(0.05),
         "Schwung bleibt"
     );
-    assert!((s.ship.origin() - origin).length() < 0.2, "kein Sprung");
+    assert!(
+        (s.ship.origin() - origin).length() < fx!(0.2),
+        "kein Sprung"
+    );
     assert!(def.crew.0 <= def.crew.1);
 }
 
@@ -411,8 +417,8 @@ fn free_at(s: &mut SimState, pos: Vec2) {
     s.ship.pos = pos;
     s.ship.prev_pos = pos;
     s.ship.vel = Vec2::ZERO;
-    s.ship.ang_vel = 0.0;
-    s.ship.angle = 0.0;
+    s.ship.ang_vel = fx!(0.0);
+    s.ship.angle = fx!(0.0);
 }
 
 fn region(s: &SimState, name: &str) -> Vec2 {
@@ -434,17 +440,17 @@ fn solar_wind_pushes_and_nebula_hides() {
     for _ in 0..60 {
         s.step(&TickInput::default());
     }
-    assert!(s.ship.vel.x > 1.0, "Wind schiebt: {:?}", s.ship.vel);
+    assert!(s.ship.vel.x > fx!(1.0), "Wind schiebt: {:?}", s.ship.vel);
     let neb = region(&s, "Schleiernebel");
-    assert!(s.sector_at(neb).nebula > 0.5);
-    assert!(s.sector_at(Vec2::ZERO).nebula < 1e-3);
+    assert!(s.sector_at(neb).nebula > fx!(0.5));
+    assert!(s.sector_at(Vec2::ZERO).nebula < fx!(1e-3));
 }
 
 #[test]
 fn debris_drifts_in_the_debris_zone() {
     let mut s = sim();
     let zone = region(&s, "Splitterzone");
-    free_at(&mut s, zone + Vec2::new(0.0, -300.0));
+    free_at(&mut s, zone + Vec2::new(fx!(0.0), -fx!(300.0)));
     for _ in 0..240 {
         s.step(&TickInput::default());
     }
@@ -465,7 +471,7 @@ fn scanner_finds_wrecks_and_charts_sell() {
         .find(|b| matches!(b.kind, BodyKind::Wreck { .. }))
         .map(|b| b.pos)
         .unwrap();
-    free_at(&mut s, wreck + Vec2::new(200.0, 0.0));
+    free_at(&mut s, wreck + Vec2::new(fx!(200.0), fx!(0.0)));
     let si = s
         .ship
         .tools
@@ -475,7 +481,7 @@ fn scanner_finds_wrecks_and_charts_sell() {
     let slot = s.ship.tools[si].slot;
     s.step(&TickInput {
         slots: 1 << slot,
-        aims: vec![0.0; MAX_SLOTS],
+        aims: vec![fx!(0.0); MAX_SLOTS],
         commands: vec![],
         brake: false,
     });
@@ -500,7 +506,7 @@ fn scanner_finds_wrecks_and_charts_sell() {
     }
     s.step(&TickInput {
         slots: 1 << slot,
-        aims: vec![0.0; MAX_SLOTS],
+        aims: vec![fx!(0.0); MAX_SLOTS],
         commands: vec![],
         brake: false,
     });
@@ -522,19 +528,19 @@ fn scanner_finds_wrecks_and_charts_sell() {
 fn random_events_cover_all_kinds() {
     use super::sector::EventKind;
     let mut s = sim();
-    free_at(&mut s, Vec2::new(0.0, 500.0));
+    free_at(&mut s, Vec2::new(fx!(0.0), fx!(500.0)));
     let offers_before = s.offers.iter().filter(|m| m.is_distress()).count();
     let (mut shower, mut flare) = (false, false);
     for _ in 0..40 {
         s.event = None;
-        s.event_timer = 0.0;
+        s.event_timer = fx!(0.0);
         s.ship.shield = s.ship.max_shield;
         s.update_events();
         match s.event.as_ref().map(|e| e.kind) {
             Some(EventKind::MeteorShower) => shower = true,
             Some(EventKind::SolarFlare) => {
                 flare = true;
-                assert!(s.ship.shield < s.ship.max_shield * 0.5);
+                assert!(s.ship.shield < s.ship.max_shield * fx!(0.5));
                 assert!(s.flare());
             }
             None => {}
@@ -548,18 +554,18 @@ fn random_events_cover_all_kinds() {
 #[test]
 fn neither_shield_nor_hull_heal_by_themselves_but_drones_patch_the_hull() {
     let mut s = sim();
-    free_at(&mut s, Vec2::new(0.0, 500.0));
-    s.ship.shield = 0.0;
-    s.ship.hull = 50.0;
-    s.ship.since_hit = 0.0;
+    free_at(&mut s, Vec2::new(fx!(0.0), fx!(500.0)));
+    s.ship.shield = fx!(0.0);
+    s.ship.hull = fx!(50.0);
+    s.ship.since_hit = fx!(0.0);
     for _ in 0..(7 * 60) {
         s.step(&TickInput::default());
     }
     // Phase 19: Schildladung gibt es nur an Stationen.
-    assert_eq!(s.ship.shield, 0.0, "Schild lädt nicht von selbst");
-    assert_eq!(s.ship.hull, 50.0, "Hülle heilt nicht von selbst");
+    assert_eq!(s.ship.shield, fx!(0.0), "Schild lädt nicht von selbst");
+    assert_eq!(s.ship.hull, fx!(50.0), "Hülle heilt nicht von selbst");
     // Reparaturdrohnen kaufen → Hülle flickt sich langsam (Material liegt im Crew-Lager).
-    s.crew.storage = [20.0; 5];
+    s.crew.storage = [fx!(20.0); 5];
     s.crew.storage_parts = 5;
     s.dock_at_station(0);
     cmd(
@@ -569,13 +575,13 @@ fn neither_shield_nor_hull_heal_by_themselves_but_drones_patch_the_hull() {
             voter: 0,
         },
     );
-    assert!(s.ship.hull_regen > 0.0);
-    free_at(&mut s, Vec2::new(0.0, 500.0));
+    assert!(s.ship.hull_regen > fx!(0.0));
+    free_at(&mut s, Vec2::new(fx!(0.0), fx!(500.0)));
     let h = s.ship.hull;
     for _ in 0..(4 * 60) {
         s.step(&TickInput::default());
     }
-    assert!(s.ship.hull > h + 1.0);
+    assert!(s.ship.hull > h + fx!(1.0));
 }
 
 #[test]
@@ -588,11 +594,11 @@ fn passengers_pay_by_comfort_and_bonuses_apply() {
         from: nova,
         to: kepler,
         count: 4,
-        comfort: 1.0,
+        comfort: fx!(1.0),
         aboard: false,
     };
     let par = s.par_time(&kind);
-    assert!(par > 60.0);
+    assert!(par > fx!(60.0));
     s.offers.push(super::missions::Mission {
         id,
         kind,
@@ -600,20 +606,20 @@ fn passengers_pay_by_comfort_and_bonuses_apply() {
         origin: Some(Owner::Station(nova)),
         giver: None,
         start: None,
-        top_speed: 0.0,
+        top_speed: fx!(0.0),
         max_strain: None,
         par,
     });
     cmd(&mut s, Command::AcceptMission { id });
     assert_eq!(s.active.len(), 1);
     // Vollgas: mehr als 10 m/s² → die Zufriedenheit sinkt (ohne Flugassistenz, die dämpft).
-    free_at(&mut s, Vec2::new(0.0, 500.0));
+    free_at(&mut s, Vec2::new(fx!(0.0), fx!(500.0)));
     s.flight_assist = false;
     let all = (1u32 << s.ship.thrusters.len()) - 1;
     for _ in 0..180 {
         s.step(&TickInput {
             slots: all,
-            aims: vec![0.0; MAX_SLOTS],
+            aims: vec![fx!(0.0); MAX_SLOTS],
             commands: vec![],
             brake: false,
         });
@@ -622,7 +628,10 @@ fn passengers_pay_by_comfort_and_bonuses_apply() {
         MissionKind::Passengers { comfort, .. } => comfort,
         _ => unreachable!(),
     };
-    assert!(comfort < 0.99 && comfort > 0.5, "Zufriedenheit {comfort}");
+    assert!(
+        comfort < fx!(0.99) && comfort > fx!(0.5),
+        "Zufriedenheit {comfort}"
+    );
     let before = s.crew.credits;
     s.ship.docked = None;
     s.dock_at_station(kepler);
@@ -642,7 +651,7 @@ fn passengers_pay_by_comfort_and_bonuses_apply() {
 fn every_offer_has_a_par_time() {
     let s = sim();
     for m in &s.offers {
-        assert!(m.par >= 60.0, "{:?}", m.kind);
+        assert!(m.par >= fx!(60.0), "{:?}", m.kind);
     }
 }
 
@@ -674,17 +683,17 @@ fn relay_station_is_rebuilt_in_stages() {
     // Etappe 1: 8 t Ferrit + 1 Bauteil, in zwei Lieferungen.
     s.ship.docked = None;
     s.dock_at_station(si);
-    s.ship.store(CargoKind::Ore(Ore::Ferrit), 5.0);
+    s.ship.store(CargoKind::Ore(Ore::Ferrit), fx!(5.0));
     cmd(&mut s, Command::DeliverProject);
     assert_eq!(s.world.stations[si].stage, 0);
-    assert!((s.project_here().unwrap().delivered_of(Ore::Ferrit) - 5.0).abs() < 1e-3);
-    s.ship.store(CargoKind::Ore(Ore::Ferrit), 5.0);
+    assert!((s.project_here().unwrap().delivered_of(Ore::Ferrit) - fx!(5.0)).abs() < fx!(1e-3));
+    s.ship.store(CargoKind::Ore(Ore::Ferrit), fx!(5.0));
     s.ship.store(
         CargoKind::Salvage {
             name: "Funkmodul".into(),
             value: 60,
         },
-        1.5,
+        fx!(1.5),
     );
     let credits = s.crew.credits;
     cmd(&mut s, Command::DeliverProject);
@@ -692,7 +701,7 @@ fn relay_station_is_rebuilt_in_stages() {
     assert!(s.world.stations[si].has(crate::sim::data::Service::Market));
     assert!(s.crew.credits > credits, "Station zahlt für die Etappe");
     assert!(
-        (s.ship.ore_amount(Ore::Ferrit) - 2.0).abs() < 1e-3,
+        (s.ship.ore_amount(Ore::Ferrit) - fx!(2.0)).abs() < fx!(1e-3),
         "Rest bleibt an Bord"
     );
 
@@ -702,7 +711,7 @@ fn relay_station_is_rebuilt_in_stages() {
     assert!(t.world.stations[si].has(crate::sim::data::Service::Fuel));
 }
 
-fn spawn_rod(s: &mut SimState, pos: Vec2, half_len: f32, mass: f32, mission: u32) -> u32 {
+fn spawn_rod(s: &mut SimState, pos: Vec2, half_len: Fx, mass: Fx, mission: u32) -> u32 {
     let id = s.next_id();
     s.bodies.push(super::Body {
         id,
@@ -710,19 +719,19 @@ fn spawn_rod(s: &mut SimState, pos: Vec2, half_len: f32, mass: f32, mission: u32
             mission,
             name: "Antennenmast".into(),
             half_len,
-            thick: 0.45,
+            thick: fx!(0.45),
         },
         pos,
         vel: Vec2::ZERO,
-        angle: 0.0,
-        ang_vel: 0.0,
-        radius: half_len + 0.45,
+        angle: fx!(0.0),
+        ang_vel: fx!(0.0),
+        radius: half_len + fx!(0.45),
         mass,
         prev_pos: pos,
-        prev_angle: 0.0,
+        prev_angle: fx!(0.0),
         alive: true,
         seed: 7,
-        age: 0.0,
+        age: fx!(0.0),
     });
     id
 }
@@ -731,37 +740,37 @@ fn spawn_rod(s: &mut SimState, pos: Vec2, half_len: f32, mass: f32, mission: u32
 fn rod_collides_along_its_length() {
     let mut s = sim();
     // Stab liegt waagrecht, nur sein rechtes Ende ragt in eine Wand – die Mitte ist frei.
-    let probe = Vec2::new(0.0, 900.0);
-    let id = spawn_rod(&mut s, probe, 4.5, 7.0, 0);
+    let probe = Vec2::new(fx!(0.0), fx!(900.0));
+    let id = spawn_rod(&mut s, probe, fx!(4.5), fx!(7.0), 0);
     let bi = s.bodies.iter().position(|b| b.id == id).unwrap();
     assert_eq!(
         s.bodies[bi].circles().n,
-        9.min(((9.0f32 / 0.45).ceil() as usize + 1).max(2))
+        9.min(((fx!(9.0) / fx!(0.45)).ceil_int() as usize + 1).max(2))
     );
     // Ein Körper genau am rechten Ende stößt den Stab an (und dreht ihn).
-    let end = s.bodies[bi].anchor(Vec2::new(4.5, 0.0));
+    let end = s.bodies[bi].anchor(Vec2::new(fx!(4.5), fx!(0.0)));
     let other = s.next_id();
     s.bodies.push(super::Body {
         id: other,
         kind: BodyKind::Debris,
-        pos: end + Vec2::new(0.0, 1.0),
-        vel: Vec2::new(0.0, -6.0),
-        angle: 0.0,
-        ang_vel: 0.0,
-        radius: 0.6,
-        mass: 3.0,
-        prev_pos: end + Vec2::new(0.0, 1.0),
-        prev_angle: 0.0,
+        pos: end + Vec2::new(fx!(0.0), fx!(1.0)),
+        vel: Vec2::new(fx!(0.0), -fx!(6.0)),
+        angle: fx!(0.0),
+        ang_vel: fx!(0.0),
+        radius: fx!(0.6),
+        mass: fx!(3.0),
+        prev_pos: end + Vec2::new(fx!(0.0), fx!(1.0)),
+        prev_angle: fx!(0.0),
         alive: true,
         seed: 1,
-        age: 0.0,
+        age: fx!(0.0),
     });
     for _ in 0..30 {
         s.step(&TickInput::default());
     }
     let b = s.bodies.iter().find(|b| b.id == id).unwrap();
     assert!(
-        b.ang_vel.abs() > 0.05,
+        b.ang_vel.abs() > fx!(0.05),
         "Stoß am Ende dreht den Stab: {}",
         b.ang_vel
     );
@@ -770,7 +779,7 @@ fn rod_collides_along_its_length() {
 #[test]
 fn rod_grabbed_at_the_end_swings() {
     let mut s = sim();
-    free_at(&mut s, Vec2::new(0.0, 900.0));
+    free_at(&mut s, Vec2::new(fx!(0.0), fx!(900.0)));
     let ci = s
         .ship
         .tools
@@ -778,25 +787,35 @@ fn rod_grabbed_at_the_end_swings() {
         .position(|t| t.kind == ToolKind::Crane)
         .unwrap();
     let mount = s.ship.tool_world_pos(ci);
-    let id = spawn_rod(&mut s, mount + Vec2::new(6.0, -6.0), 4.5, 7.0, 0);
+    let id = spawn_rod(
+        &mut s,
+        mount + Vec2::new(fx!(6.0), -fx!(6.0)),
+        fx!(4.5),
+        fx!(7.0),
+        0,
+    );
     s.ship.tools[ci].crane = CraneState::Attached {
         body: id,
-        rope: 5.0,
-        local: Vec2::new(-4.5, 0.0),
+        rope: fx!(5.0),
+        local: Vec2::new(-fx!(4.5), fx!(0.0)),
     };
     let all = (1u32 << s.ship.thrusters.len()) - 1;
     for _ in 0..120 {
         s.step(&TickInput {
             slots: all,
-            aims: vec![0.0; MAX_SLOTS],
+            aims: vec![fx!(0.0); MAX_SLOTS],
             commands: vec![],
             brake: false,
         });
     }
     let b = s.bodies.iter().find(|b| b.id == id).unwrap();
-    assert!(b.angle.abs() > 0.2, "Stab schwingt am Seil: {}", b.angle);
     assert!(
-        s.ship.tools[ci].strain > 0.0,
+        b.angle.abs() > fx!(0.2),
+        "Stab schwingt am Seil: {}",
+        b.angle
+    );
+    assert!(
+        s.ship.tools[ci].strain > fx!(0.0),
         "Seilbelastung wird angezeigt"
     );
 }
@@ -805,17 +824,17 @@ fn rod_grabbed_at_the_end_swings() {
 fn bulky_salvage_needs_the_drop_zone_and_a_capable_ship() {
     let mut s = sim();
     let nova = s.data.station_index("nova").unwrap();
-    assert!(s.bulky_feasible(14.0).is_ok());
-    assert!(s.bulky_feasible(500.0).is_err(), "viel zu schwer");
+    assert!(s.bulky_feasible(fx!(14.0)).is_ok());
+    assert!(s.bulky_feasible(fx!(500.0)).is_err(), "viel zu schwer");
     let id = s.next_id();
     let kind = MissionKind::Bulky {
-        site: Vec2::new(300.0, 300.0),
+        site: Vec2::new(fx!(300.0), fx!(300.0)),
         to: nova,
         name: "Antennenmast".into(),
         body: None,
-        mass: 7.0,
-        half_len: 4.6,
-        thick: 0.45,
+        mass: fx!(7.0),
+        half_len: fx!(4.6),
+        thick: fx!(0.45),
     };
     let par = s.par_time(&kind);
     s.offers.push(super::missions::Mission {
@@ -825,7 +844,7 @@ fn bulky_salvage_needs_the_drop_zone_and_a_capable_ship() {
         origin: Some(Owner::Station(nova)),
         giver: None,
         start: None,
-        top_speed: 0.0,
+        top_speed: fx!(0.0),
         max_strain: None,
         par,
     });
@@ -836,7 +855,7 @@ fn bulky_salvage_needs_the_drop_zone_and_a_capable_ship() {
     };
     // Neben der Station, aber nicht in der Ablage: nicht erledigt.
     let (zone, r) = s.drop_point(nova);
-    let outside = s.world.stations[nova].pos + Vec2::new(0.0, 70.0);
+    let outside = s.world.stations[nova].pos + Vec2::new(fx!(0.0), fx!(70.0));
     assert!((outside - zone).length() > r);
     let b = s.bodies.iter_mut().find(|b| b.id == bid).unwrap();
     b.pos = outside;
@@ -859,18 +878,20 @@ fn precision_drilling_frees_a_vein_only_when_held_on_target() {
     let bi = s
         .bodies
         .iter()
-        .position(|b| matches!(b.kind, BodyKind::Asteroid { ore: Some(_), .. }) && b.radius > 2.0)
+        .position(|b| {
+            matches!(b.kind, BodyKind::Asteroid { ore: Some(_), .. }) && b.radius > fx!(2.0)
+        })
         .unwrap();
     if let BodyKind::Asteroid { vein, .. } = &mut s.bodies[bi].kind {
         *vein = true;
     }
-    let (apos, ar) = (Vec2::new(0.0, 1200.0), s.bodies[bi].radius);
+    let (apos, ar) = (Vec2::new(fx!(0.0), fx!(1200.0)), s.bodies[bi].radius);
     let aid = s.bodies[bi].id;
     let b = &mut s.bodies[bi];
     b.pos = apos;
     b.prev_pos = apos;
     b.vel = Vec2::ZERO;
-    b.ang_vel = 0.0;
+    b.ang_vel = fx!(0.0);
     let (target, _) = precision_target(&s.bodies[bi]).unwrap();
     let out = (target - apos).normalize();
     let di = s
@@ -881,11 +902,11 @@ fn precision_drilling_frees_a_vein_only_when_held_on_target() {
         .unwrap();
     s.ship.docked = None;
     // Nase (mit dem Bohrer) zeigt zum Asteroiden.
-    s.ship.angle = (-out).to_angle() - std::f32::consts::FRAC_PI_2;
+    s.ship.angle = (-out).to_angle() - Fx::HALF_PI;
     s.ship.vel = Vec2::ZERO;
-    s.ship.ang_vel = 0.0;
+    s.ship.ang_vel = fx!(0.0);
     let drill_local = crate::sim::geom::rot(s.ship.tools[di].pos - s.ship.com, s.ship.angle);
-    s.ship.pos = target + out * 2.4 - drill_local;
+    s.ship.pos = target + out * fx!(2.4) - drill_local;
     s.ship.prev_pos = s.ship.pos;
     let slot = s.ship.tools[di].slot;
     let mut cores = 0;
@@ -895,10 +916,10 @@ fn precision_drilling_frees_a_vein_only_when_held_on_target() {
         let aim = (t - s.ship.tool_world_pos(di)).to_angle();
         // Die Crew hält Schiff und Ziel ruhig (hier vereinfacht: beide stehen still).
         s.ship.vel = Vec2::ZERO;
-        s.ship.ang_vel = 0.0;
+        s.ship.ang_vel = fx!(0.0);
         if let Some(b) = s.bodies.iter_mut().find(|b| b.id == aid) {
             b.vel = Vec2::ZERO;
-            b.ang_vel = 0.0;
+            b.ang_vel = fx!(0.0);
         }
         s.step(&TickInput {
             slots: 1 << slot,

@@ -1,6 +1,6 @@
 //! Slots in Aktion: Triebwerke, Kanone, Kran und Bohrer.
 
-use bevy::math::Vec2;
+use crate::sim::fx::{Fx, Vec2};
 
 use super::data::ToolKind;
 use super::geom::{cross, ray_circle, ray_poly, rot};
@@ -8,20 +8,20 @@ use super::ship::{CargoKind, CraneState, DrillHit};
 use super::world::{Shape, angle_diff};
 use super::{Body, BodyKind, DT, Projectile, SimEvent, SimState, TickInput, ToastKind};
 
-const SHOT_SPEED: f32 = 75.0;
-const SHOT_RECOIL: f32 = 2.2;
-const CRANE_SPEED: f32 = 55.0;
+const SHOT_SPEED: Fx = fx!(75.0);
+const SHOT_RECOIL: Fx = fx!(2.2);
+const CRANE_SPEED: Fx = fx!(55.0);
 /// Seillänge, auf die schwere Lasten eingeholt werden.
-pub const TOW_ROPE: f32 = 8.0;
+pub const TOW_ROPE: Fx = fx!(8.0);
 /// Größter Seilimpuls pro Tick, bevor das Seil reißt.
-const ROPE_BREAK_IMPULSE: f32 = 70.0;
+const ROPE_BREAK_IMPULSE: Fx = fx!(70.0);
 /// Ab diesem Seilimpuls reißt ein Bauteil aus einem Wrack (ein Ruck, kein ruhiges Ziehen).
-pub const TEAR_IMPULSE: f32 = 12.0;
-const DRILL_RANGE: f32 = 5.5;
+pub const TEAR_IMPULSE: Fx = fx!(12.0);
+const DRILL_RANGE: Fx = fx!(5.5);
 /// So weit zeigt der Bohrer schon an, was im Ziel steckt.
-const DRILL_PREVIEW: f32 = 16.0;
+const DRILL_PREVIEW: Fx = fx!(16.0);
 /// Schubanteil, wenn der Tank leer ist – damit niemand im reibungsfreien All festsitzt.
-pub const EMERGENCY_THRUST: f32 = 0.25;
+pub const EMERGENCY_THRUST: Fx = fx!(0.25);
 
 /// Stottert ein beschädigtes Triebwerk in diesem Tick? Deterministisch aus Tick und Slot,
 /// in Fenstern von 5 Ticks, damit es hörbar „hustet“ statt zu flimmern.
@@ -33,8 +33,9 @@ pub fn thruster_works(t: &super::ship::Thruster, tick: u64) -> bool {
         return true;
     }
     let h = super::rng::hash32((tick / 5) as u32 ^ (t.part as u32).wrapping_mul(0x9e37_79b9));
-    let p = 0.15 + 0.6 * (super::ship::STUTTER_BELOW - t.health) / super::ship::STUTTER_BELOW;
-    (h % 1000) as f32 / 1000.0 >= p
+    let p =
+        fx!(0.15) + fx!(0.6) * (super::ship::STUTTER_BELOW - t.health) / super::ship::STUTTER_BELOW;
+    Fx::from(h % 1000) / fx!(1000.0) >= p
 }
 
 impl SimState {
@@ -48,9 +49,9 @@ impl SimState {
             any_pressed |= pressed;
             // Doppeltipp und halten = Übersteuerung (69).
             super::power::track_taps(t, pressed);
-            t.firing = pressed && t.cool_off <= 0.0 && thruster_works(t, tick);
-            let target = if t.firing { 1.0 } else { 0.0 };
-            t.level += (target - t.level) * (DT * 16.0).min(1.0);
+            t.firing = pressed && t.cool_off <= fx!(0.0) && thruster_works(t, tick);
+            let target = if t.firing { fx!(1.0) } else { fx!(0.0) };
+            t.level += (target - t.level) * (DT * fx!(16.0)).min(fx!(1.0));
         }
 
         let in_zone = self.landed_in_zone();
@@ -77,17 +78,17 @@ impl SimState {
         let reserve = if self.ship.fuel_empty() {
             EMERGENCY_THRUST
         } else {
-            1.0
+            fx!(1.0)
         };
         let mut force = Vec2::ZERO;
-        let mut torque = 0.0;
-        let mut burned = 0.0;
+        let mut torque = fx!(0.0);
+        let mut burned = fx!(0.0);
         // Flugassistenz: weniger Schub, kräftigere Drehung (abschaltbar).
         let fl = &self.data.world.flight;
         let (assist_thrust, assist_turn) = if self.flight_assist {
             (fl.assist_thrust, fl.assist_turn)
         } else {
-            (1.0, 1.0)
+            (fx!(1.0), fx!(1.0))
         };
         for t in &self.ship.thrusters {
             if !t.firing {
@@ -112,9 +113,9 @@ impl SimState {
             let m = self.ship.brake_mul;
             let (acc, spin, fuel) = (fl.brake_accel * m, fl.brake_spin * m, fl.brake_fuel);
             let rev_acc = fl.reverse_accel * m;
-            let rev_max = (fl.reverse_max * (1.0 + (m - 1.0) * 0.4)).min(2.4);
+            let rev_max = (fl.reverse_max * (fx!(1.0) + (m - fx!(1.0)) * fx!(0.4))).min(fx!(2.4));
             let v = self.ship.vel.length();
-            if !self.reverse_engaged && v < 0.4 && self.ship.ang_vel.abs() < 0.3 {
+            if !self.reverse_engaged && v < fx!(0.4) && self.ship.ang_vel.abs() < fx!(0.3) {
                 self.reverse_engaged = true;
             }
             if self.reverse_engaged {
@@ -123,21 +124,21 @@ impl SimState {
                 let side = self.ship.vel - back * along;
                 // Seitliches Driften abfangen, rückwärts bis zur Höchstgeschwindigkeit.
                 let ds = (acc * reserve * DT).min(side.length());
-                if ds > 0.0 {
+                if ds > fx!(0.0) {
                     self.ship.vel -= side.normalize() * ds;
                 }
                 let target = rev_max;
                 let dv = (target - along).clamp(-acc * reserve * DT, rev_acc * reserve * DT);
                 self.ship.vel += back * dv;
-                self.ship.ang_vel *= 1.0 - (spin * DT).min(0.5);
+                self.ship.ang_vel *= fx!(1.0) - (spin * DT).min(fx!(0.5));
                 burned += fuel * DT;
                 self.reversing = true;
-            } else if v > 0.02 || self.ship.ang_vel.abs() > 0.02 {
+            } else if v > fx!(0.02) || self.ship.ang_vel.abs() > fx!(0.02) {
                 let dv = (acc * reserve * DT).min(v);
-                if v > 0.0 {
+                if v > fx!(0.0) {
                     self.ship.vel -= self.ship.vel / v * dv;
                 }
-                self.ship.ang_vel *= 1.0 - (spin * DT).min(0.5);
+                self.ship.ang_vel *= fx!(1.0) - (spin * DT).min(fx!(0.5));
                 burned += fuel * DT;
                 self.braking = true;
             }
@@ -158,10 +159,10 @@ impl SimState {
                 if let Some(a) = input.aims.get(t.slot as usize) {
                     // Ruhe der Zielhand: wie schnell sich der Zielwinkel dreht (geglättet).
                     let turn = angle_diff(*a, t.aim).abs() / DT;
-                    t.jitter += (turn.min(20.0) - t.jitter) * 0.06;
+                    t.jitter += (turn.min(fx!(20.0)) - t.jitter) * fx!(0.06);
                     t.aim = *a;
                 }
-                t.cooldown = (t.cooldown - DT).max(0.0);
+                t.cooldown = (t.cooldown - DT).max(fx!(0.0));
             }
             match self.ship.tools[i].kind {
                 ToolKind::Cannon => self.update_cannon(i),
@@ -172,21 +173,21 @@ impl SimState {
         }
     }
 
-    fn burn_fuel(&mut self, amount: f32) {
-        if amount <= 0.0 || self.ship.fuel_empty() {
+    fn burn_fuel(&mut self, amount: Fx) {
+        if amount <= fx!(0.0) || self.ship.fuel_empty() {
             return;
         }
         // Ein warmes Artefakt im Frachtraum treibt den Verbrauch hoch.
         let amount = amount * self.artifact_heat();
-        self.ship.fuel = (self.ship.fuel - amount).max(0.0);
-        let frac = self.ship.fuel / self.ship.max_fuel.max(1.0);
+        self.ship.fuel = (self.ship.fuel - amount).max(fx!(0.0));
+        let frac = self.ship.fuel / self.ship.max_fuel.max(fx!(1.0));
         if self.ship.fuel_empty() && self.fuel_warned < 2 {
             self.fuel_warned = 2;
             self.toast(
                 "Tank leer – Notreserve: nur noch 25 % Schub. An einer Station tanken.",
                 ToastKind::Bad,
             );
-        } else if frac < 0.2 && self.fuel_warned < 1 {
+        } else if frac < fx!(0.2) && self.fuel_warned < 1 {
             self.fuel_warned = 1;
             self.toast("Treibstoff knapp (unter 20 %)", ToastKind::Warn);
         }
@@ -194,18 +195,18 @@ impl SimState {
 
     fn update_scanner(&mut self, i: usize) {
         let t = &self.ship.tools[i];
-        if !t.just_pressed() || t.cooldown > 0.0 {
+        if !t.just_pressed() || t.cooldown > fx!(0.0) {
             return;
         }
         let origin = self.ship.tool_world_pos(i);
         if self.start_scan(origin) {
-            self.ship.tools[i].cooldown = 3.0;
+            self.ship.tools[i].cooldown = fx!(3.0);
         }
     }
 
     fn update_cannon(&mut self, i: usize) {
         let t = &self.ship.tools[i];
-        if !t.just_pressed() || t.cooldown > 0.0 {
+        if !t.just_pressed() || t.cooldown > fx!(0.0) {
             return;
         }
         if self.ship.ammo == 0 {
@@ -218,17 +219,17 @@ impl SimState {
         let id = self.next_id();
         self.projectiles.push(Projectile {
             id,
-            pos: mount + dir * 0.6,
-            prev_pos: mount + dir * 0.6,
+            pos: mount + dir * fx!(0.6),
+            prev_pos: mount + dir * fx!(0.6),
             vel,
-            life: 1.6,
+            life: fx!(1.6),
             hostile: false,
         });
         self.ship.apply_impulse(-dir * SHOT_RECOIL, mount);
         self.ship.ammo -= 1;
         let slot = self.ship.tools[i].slot;
         self.stats.slot(slot).shots += 1;
-        self.ship.tools[i].cooldown = 0.22 * self.ship.cannon_rate;
+        self.ship.tools[i].cooldown = fx!(0.22) * self.ship.cannon_rate;
         self.events.push(SimEvent::Shot { pos: mount, dir });
         if self.ship.ammo == 0 {
             self.toast(
@@ -250,11 +251,14 @@ impl SimState {
                     // Ersatzteil an Bord und Kran zeigt auf ein ausgefallenes Triebwerk.
                     CraneState::Patching {
                         thruster: ti,
-                        progress: 0.0,
+                        progress: fx!(0.0),
                     }
                 } else if just {
                     self.events.push(SimEvent::CraneFire);
-                    CraneState::Extending { len: 0.5, dir: aim }
+                    CraneState::Extending {
+                        len: fx!(0.5),
+                        dir: aim,
+                    }
                 } else {
                     CraneState::Idle
                 }
@@ -265,14 +269,14 @@ impl SimState {
                 } else {
                     // Ruhig auf der Stelle halten: Kran zielt weiter aufs Triebwerk, kein Kreiseln.
                     let on = self.crane_patch_target(i) == Some(thruster)
-                        && self.ship.ang_vel.abs() < 0.6;
+                        && self.ship.ang_vel.abs() < fx!(0.6);
                     let step = DT / super::minigame::CRANE_PATCH_TIME;
                     let progress = if on {
                         progress + step
                     } else {
-                        (progress - 1.5 * step).max(0.0)
+                        (progress - fx!(1.5) * step).max(fx!(0.0))
                     };
-                    if progress >= 1.0 {
+                    if progress >= fx!(1.0) {
                         if self.use_spare_part() {
                             self.finish_thruster_patch(thruster, "mit Ersatzteil instand gesetzt");
                         }
@@ -287,13 +291,13 @@ impl SimState {
                     CraneState::Retracting { len, dir }
                 } else {
                     let len = len + CRANE_SPEED * DT;
-                    let mut best: Option<(f32, usize)> = None;
+                    let mut best: Option<(Fx, usize)> = None;
                     for (bi, b) in self.bodies.iter().enumerate() {
                         if !b.alive || !b.grabbable() {
                             continue;
                         }
                         for (cp, cr) in b.circles().iter() {
-                            if let Some(t) = ray_circle(mount, dir, len, cp, cr + 0.3)
+                            if let Some(t) = ray_circle(mount, dir, len, cp, cr + fx!(0.3))
                                 && best.is_none_or(|(bt, _)| t < bt)
                             {
                                 best = Some((t, bi));
@@ -312,10 +316,10 @@ impl SimState {
                         let along = rot(hit - b.pos, -b.angle);
                         let local = match b.kind {
                             BodyKind::Bulky { half_len, .. } => {
-                                Vec2::new(along.x.clamp(-half_len, half_len), 0.0)
+                                Vec2::new(along.x.clamp(-half_len, half_len), fx!(0.0))
                             }
                             _ if b.stowable() => Vec2::ZERO,
-                            _ => along.clamp_length_max(b.radius * 0.85),
+                            _ => along.clamp_length_max(b.radius * fx!(0.85)),
                         };
                         let body_id = b.id;
                         let shared = self.ship.tools.iter().enumerate().any(|(k, o)| {
@@ -323,7 +327,7 @@ impl SimState {
                                 && matches!(o.crane, CraneState::Attached { body, .. } if body == body_id)
                         });
                         let anchor = b.anchor(local);
-                        let rope = (anchor - mount).length().max(1.5);
+                        let rope = (anchor - mount).length().max(fx!(1.5));
                         self.events.push(SimEvent::CraneAttach { pos: anchor });
                         let msg = match &b.kind {
                             BodyKind::Wreck { parts, .. } if *parts > 0 => Some(
@@ -365,8 +369,8 @@ impl SimState {
                 }
             }
             CraneState::Retracting { len, dir } => {
-                let len = len - CRANE_SPEED * 1.4 * DT;
-                if len <= 0.0 {
+                let len = len - CRANE_SPEED * fx!(1.4) * DT;
+                if len <= fx!(0.0) {
                     CraneState::Idle
                 } else {
                     CraneState::Retracting { len, dir }
@@ -375,12 +379,12 @@ impl SimState {
             CraneState::Attached { body, rope, local } => {
                 let Some(bi) = self.bodies.iter().position(|b| b.id == body && b.alive) else {
                     self.ship.tools[i].crane = CraneState::Idle;
-                    self.ship.tools[i].strain = 0.0;
+                    self.ship.tools[i].strain = fx!(0.0);
                     return;
                 };
                 if just {
                     self.events.push(SimEvent::CraneRelease);
-                    self.ship.tools[i].strain = 0.0;
+                    self.ship.tools[i].strain = fx!(0.0);
                     let a = self.bodies[bi].anchor(local);
                     let d = (a - mount).length();
                     CraneState::Retracting {
@@ -394,21 +398,21 @@ impl SimState {
                         let boost = if self.draw_energy(super::power::DRAW_TOOL) {
                             super::power::TOOL_BOOST
                         } else {
-                            1.0
+                            fx!(1.0)
                         };
-                        rope = (rope - 6.0 * boost * DT).max(0.0);
+                        rope = (rope - fx!(6.0) * boost * DT).max(fx!(0.0));
                     } else if rope > TOW_ROPE {
                         // Schwere Last: Seil langsam auf Schlepplänge einholen.
-                        rope = (rope - 2.5 * DT).max(TOW_ROPE);
+                        rope = (rope - fx!(2.5) * DT).max(TOW_ROPE);
                     }
                     let d = self.bodies[bi].anchor(local) - mount;
                     let dist = d.length();
-                    if stowable && dist < self.bodies[bi].radius + 1.6 && self.try_stow(bi) {
+                    if stowable && dist < self.bodies[bi].radius + fx!(1.6) && self.try_stow(bi) {
                         self.ship.tools[i].crane = CraneState::Idle;
-                        self.ship.tools[i].strain = 0.0;
+                        self.ship.tools[i].strain = fx!(0.0);
                         return;
                     }
-                    let pull = if dist > rope * 1.8 + 6.0 {
+                    let pull = if dist > rope * fx!(1.8) + fx!(6.0) {
                         None
                     } else {
                         self.rope_constraint(bi, local, mount, rope)
@@ -417,7 +421,7 @@ impl SimState {
                         self.toast("Kranseil gerissen – zu harter Ruck!", ToastKind::Bad);
                         self.events.push(SimEvent::CraneRelease);
                         self.ship.tools[i].crane = CraneState::Idle;
-                        self.ship.tools[i].strain = 0.0;
+                        self.ship.tools[i].strain = fx!(0.0);
                         return;
                     };
                     self.note_strain(i, pull);
@@ -443,12 +447,12 @@ impl SimState {
     /// Seil als harte Längenbeschränkung: schlaff, solange die Last näher ist als die
     /// Seillänge; straff zieht es nur (nie drücken). Ein zu harter Ruck reißt das Seil
     /// (Rückgabe `false`). Aus dem Wechsel von straff und schlaff entsteht das Pendeln.
-    fn rope_constraint(&mut self, bi: usize, local: Vec2, mount: Vec2, rope: f32) -> Option<f32> {
+    fn rope_constraint(&mut self, bi: usize, local: Vec2, mount: Vec2, rope: Fx) -> Option<Fx> {
         let anchor = self.bodies[bi].anchor(local);
         let d = anchor - mount;
         let dist = d.length();
-        if dist <= rope || dist < 1e-4 {
-            return Some(0.0);
+        if dist <= rope || dist < fx!(1e-4) {
+            return Some(fx!(0.0));
         }
         let n = d / dist;
         let bm = self.bodies[bi].mass;
@@ -459,19 +463,19 @@ impl SimState {
         // Hebel am Körper: zieht das Seil nicht durch die Mitte, dreht es den Körper mit.
         let rb = anchor - self.bodies[bi].pos;
         let rbn = cross(rb, n);
-        let body_k = 1.0 / bm + rbn * rbn / bi_inertia;
+        let body_k = fx!(1.0) / bm + rbn * rbn / bi_inertia;
         let k = if anchored {
             body_k
         } else {
-            body_k + 1.0 / self.ship.mass + rn * rn / self.ship.inertia
+            body_k + fx!(1.0) / self.ship.mass + rn * rn / self.ship.inertia
         };
         // Trennungsgeschwindigkeit entlang des Seils (+ etwas Lagekorrektur).
         let vrel =
             (self.bodies[bi].point_velocity(anchor) - self.ship.point_velocity(mount)).dot(n);
-        let bias = ((dist - rope) * 0.2 / DT).min(8.0);
+        let bias = ((dist - rope) * fx!(0.2) / DT).min(fx!(8.0));
         let lambda = (vrel + bias) / k;
-        if lambda <= 0.0 {
-            return Some(0.0);
+        if lambda <= fx!(0.0) {
+            return Some(fx!(0.0));
         }
         // Wracks sind verankert genug, dass vorher Bauteile nachgeben (siehe `tear_part`).
         let tearable = matches!(self.bodies[bi].kind, BodyKind::Wreck { parts, .. } if parts > 0);
@@ -490,14 +494,18 @@ impl SimState {
     }
 
     /// Seilbelastung für die Anzeige glätten und vor dem Reißen warnen.
-    fn note_strain(&mut self, i: usize, pull: f32) {
-        let target = (pull / (ROPE_BREAK_IMPULSE * self.ship.crane_load)).clamp(0.0, 1.0);
+    fn note_strain(&mut self, i: usize, pull: Fx) {
+        let target = (pull / (ROPE_BREAK_IMPULSE * self.ship.crane_load)).clamp(fx!(0.0), fx!(1.0));
         let t = &mut self.ship.tools[i];
         // Schnell hoch, langsam runter – so bleibt ein Ruck kurz sichtbar.
-        let k = if target > t.strain { 0.5 } else { 0.04 };
+        let k = if target > t.strain {
+            fx!(0.5)
+        } else {
+            fx!(0.04)
+        };
         t.strain += (target - t.strain) * k;
-        if t.strain > 0.75 && self.border_warn <= 0.0 {
-            self.border_warn = 2.5;
+        if t.strain > fx!(0.75) && self.border_warn <= fx!(0.0) {
+            self.border_warn = fx!(2.5);
             self.toast("Kranseil kurz vor dem Reißen!", ToastKind::Warn);
         }
     }
@@ -542,28 +550,31 @@ impl SimState {
         let toward = (mount - wpos).normalize_or_zero();
         if let Some(g) = gear {
             let id = self.next_id();
-            let pos = wpos + toward * (wr * 0.9 + 1.0);
-            let item =
-                super::ship::CargoItem::new(CargoKind::Gear(g), 1.5, super::data::CargoTrait::None);
+            let pos = wpos + toward * (wr * fx!(0.9) + fx!(1.0));
+            let item = super::ship::CargoItem::new(
+                CargoKind::Gear(g),
+                fx!(1.5),
+                super::data::CargoTrait::None,
+            );
             self.bodies.push(Body {
                 id,
                 kind: BodyKind::Dropped { item },
                 pos,
-                vel: wvel + toward * 2.0,
-                angle: 0.0,
-                ang_vel: self.rng.range(-1.0, 1.0),
-                radius: 1.0,
-                mass: 1.5,
+                vel: wvel + toward * fx!(2.0),
+                angle: fx!(0.0),
+                ang_vel: self.rng.range(-fx!(1.0), fx!(1.0)),
+                radius: fx!(1.0),
+                mass: fx!(1.5),
                 prev_pos: pos,
-                prev_angle: 0.0,
+                prev_angle: fx!(0.0),
                 alive: true,
                 seed: super::rng::hash32(id),
-                age: 0.0,
+                age: fx!(0.0),
             });
             self.events.push(SimEvent::Explosion {
                 pos,
-                size: 1.8,
-                color: [1.0, 0.85, 0.35],
+                size: fx!(1.8),
+                color: [fx!(1.0), fx!(0.85), fx!(0.35)],
             });
             self.toast(
                 format!(
@@ -584,7 +595,7 @@ impl SimState {
         let value = self.rng.range_u32(lo.min(hi), hi.max(lo).max(1));
         let id = self.next_id();
         // Das Teil löst sich an der Oberfläche des Wracks.
-        let pos = wpos + toward * (wr * 0.9 + 0.8);
+        let pos = wpos + toward * (wr * fx!(0.9) + fx!(0.8));
         self.bodies.push(Body {
             id,
             kind: BodyKind::Salvage {
@@ -592,21 +603,21 @@ impl SimState {
                 value,
             },
             pos,
-            vel: wvel + toward * 3.0,
-            angle: 0.0,
-            ang_vel: self.rng.range(-2.0, 2.0),
-            radius: 0.8,
-            mass: 1.5,
+            vel: wvel + toward * fx!(3.0),
+            angle: fx!(0.0),
+            ang_vel: self.rng.range(-fx!(2.0), fx!(2.0)),
+            radius: fx!(0.8),
+            mass: fx!(1.5),
             prev_pos: pos,
-            prev_angle: 0.0,
+            prev_angle: fx!(0.0),
             alive: true,
             seed: super::rng::hash32(id),
-            age: 0.0,
+            age: fx!(0.0),
         });
         self.events.push(SimEvent::Explosion {
             pos,
-            size: 1.6,
-            color: [1.0, 0.7, 0.35],
+            size: fx!(1.6),
+            color: [fx!(1.0), fx!(0.7), fx!(0.35)],
         });
         self.toast(
             format!("Bauteil abgerissen: {name} (~{value} Cr)"),
@@ -626,7 +637,9 @@ impl SimState {
         };
         let mount = self.ship.tool_world_pos(i);
         let dist = (self.bodies[bi].anchor(local) - mount).length();
-        if dist > rope * 1.8 + 6.0 || self.rope_constraint(bi, local, mount, rope).is_none() {
+        if dist > rope * fx!(1.8) + fx!(6.0)
+            || self.rope_constraint(bi, local, mount, rope).is_none()
+        {
             self.toast("Kranseil gerissen!", ToastKind::Bad);
             self.events.push(SimEvent::CraneRelease);
             self.ship.tools[i].crane = CraneState::Idle;
@@ -634,11 +647,11 @@ impl SimState {
     }
 
     /// Was der Bohrer von Werkzeug `i` gerade träfe: Abstand entlang der Zielrichtung und Ziel.
-    fn drill_target(&self, i: usize, range: f32) -> Option<(f32, Target)> {
+    fn drill_target(&self, i: usize, range: Fx) -> Option<(Fx, Target)> {
         let mount = self.ship.tool_world_pos(i);
         let dir = self.ship.tools[i].aim_dir();
-        let mut best: Option<(f32, Target)> = None;
-        let consider = |t: f32, tg: Target, best: &mut Option<(f32, Target)>| {
+        let mut best: Option<(Fx, Target)> = None;
+        let consider = |t: Fx, tg: Target, best: &mut Option<(Fx, Target)>| {
             if best.as_ref().is_none_or(|(bt, _)| t < *bt) {
                 *best = Some((t, tg));
             }
@@ -688,7 +701,7 @@ impl SimState {
         match target {
             Target::Planet(pi) => {
                 let p = &self.world.planets[pi];
-                let ang = f32::atan2(point.y - p.pos.y, point.x - p.pos.x);
+                let ang = Fx::atan2(point.y - p.pos.y, point.x - p.pos.x);
                 let half = p.deposit_half_angle();
                 let left = p
                     .deposits
@@ -696,7 +709,7 @@ impl SimState {
                     .find(|dp| angle_diff(ang, dp.angle).abs() < half)
                     .map(|dp| dp.amount);
                 Some(match left {
-                    Some(a) if a > 0.05 => (
+                    Some(a) if a > fx!(0.05) => (
                         point,
                         format!("{}-Ader · {a:.1} t{far}", p.ore.label()),
                         Some(p.ore),
@@ -714,7 +727,7 @@ impl SimState {
                     ore: Some(o),
                     ore_left,
                     ..
-                } if *ore_left > 0.05 => Some((
+                } if *ore_left > fx!(0.05) => Some((
                     point,
                     format!("{} · {:.1} t{far}", o.label(), ore_left),
                     Some(*o),
@@ -723,7 +736,7 @@ impl SimState {
                 BodyKind::Asteroid { ore: None, .. } => {
                     Some((point, "taubes Gestein – kein Erz".into(), None))
                 }
-                BodyKind::Wreck { scrap, .. } if *scrap > 0.05 => Some((
+                BodyKind::Wreck { scrap, .. } if *scrap > fx!(0.05) => Some((
                     point,
                     format!("Schrott · {scrap:.1} t{far}"),
                     Some(super::data::Ore::Schrott),
@@ -746,40 +759,40 @@ impl SimState {
         };
         let point = mount + dir * t;
         // Rückstoß des Bohrers.
-        self.ship.apply_impulse(-dir * 3.0 * DT, mount);
+        self.ship.apply_impulse(-dir * fx!(3.0) * DT, mount);
         // Ruhige Hand bringt mehr Ertrag, Zittern weniger (Punkt 36).
         let steady = super::ship::steady_factor(self.ship.tools[i].jitter);
         // Werkzeug-Boost aus der Zusatzenergie (70).
         let boost = if self.draw_energy(super::power::DRAW_TOOL) {
             super::power::TOOL_BOOST
         } else {
-            1.0
+            fx!(1.0)
         };
         let rate = self.ship.drill_rate * DT * steady * boost;
-        let free = (self.ship.cargo_capacity() - self.ship.cargo_mass()).max(0.0);
+        let free = (self.ship.cargo_capacity() - self.ship.cargo_mass()).max(fx!(0.0));
         let mut mined_ore = None;
-        let mut mined_amt = 0.0;
+        let mut mined_amt = fx!(0.0);
         let mut full = false;
         match target {
             Target::Planet(pi) => {
                 let p = &self.world.planets[pi];
-                let ang = f32::atan2(point.y - p.pos.y, point.x - p.pos.x);
+                let ang = Fx::atan2(point.y - p.pos.y, point.x - p.pos.x);
                 let half = p.deposit_half_angle();
                 let ore = p.ore;
                 if let Some(di) = p
                     .deposits
                     .iter()
-                    .position(|d| d.amount > 0.0 && angle_diff(ang, d.angle).abs() < half)
+                    .position(|d| d.amount > fx!(0.0) && angle_diff(ang, d.angle).abs() < half)
                 {
                     let amount = rate
                         .min(self.world.planets[pi].deposits[di].amount)
                         .min(free);
-                    if amount > 0.0 {
+                    if amount > fx!(0.0) {
                         self.world.planets[pi].deposits[di].amount -= amount;
                         self.ship.store(CargoKind::Ore(ore), amount);
                         mined_ore = Some(ore);
                         mined_amt += amount;
-                    } else if free <= 0.0 {
+                    } else if free <= fx!(0.0) {
                         full = true;
                     }
                 }
@@ -790,29 +803,29 @@ impl SimState {
                     return;
                 }
                 if let BodyKind::Wreck { scrap, .. } = &mut self.bodies[bi].kind {
-                    let amount = (rate * 0.8).min(*scrap).min(free);
-                    if amount > 0.0 {
+                    let amount = (rate * fx!(0.8)).min(*scrap).min(free);
+                    if amount > fx!(0.0) {
                         *scrap -= amount;
                         self.ship
                             .store(CargoKind::Ore(super::data::Ore::Schrott), amount);
                         mined_ore = Some(super::data::Ore::Schrott);
                         mined_amt += amount;
-                    } else if free <= 0.0 {
+                    } else if free <= fx!(0.0) {
                         full = true;
                     }
                 } else if let BodyKind::Asteroid {
                     ore, ore_left, hp, ..
                 } = &mut self.bodies[bi].kind
                 {
-                    *hp -= 5.0 * DT;
+                    *hp -= fx!(5.0) * DT;
                     if let Some(o) = *ore {
                         let amount = rate.min(*ore_left).min(free);
-                        if amount > 0.0 {
+                        if amount > fx!(0.0) {
                             *ore_left -= amount;
                             self.ship.store(CargoKind::Ore(o), amount);
                             mined_ore = Some(o);
                             mined_amt += amount;
-                        } else if free <= 0.0 {
+                        } else if free <= fx!(0.0) {
                             full = true;
                         }
                     }
@@ -823,7 +836,7 @@ impl SimState {
         if full {
             self.cargo_full_warning();
         }
-        if mined_amt > 0.0 {
+        if mined_amt > fx!(0.0) {
             let slot = self.ship.tools[i].slot;
             self.stats.slot(slot).drilled += mined_amt;
         }
@@ -835,8 +848,8 @@ impl SimState {
     }
 
     fn cargo_full_warning(&mut self) {
-        if self.border_warn <= 0.0 {
-            self.border_warn = 3.0;
+        if self.border_warn <= fx!(0.0) {
+            self.border_warn = fx!(3.0);
             self.toast("Frachtraum voll", ToastKind::Warn);
         }
     }
@@ -855,10 +868,10 @@ impl SimState {
     pub(crate) fn undock(&mut self) {
         if let Some(pad) = self.ship.docked.take() {
             let n = self.world.pads[pad].normal;
-            self.ship.vel = n * 1.8;
-            self.ship.ang_vel = 0.0;
-            self.ship.dock_cooldown = 1.2;
-            self.ship.dock_timer = 0.0;
+            self.ship.vel = n * fx!(1.8);
+            self.ship.ang_vel = fx!(0.0);
+            self.ship.dock_cooldown = fx!(1.2);
+            self.ship.dock_timer = fx!(0.0);
             self.events.push(SimEvent::Undocked);
         }
     }

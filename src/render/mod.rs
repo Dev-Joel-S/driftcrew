@@ -107,14 +107,16 @@ pub struct Art {
 
 impl Art {
     /// Abgeschrägtes Prisma aus einem Umriss (zwischengespeichert über einen Schlüssel).
-    pub fn prism(
+    pub fn prism<V: Copy + Into<Vec2>>(
         &mut self,
         meshes: &mut Assets<Mesh>,
-        outline: &[Vec2],
+        outline: &[V],
         depth: f32,
         bevel: f32,
         panel: Option<(f32, f32)>,
     ) -> Handle<Mesh> {
+        let outline: Vec<Vec2> = outline.iter().map(|v| (*v).into()).collect();
+        let outline = &outline[..];
         let mut key = format!("{depth:.2}|{bevel:.2}|{panel:?}");
         for p in outline {
             key.push_str(&format!("|{:.2},{:.2}", p.x, p.y));
@@ -348,8 +350,11 @@ fn setup_camera(mut commands: Commands) {
 pub fn ship_pose(sim: &crate::sim::SimState, alpha: f32) -> (Vec2, f32) {
     let s = &sim.ship;
     let angle = s.prev_angle + angle_diff(s.angle, s.prev_angle) * alpha;
-    let com = s.prev_pos.lerp(s.pos, alpha);
-    (com - rot(s.com, angle), angle)
+    let com = s.prev_pos.lerp(s.pos, crate::sim::fx::Fx::from_f32(alpha));
+    (
+        (com - rot(s.com, crate::sim::fx::Fx::from_f32(angle))).to_bevy(),
+        angle,
+    )
 }
 
 fn camera_follow(
@@ -372,7 +377,7 @@ fn camera_follow(
     let alpha = fixed.overstep_fraction();
     let (origin, _) = ship_pose(&sim.0, alpha);
     let s = &sim.0.ship;
-    let com = s.prev_pos.lerp(s.pos, alpha);
+    let com = s.prev_pos.lerp(s.pos, crate::sim::fx::Fx::from_f32(alpha));
     let target = match state.get() {
         AppState::Title => {
             let a = rig.t * 0.03;
@@ -386,8 +391,8 @@ fn camera_follow(
         AppState::Playing if s.destroyed && sim.0.escape.is_some() => {
             // Die Kamera folgt der Rettungskapsel.
             let p = sim.0.escape.as_ref().unwrap();
-            let pos = p.prev_pos.lerp(p.pos, alpha);
-            Vec3::new(pos.x, pos.y, 34.0 * rig.zoom)
+            let pos = p.prev_pos.lerp(p.pos, crate::sim::fx::Fx::from_f32(alpha));
+            Vec3::new((pos.x).to_f32(), (pos.y).to_f32(), 34.0 * rig.zoom)
         }
         AppState::Playing => {
             let speed = s.vel.length();

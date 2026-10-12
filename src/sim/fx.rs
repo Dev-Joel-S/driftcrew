@@ -14,7 +14,7 @@
 
 use std::fmt;
 use std::iter::Sum;
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, SubAssign};
 
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -48,11 +48,20 @@ impl Fx {
     /// Nur für `fx!` (und Konstanten): Dezimalzahl zur Übersetzungszeit umrechnen.
     pub const fn lit(x: f64) -> Fx {
         let v = x * 4_294_967_296.0;
-        Fx(if v >= 0.0 { (v + 0.5) as i64 } else { (v - 0.5) as i64 })
+        Fx(if v >= 0.0 {
+            (v + 0.5) as i64
+        } else {
+            (v - 0.5) as i64
+        })
     }
 
     pub const fn int(n: i64) -> Fx {
         Fx(n.saturating_mul(ONE_RAW))
+    }
+
+    /// `n / d` zur Übersetzungszeit, nur mit Ganzzahlen (gerundet).
+    pub const fn frac(n: i64, d: i64) -> Fx {
+        Fx(((n as i128 * ONE_RAW as i128 * 2 + d as i128) / (d as i128 * 2)) as i64)
     }
 
     pub const fn from_raw(raw: i64) -> Fx {
@@ -181,7 +190,7 @@ impl Fx {
     pub fn powi(self, n: i32) -> Fx {
         let mut r = Fx::ONE;
         for _ in 0..n.unsigned_abs() {
-            r = r * self;
+            r *= self;
         }
         if n < 0 { Fx::ONE / r } else { r }
     }
@@ -207,7 +216,7 @@ impl Fx {
         // Auf (-π, π] bringen.
         let mut a = self.rem_euclid(Fx::TAU);
         if a > Fx::PI {
-            a = a - Fx::TAU;
+            a -= Fx::TAU;
         }
         // Auf [-π/2, π/2] spiegeln; der Kosinus kehrt dabei das Vorzeichen um.
         let mut flip = false;
@@ -283,34 +292,36 @@ impl Fx {
     pub fn angle_to(self, to: Fx) -> Fx {
         let mut d = (to - self).rem_euclid(Fx::TAU);
         if d > Fx::PI {
-            d = d - Fx::TAU;
+            d -= Fx::TAU;
         }
         d
     }
 
-    pub fn min_fx(self, o: Fx) -> Fx {
-        if self <= o { self } else { o }
+    /// Wie `f32::total_cmp`: für `sort_by` und `min_by`.
+    pub fn total_cmp(&self, o: &Fx) -> std::cmp::Ordering {
+        self.0.cmp(&o.0)
+    }
+
+    pub fn to_u64(self) -> u64 {
+        self.to_int().max(0) as u64
+    }
+
+    pub fn to_i64(self) -> i64 {
+        self.to_int()
+    }
+
+    pub fn to_u16(self) -> u16 {
+        self.to_int().clamp(0, u16::MAX as i64) as u16
+    }
+
+    pub fn is_finite(self) -> bool {
+        true
     }
 }
 
-/// Ganzzahlwurzel (abgerundet), Stelle für Stelle.
+/// Ganzzahlwurzel (abgerundet) – reine Ganzzahlrechnung der Standardbibliothek.
 fn isqrt(n: u128) -> u128 {
-    if n == 0 {
-        return 0;
-    }
-    let mut op = n;
-    let mut res = 0u128;
-    let mut one = 1u128 << ((127 - n.leading_zeros()) & !1);
-    while one != 0 {
-        if op >= res + one {
-            op -= res + one;
-            res = (res >> 1) + one;
-        } else {
-            res >>= 1;
-        }
-        one >>= 2;
-    }
-    res
+    n.isqrt()
 }
 
 fn sat(v: i128) -> Fx {
@@ -434,6 +445,48 @@ impl DivAssign for Fx {
     }
 }
 
+impl std::iter::Product for Fx {
+    fn product<I: Iterator<Item = Fx>>(it: I) -> Fx {
+        it.fold(Fx::ONE, |a, b| a * b)
+    }
+}
+
+/// Rechnen auch mit Referenzen (`&Fx`), wie bei den Float-Typen.
+macro_rules! ref_ops {
+    ($ty:ty: $($tr:ident $f:ident),*) => {$(
+        impl $tr<&$ty> for $ty {
+            type Output = <$ty as $tr>::Output;
+            fn $f(self, o: &$ty) -> Self::Output {
+                $tr::$f(self, *o)
+            }
+        }
+        impl $tr<$ty> for &$ty {
+            type Output = <$ty as $tr>::Output;
+            fn $f(self, o: $ty) -> Self::Output {
+                $tr::$f(*self, o)
+            }
+        }
+        impl $tr<&$ty> for &$ty {
+            type Output = <$ty as $tr>::Output;
+            fn $f(self, o: &$ty) -> Self::Output {
+                $tr::$f(*self, *o)
+            }
+        }
+    )*};
+}
+ref_ops!(Fx: Add add, Sub sub, Mul mul, Div div);
+
+impl AddAssign<&Fx> for Fx {
+    fn add_assign(&mut self, o: &Fx) {
+        *self = *self + *o;
+    }
+}
+impl SubAssign<&Fx> for Fx {
+    fn sub_assign(&mut self, o: &Fx) {
+        *self = *self - *o;
+    }
+}
+
 impl Sum for Fx {
     fn sum<I: Iterator<Item = Fx>>(it: I) -> Fx {
         it.fold(Fx::ZERO, |a, b| a + b)
@@ -467,7 +520,7 @@ macro_rules! from_int {
         }
     )*};
 }
-from_int!(i32, u32, i64, u8, u16, usize);
+from_int!(i32, u32, i64, u64, u8, u16, i16, usize);
 
 /// Ausgabe mit Genauigkeit (`{:.1}`) wie bei Floats, sonst bis zu sechs Stellen ohne Nullen.
 impl fmt::Display for Fx {
@@ -569,12 +622,30 @@ impl From<Vec2> for (Fx, Fx) {
 }
 
 impl Vec2 {
-    pub const ZERO: Vec2 = Vec2 { x: Fx::ZERO, y: Fx::ZERO };
-    pub const ONE: Vec2 = Vec2 { x: Fx::ONE, y: Fx::ONE };
-    pub const X: Vec2 = Vec2 { x: Fx::ONE, y: Fx::ZERO };
-    pub const Y: Vec2 = Vec2 { x: Fx::ZERO, y: Fx::ONE };
-    pub const NEG_X: Vec2 = Vec2 { x: Fx(-ONE_RAW), y: Fx::ZERO };
-    pub const NEG_Y: Vec2 = Vec2 { x: Fx::ZERO, y: Fx(-ONE_RAW) };
+    pub const ZERO: Vec2 = Vec2 {
+        x: Fx::ZERO,
+        y: Fx::ZERO,
+    };
+    pub const ONE: Vec2 = Vec2 {
+        x: Fx::ONE,
+        y: Fx::ONE,
+    };
+    pub const X: Vec2 = Vec2 {
+        x: Fx::ONE,
+        y: Fx::ZERO,
+    };
+    pub const Y: Vec2 = Vec2 {
+        x: Fx::ZERO,
+        y: Fx::ONE,
+    };
+    pub const NEG_X: Vec2 = Vec2 {
+        x: Fx(-ONE_RAW),
+        y: Fx::ZERO,
+    };
+    pub const NEG_Y: Vec2 = Vec2 {
+        x: Fx::ZERO,
+        y: Fx(-ONE_RAW),
+    };
 
     pub const fn new(x: Fx, y: Fx) -> Vec2 {
         Vec2 { x, y }
@@ -625,9 +696,23 @@ impl Vec2 {
     }
 
     pub fn length(self) -> Fx {
-        let sq = self.x.0 as i128 * self.x.0 as i128 + self.y.0 as i128 * self.y.0 as i128;
         // Q64 → Q32; die Wurzel verträgt jede Länge ohne Überlauf.
-        sat(isqrt(sq as u128) as i128)
+        sat(isqrt(self.len_sq128()) as i128)
+    }
+
+    /// `|self| > r` ohne Wurzel (exakt, kein Überlauf) – für Abstandsabfragen in heißen Schleifen.
+    pub fn longer_than(self, r: Fx) -> bool {
+        r.0 < 0 || self.len_sq128() > (r.0 as i128 * r.0 as i128) as u128
+    }
+
+    /// `|self| < r` ohne Wurzel.
+    pub fn shorter_than(self, r: Fx) -> bool {
+        r.0 > 0 && self.len_sq128() < (r.0 as i128 * r.0 as i128) as u128
+    }
+
+    /// Länge zum Quadrat in voller Breite (Q64).
+    fn len_sq128(self) -> u128 {
+        (self.x.0 as i128 * self.x.0 as i128 + self.y.0 as i128 * self.y.0 as i128) as u128
     }
 
     pub fn distance(self, o: Vec2) -> Fx {
@@ -655,7 +740,11 @@ impl Vec2 {
 
     pub fn clamp_length_max(self, max: Fx) -> Vec2 {
         let l = self.length();
-        if l > max && l.0 > 0 { self * (max / l) } else { self }
+        if l > max && l.0 > 0 {
+            self * (max / l)
+        } else {
+            self
+        }
     }
 
     pub fn clamp_length(self, min: Fx, max: Fx) -> Vec2 {
@@ -676,6 +765,10 @@ impl Vec2 {
         Vec2::new(self.x.abs(), self.y.abs())
     }
 
+    pub fn clamp(self, min: Vec2, max: Vec2) -> Vec2 {
+        Vec2::new(self.x.clamp(min.x, max.x), self.y.clamp(min.y, max.y))
+    }
+
     pub fn min(self, o: Vec2) -> Vec2 {
         Vec2::new(self.x.min(o.x), self.y.min(o.y))
     }
@@ -691,7 +784,11 @@ impl Vec2 {
     /// Anteil von `self` entlang `onto`.
     pub fn project_onto(self, onto: Vec2) -> Vec2 {
         let d = onto.dot(onto);
-        if d.0 == 0 { Vec2::ZERO } else { onto * (self.dot(onto) / d) }
+        if d.0 == 0 {
+            Vec2::ZERO
+        } else {
+            onto * (self.dot(onto) / d)
+        }
     }
 
     /// Um den Winkel `a` drehen.
@@ -702,6 +799,19 @@ impl Vec2 {
 
     pub fn is_zero(self) -> bool {
         self.x.0 == 0 && self.y.0 == 0
+    }
+
+    pub fn min_element(self) -> Fx {
+        self.x.min(self.y)
+    }
+
+    pub fn max_element(self) -> Fx {
+        self.x.max(self.y)
+    }
+
+    /// Vorzeichenbehafteter Winkel von `self` zu `o` in (-π, π].
+    pub fn angle_to(self, o: Vec2) -> Fx {
+        self.perp_dot(o).atan2(self.dot(o))
     }
 }
 
@@ -773,6 +883,8 @@ impl DivAssign<Fx> for Vec2 {
         *self = *self / k;
     }
 }
+ref_ops!(Vec2: Add add, Sub sub);
+
 impl Sum for Vec2 {
     fn sum<I: Iterator<Item = Vec2>>(it: I) -> Vec2 {
         it.fold(Vec2::ZERO, |a, b| a + b)
@@ -787,6 +899,207 @@ impl fmt::Debug for Vec2 {
 impl fmt::Display for Vec2 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "({}, {})", self.x, self.y)
+    }
+}
+
+// =============================================================================================
+// Brücke zu f32 / bevy::Vec2 – nur für Anzeige und Eingabegeräte, nie in der Simulation
+// (der Test `no_floats_in_sim` verbietet dort jeden Float-Typ). Das Ergebnis solcher
+// Mischrechnungen ist immer ein Float.
+// =============================================================================================
+
+type BVec2 = bevy::math::Vec2;
+type BVec3 = bevy::math::Vec3;
+
+macro_rules! float_bridge {
+    ($($tr:ident $f:ident $op:tt),*) => {$(
+        impl $tr<f32> for Fx {
+            type Output = f32;
+            fn $f(self, o: f32) -> f32 {
+                self.to_f32() $op o
+            }
+        }
+        impl $tr<Fx> for f32 {
+            type Output = f32;
+            fn $f(self, o: Fx) -> f32 {
+                self $op o.to_f32()
+            }
+        }
+        impl $tr<f32> for &Fx {
+            type Output = f32;
+            fn $f(self, o: f32) -> f32 {
+                self.to_f32() $op o
+            }
+        }
+        impl $tr<&Fx> for f32 {
+            type Output = f32;
+            fn $f(self, o: &Fx) -> f32 {
+                self $op o.to_f32()
+            }
+        }
+    )*};
+}
+float_bridge!(Add add +, Sub sub -, Mul mul *, Div div /);
+
+impl Rem for Fx {
+    type Output = Fx;
+    fn rem(self, o: Fx) -> Fx {
+        if o.0 == 0 { Fx::ZERO } else { Fx(self.0 % o.0) }
+    }
+}
+impl Rem<f32> for Fx {
+    type Output = f32;
+    fn rem(self, o: f32) -> f32 {
+        self.to_f32() % o
+    }
+}
+
+impl AddAssign<f32> for Fx {
+    fn add_assign(&mut self, o: f32) {
+        *self += Fx::from_f32(o);
+    }
+}
+impl SubAssign<f32> for Fx {
+    fn sub_assign(&mut self, o: f32) {
+        *self -= Fx::from_f32(o);
+    }
+}
+impl MulAssign<f32> for Fx {
+    fn mul_assign(&mut self, o: f32) {
+        *self *= Fx::from_f32(o);
+    }
+}
+
+impl Sum<Fx> for f32 {
+    fn sum<I: Iterator<Item = Fx>>(it: I) -> f32 {
+        it.map(Fx::to_f32).sum()
+    }
+}
+impl<'a> Sum<&'a Fx> for f32 {
+    fn sum<I: Iterator<Item = &'a Fx>>(it: I) -> f32 {
+        it.map(|x| x.to_f32()).sum()
+    }
+}
+impl Sum<Vec2> for BVec2 {
+    fn sum<I: Iterator<Item = Vec2>>(it: I) -> BVec2 {
+        it.map(Vec2::to_bevy).sum()
+    }
+}
+
+impl AddAssign<Fx> for f32 {
+    fn add_assign(&mut self, o: Fx) {
+        *self += o.to_f32();
+    }
+}
+impl SubAssign<Fx> for f32 {
+    fn sub_assign(&mut self, o: Fx) {
+        *self -= o.to_f32();
+    }
+}
+impl MulAssign<Fx> for f32 {
+    fn mul_assign(&mut self, o: Fx) {
+        *self *= o.to_f32();
+    }
+}
+
+impl PartialEq<f32> for Fx {
+    fn eq(&self, o: &f32) -> bool {
+        self.to_f32() == *o
+    }
+}
+impl PartialOrd<f32> for Fx {
+    fn partial_cmp(&self, o: &f32) -> Option<std::cmp::Ordering> {
+        self.to_f32().partial_cmp(o)
+    }
+}
+impl PartialEq<Fx> for f32 {
+    fn eq(&self, o: &Fx) -> bool {
+        *self == o.to_f32()
+    }
+}
+impl PartialOrd<Fx> for f32 {
+    fn partial_cmp(&self, o: &Fx) -> Option<std::cmp::Ordering> {
+        self.partial_cmp(&o.to_f32())
+    }
+}
+
+impl From<Fx> for f32 {
+    fn from(x: Fx) -> f32 {
+        x.to_f32()
+    }
+}
+
+impl Vec2 {
+    /// Für die Anzeige: als bevy-Vektor mit z.
+    pub fn extend(self, z: f32) -> BVec3 {
+        self.to_bevy().extend(z)
+    }
+}
+
+impl From<Vec2> for BVec2 {
+    fn from(v: Vec2) -> BVec2 {
+        v.to_bevy()
+    }
+}
+
+macro_rules! vec_bridge {
+    ($($tr:ident $f:ident $op:tt),*) => {$(
+        impl $tr<BVec2> for Vec2 {
+            type Output = BVec2;
+            fn $f(self, o: BVec2) -> BVec2 {
+                self.to_bevy() $op o
+            }
+        }
+        impl $tr<Vec2> for BVec2 {
+            type Output = BVec2;
+            fn $f(self, o: Vec2) -> BVec2 {
+                self $op o.to_bevy()
+            }
+        }
+    )*};
+}
+vec_bridge!(Add add +, Sub sub -);
+
+impl Mul<f32> for Vec2 {
+    type Output = BVec2;
+    fn mul(self, k: f32) -> BVec2 {
+        self.to_bevy() * k
+    }
+}
+impl Mul<Vec2> for f32 {
+    type Output = BVec2;
+    fn mul(self, v: Vec2) -> BVec2 {
+        self * v.to_bevy()
+    }
+}
+impl Mul<BVec2> for Vec2 {
+    type Output = BVec2;
+    fn mul(self, o: BVec2) -> BVec2 {
+        self.to_bevy() * o
+    }
+}
+impl Mul<Fx> for BVec3 {
+    type Output = BVec3;
+    fn mul(self, k: Fx) -> BVec3 {
+        self * k.to_f32()
+    }
+}
+impl Mul<Fx> for BVec2 {
+    type Output = BVec2;
+    fn mul(self, k: Fx) -> BVec2 {
+        self * k.to_f32()
+    }
+}
+impl Div<Fx> for BVec2 {
+    type Output = BVec2;
+    fn div(self, k: Fx) -> BVec2 {
+        self / k.to_f32()
+    }
+}
+impl Div<f32> for Vec2 {
+    type Output = BVec2;
+    fn div(self, k: f32) -> BVec2 {
+        self.to_bevy() / k
     }
 }
 
@@ -847,7 +1160,9 @@ mod tests {
         for k in -2000..=2000 {
             let a = k as f64 * 0.0173;
             let (s, c) = Fx::from_f64(a).sin_cos();
-            worst = worst.max((s.to_f64() - a.sin()).abs()).max((c.to_f64() - a.cos()).abs());
+            worst = worst
+                .max((s.to_f64() - a.sin()).abs())
+                .max((c.to_f64() - a.cos()).abs());
         }
         assert!(worst < 5e-9, "{worst}");
         for k in 0..720 {
@@ -862,18 +1177,30 @@ mod tests {
         assert_eq!(Fx::ZERO.atan2(Fx::ZERO), Fx::ZERO);
         close(Fx::ZERO.atan2(fx!(-1.0)), std::f64::consts::PI, 1e-9);
         // Kleine Vektoren verlieren keine Genauigkeit.
-        close(Fx::from_raw(3).atan2(Fx::from_raw(4)), (3f64).atan2(4.0), 1e-9);
+        close(
+            Fx::from_raw(3).atan2(Fx::from_raw(4)),
+            (3f64).atan2(4.0),
+            1e-9,
+        );
     }
 
     #[test]
     fn angles_wrap_and_vectors_rotate() {
-        close(fx!(3.5).angle_to(fx!(-3.0)), -3.0 - 3.5 + std::f64::consts::TAU, 1e-8);
+        close(
+            fx!(3.5).angle_to(fx!(-3.0)),
+            -3.0 - 3.5 + std::f64::consts::TAU,
+            1e-8,
+        );
         let v = Vec2::X.rotate_by(Fx::HALF_PI);
         assert!(v.x.abs() < fx!(0.000001) && (v.y - Fx::ONE).abs() < fx!(0.000001));
         let n = Vec2::new(fx!(0.0), fx!(7.0)).normalize_or_zero();
         close(n.y, 1.0, 1e-9);
         assert_eq!(Vec2::ZERO.normalize_or_zero(), Vec2::ZERO);
-        close(Vec2::new(fx!(1.0), fx!(1.0)).to_angle(), std::f64::consts::FRAC_PI_4, 1e-9);
+        close(
+            Vec2::new(fx!(1.0), fx!(1.0)).to_angle(),
+            std::f64::consts::FRAC_PI_4,
+            1e-9,
+        );
     }
 
     #[test]

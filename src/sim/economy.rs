@@ -4,8 +4,9 @@ use super::data::{GameData, Ore, Prices, Service, ServiceEffect, UpgradeEffect};
 use super::ship::{Loadout, ShipStats};
 use super::world::Owner;
 use super::{Command, DT, SimEvent, SimState, TickInput, ToastKind};
+use crate::sim::fx::Fx;
 
-pub const VOTE_SECONDS: f32 = 10.0;
+pub const VOTE_SECONDS: Fx = fx!(10.0);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Purchase {
@@ -62,7 +63,7 @@ pub struct Vote {
     pub price: u32,
     /// 0 = enthält sich, 1 = ja, -1 = nein (pro Crewmitglied).
     pub votes: Vec<i8>,
-    pub timer: f32,
+    pub timer: Fx,
     pub initiator: u8,
 }
 
@@ -120,7 +121,7 @@ pub fn stats_for(data: &GameData, upgrades: &[String]) -> ShipStats {
             UpgradeEffect::CraneLoad(m) => s.crane_load *= m,
             UpgradeEffect::Brake(m) => s.brake_mul *= m,
         }
-        if u.mass > 0.0 {
+        if u.mass > fx!(0.0) {
             s.part_mass.push((u.part, u.mass));
         }
     }
@@ -162,10 +163,11 @@ impl SimState {
 
     /// Ankaufspreis für eine Tonne Erz an einem Ort (mit Angebot und Nachfrage).
     pub fn ore_price_at(&self, owner: Owner, ore: Ore) -> u32 {
-        let base = self.data.shop.ore_price(ore) as f32;
-        (base * self.prices_of(owner).ore_factor(ore) * self.market_factor(owner, ore))
+        let base = Fx::from(self.data.shop.ore_price(ore));
+        ((base * self.prices_of(owner).ore_factor(ore) * self.market_factor(owner, ore))
             .round()
-            .max(1.0) as u32
+            .max(fx!(1.0)))
+        .to_u32()
     }
 
     /// Bester Ankaufspreis für eine Erzsorte irgendwo in der Welt (Ort, Preis).
@@ -194,13 +196,15 @@ impl SimState {
             return 0;
         }
         let frac = match effect {
-            ServiceEffect::RepairFull => 1.0 - self.ship.hull / self.ship.max_hull,
-            ServiceEffect::ShieldFull => 1.0 - self.ship.shield / self.ship.max_shield.max(1.0),
-            ServiceEffect::Ammo(_) => 1.0,
+            ServiceEffect::RepairFull => fx!(1.0) - self.ship.hull / self.ship.max_hull,
+            ServiceEffect::ShieldFull => {
+                fx!(1.0) - self.ship.shield / self.ship.max_shield.max(fx!(1.0))
+            }
+            ServiceEffect::Ammo(_) => fx!(1.0),
             ServiceEffect::RepairThrusters => self.ship.thruster_wear(),
-            ServiceEffect::Refuel => 1.0 - self.ship.fuel / self.ship.max_fuel.max(1.0),
+            ServiceEffect::Refuel => fx!(1.0) - self.ship.fuel / self.ship.max_fuel.max(fx!(1.0)),
         };
-        let factor = self.docked_owner().map_or(1.0, |o| {
+        let factor = self.docked_owner().map_or(fx!(1.0), |o| {
             let p = self.prices_of(o);
             let base = if *effect == ServiceEffect::Refuel {
                 p.fuel
@@ -209,9 +213,9 @@ impl SimState {
             };
             // Stammkunden zahlen weniger: 5 % pro Rufstufe.
             let rep = o.station().map_or(0, |si| self.rep_level_at(si));
-            base * (1.0 - 0.05 * rep as f32)
+            base * (fx!(1.0) - fx!(0.05) * Fx::from(rep))
         });
-        ((base as f32 * frac * factor).ceil() as u32).max(5)
+        ((Fx::from(base) * frac * factor).ceil_int() as u32).max(5)
     }
 
     /// Prüft einen Kauf. Ok((Bezeichnung, Preis)) oder Err(Grund).
@@ -233,17 +237,19 @@ impl SimState {
                     ServiceEffect::Ammo(_) => (Service::Ammo, self.ship.ammo < self.ship.max_ammo),
                     ServiceEffect::ShieldFull => (
                         Service::Shield,
-                        self.ship.shield < self.ship.max_shield - 0.5,
+                        self.ship.shield < self.ship.max_shield - fx!(0.5),
                     ),
-                    ServiceEffect::RepairFull => {
-                        (Service::Repair, self.ship.hull < self.ship.max_hull - 0.5)
-                    }
+                    ServiceEffect::RepairFull => (
+                        Service::Repair,
+                        self.ship.hull < self.ship.max_hull - fx!(0.5),
+                    ),
                     ServiceEffect::RepairThrusters => {
-                        (Service::Repair, self.ship.thruster_wear() > 0.005)
+                        (Service::Repair, self.ship.thruster_wear() > fx!(0.005))
                     }
-                    ServiceEffect::Refuel => {
-                        (Service::Fuel, self.ship.fuel < self.ship.max_fuel - 0.5)
-                    }
+                    ServiceEffect::Refuel => (
+                        Service::Fuel,
+                        self.ship.fuel < self.ship.max_fuel - fx!(0.5),
+                    ),
                 };
                 if !st.has(needed) {
                     return Err(format!("{} bietet das nicht an", st.name));
@@ -579,7 +585,7 @@ impl SimState {
         let Some(v) = &mut self.vote else { return };
         v.timer -= DT;
         let all_voted = v.votes.iter().all(|x| *x != 0);
-        if v.timer > 0.0 && !all_voted {
+        if v.timer > fx!(0.0) && !all_voted {
             return;
         }
         let v = self.vote.take().unwrap();
@@ -681,7 +687,7 @@ impl SimState {
                     Some(ServiceEffect::RepairFull) => self.ship.hull = self.ship.max_hull,
                     Some(ServiceEffect::RepairThrusters) => {
                         for t in &mut self.ship.thrusters {
-                            t.health = 1.0;
+                            t.health = fx!(1.0);
                         }
                     }
                     Some(ServiceEffect::Refuel) => {
@@ -700,9 +706,9 @@ impl SimState {
                     (self.ship.max_hull, self.ship.max_shield, self.ship.max_fuel);
                 let loadout = self.loadout.clone();
                 self.rebuild_ship(loadout);
-                self.ship.hull += (self.ship.max_hull - old_max_hull).max(0.0);
-                self.ship.shield += (self.ship.max_shield - old_max_shield).max(0.0);
-                self.ship.fuel += (self.ship.max_fuel - old_max_fuel).max(0.0);
+                self.ship.hull += (self.ship.max_hull - old_max_hull).max(fx!(0.0));
+                self.ship.shield += (self.ship.max_shield - old_max_shield).max(fx!(0.0));
+                self.ship.fuel += (self.ship.max_fuel - old_max_fuel).max(fx!(0.0));
             }
             Purchase::Gear(g) => self.unlock_gear(*g, "eingebaut"),
             Purchase::Ship(id) => {
@@ -752,7 +758,7 @@ impl SimState {
         if let Some(pad) = pad {
             let p = self.world.pads[pad].clone();
             self.ship.angle = p.ship_angle();
-            self.ship.pos = p.center + p.normal * (self.ship.rest_height() + 0.02);
+            self.ship.pos = p.center + p.normal * (self.ship.rest_height() + fx!(0.02));
             self.ship.prev_pos = self.ship.pos;
             self.ship.prev_angle = self.ship.angle;
             self.ship.docked = Some(pad);
@@ -780,7 +786,7 @@ impl SimState {
                 .iter()
                 .position(|x| x == o)
                 .unwrap_or(0);
-            self.crew.storage[i] += t * 0.5;
+            self.crew.storage[i] += t * fx!(0.5);
         }
     }
 
@@ -809,9 +815,9 @@ impl SimState {
             return;
         }
         let mut earned = 0u32;
-        let mut sold_t = 0.0;
+        let mut sold_t = fx!(0.0);
         for ore in super::data::Ore::ALL {
-            let reserved: f32 = self
+            let reserved: Fx = self
                 .active
                 .iter()
                 .filter_map(|m| match m.kind {
@@ -821,8 +827,8 @@ impl SimState {
                     _ => None,
                 })
                 .sum();
-            let sellable = (self.ship.ore_amount(ore) - reserved).max(0.0);
-            if sellable < 0.05 {
+            let sellable = (self.ship.ore_amount(ore) - reserved).max(fx!(0.0));
+            if sellable < fx!(0.05) {
                 continue;
             }
             let price = self
@@ -830,7 +836,7 @@ impl SimState {
                 .map_or(self.data.shop.ore_price(ore), |o| self.ore_price_at(o, ore));
             let taken = self.ship.take_ore(ore, sellable);
             sold_t += taken;
-            earned += (taken * price as f32).round() as u32;
+            earned += (taken * Fx::from(price)).round_int() as u32;
             if let Some(o) = self.docked_owner() {
                 self.note_sale(o, ore, taken);
             }
@@ -851,7 +857,7 @@ impl SimState {
         self.crew.credits += earned;
         self.crew.ore_sold += sold_t;
         self.events.push(SimEvent::Sold { credits: earned });
-        let what = match (sold_t > 0.05, parts.len()) {
+        let what = match (sold_t > fx!(0.05), parts.len()) {
             (true, 0) => format!("{sold_t:.1} t Erz"),
             (false, n) => format!("{n} Bauteile"),
             (true, n) => format!("{sold_t:.1} t Erz und {n} Bauteile"),
@@ -897,10 +903,10 @@ impl SimState {
         let loadout = super::gear::filter_loadout(&def, &self.crew.gear, self.loadout.clone());
         let cap = super::ship::Ship::build(&def, &loadout, &stats_for(&self.data, &rest))
             .cargo_capacity();
-        if self.ship.cargo_mass() > cap + 1e-3 {
+        if self.ship.cargo_mass() > cap + fx!(1e-3) {
             return Err("Erst Fracht verkaufen – sonst passt sie nicht mehr".into());
         }
-        Ok((u.price as f32 * UPGRADE_RESALE).round() as u32)
+        Ok((Fx::from(u.price) * UPGRADE_RESALE).round_int() as u32)
     }
 
     pub(crate) fn sell_upgrade(&mut self, id: &str) {
@@ -927,7 +933,7 @@ impl SimState {
 }
 
 /// Ausgebaute Upgrades bringen die Hälfte des Kaufpreises (Material und Bauteile bleiben weg).
-pub const UPGRADE_RESALE: f32 = 0.5;
+pub const UPGRADE_RESALE: Fx = fx!(0.5);
 
 #[cfg(test)]
 mod tests {
@@ -943,7 +949,7 @@ mod tests {
         // Volles Crew-Lager: Upgrades kosten auch Material und Bauteile.
         save.storage = crate::sim::data::Ore::ALL
             .iter()
-            .map(|o| (*o, 50.0))
+            .map(|o| (*o, fx!(50.0)))
             .collect();
         save.storage_parts = 10;
         let def = data.ship(&save.current_ship).clone();
@@ -983,7 +989,7 @@ mod tests {
         let cap = s.ship.cargo_capacity();
         s.ship.store_item(crate::sim::ship::CargoItem::new(
             crate::sim::ship::CargoKind::Ore(Ore::Ferrit),
-            cap * 0.9,
+            cap * fx!(0.9),
             crate::sim::data::CargoTrait::None,
         ));
         assert!(s.upgrade_sale("cargo1").is_err());
@@ -1030,7 +1036,7 @@ mod tests {
             }],
             ..Default::default()
         });
-        for _ in 0..(VOTE_SECONDS * 60.0) as usize + 5 {
+        for _ in 0..(VOTE_SECONDS * fx!(60.0)).to_usize() + 5 {
             s.step(&TickInput::default());
         }
         assert!(s.vote.is_none());
@@ -1067,13 +1073,13 @@ mod tests {
         );
         // Verkauf nutzt den Ortspreis.
         s.ship
-            .store(crate::sim::ship::CargoKind::Ore(Ore::Solarit), 4.0);
+            .store(crate::sim::ship::CargoKind::Ore(Ore::Solarit), fx!(4.0));
         s.ship.docked = None;
         s.dock_at_station(kepler.station().unwrap());
         let before = s.crew.credits;
         let price = s.ore_price_at(kepler, Ore::Solarit);
         s.sell_ore();
-        let expected = (4.0 * price as f32).round() as u32;
+        let expected = (fx!(4.0) * Fx::from(price)).round_int() as u32;
         assert_eq!(s.crew.credits - before, expected);
         // Der Verkauf drückt den Preis dort (Angebot und Nachfrage).
         assert!(s.ore_price_at(kepler, Ore::Solarit) < price);
@@ -1082,13 +1088,13 @@ mod tests {
     #[test]
     fn refuel_and_thruster_repair_cost_money() {
         let mut s = sim(1);
-        s.ship.fuel = 10.0;
-        s.ship.thrusters[0].health = 0.0;
+        s.ship.fuel = fx!(10.0);
+        s.ship.thrusters[0].health = fx!(0.0);
         let before = s.crew.credits;
         buy(&mut s, Purchase::Service("fuel".into()), 0);
         buy(&mut s, Purchase::Service("engines".into()), 0);
         assert_eq!(s.ship.fuel, s.ship.max_fuel);
-        assert!(s.ship.thrusters.iter().all(|t| t.health == 1.0));
+        assert!(s.ship.thrusters.iter().all(|t| t.health == fx!(1.0)));
         assert!(s.crew.credits < before);
     }
 }
