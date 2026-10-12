@@ -8,6 +8,8 @@
 //! Die Simulation weiß nicht, wer gedrückt hat – nur welcher Slot.
 
 pub mod autopilot;
+#[macro_use]
+pub mod fx;
 pub mod cargo;
 #[cfg(test)]
 mod cargo_tests;
