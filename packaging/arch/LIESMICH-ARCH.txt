@@ -1,0 +1,14 @@
+DriftCrew für Arch Linux
+========================
+1. Entpacken:   tar xzf driftcrew-arch.tar.gz && cd driftcrew-arch
+2. Einmalig:    ./install-deps.sh      (installiert die Bibliotheken per pacman)
+3. Starten:     ./start.sh
+
+Vulkan-Grafiktreiber nötig (AMD: vulkan-radeon, Intel: vulkan-intel, Nvidia: nvidia-utils).
+Prüfen:  vulkaninfo --summary
+
+Selbsttest der Rechnung (Fixed-Point):  ./driftcrew --selbsttest
+  -> muss "OK" melden; die Zahlen müssen auf Windows und NixOS dieselben sein.
+
+Alles Weitere (Steuerung, Einstellungen, Spielstand ~/.local/share/driftcrew/) steht in LIESMICH.txt.
+Kein Ton?  Einstellungen -> "Ton testen"; läuft PipeWire, hilft:  sudo pacman -S pipewire-alsa
